@@ -688,9 +688,15 @@ final class HarnessCopyTreeTest extends TestCase
      * residue the pin judges. The freeze retries — each stop is
      * another phase draw, the CONT and the spawn jitter between
      * attempts re-randomizing it — so a regressed seam reddens with
-     * ~1 - 0.4^10 certainty and the miss never passes silently: an
-     * unopened window after every attempt is a loud staging-shaped
-     * failure, never a vacuous green. The child loops the probe over
+     * ~1 - 0.4^10 certainty. The residual miss rides green BY
+     * DESIGN (OCR round 48, t31-ocr48-4): the else arm asserts
+     * the residue absence the fixed seam owes — on a plant-less
+     * host (the r38-2 conservative arm, this runner's own shape)
+     * it is the every-run path, per the r40-5 record's own
+     * both-arms-green fact — never the loud staging-shaped
+     * failure this docblock claimed from round 40 (the branch
+     * never carried it; the inline comment at the arm always
+     * told the true contract). The child loops the probe over
      * the repo-rooted base with the per-volume cache key unset each
      * iteration (the t31-ocr39-7 spelling — the cache short-circuit
      * is the only other path); at HEAD the residue lands in the
