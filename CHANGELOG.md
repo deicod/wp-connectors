@@ -6,6 +6,125 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 43)
+
+Forty-third OCR-tool round (main 61/61, fully complete): 11 findings,
+all accepted and fixed. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11.
+The round's shape: the underscore twin (the masking suffix class
+spoke hyphens only while the header grammar admits underscore tchars),
+the r42-2 twin sweep that never happened (the zip/sidecar staging
+temps stayed pid-predictable), the seventh use-grammar generation
+(the group-member NAME's own shape), the inverted getLastErrors
+narrative, and the slug-equals-family-leaf degenerate. Round 43
+answered NEW findings, so the OCR phase continues per plan. Fixed as
+t31-ocr43-1..10 — one commit per finding (the two documentation:low
+halves of the inverted narrative sharing one commit), plus this docs
+record, the full offline check green after every commit. Suite
+1699 → 1702 tests, 46310 → 46340 assertions, 3 skipped unchanged.
+
+- **The credential boundary speaks the underscore tchar (t31-ocr43-1,
+  security:medium)** — the suffix class keyed exclusively on hyphen
+  boundaries, but '_' is a legal RFC 7230 tchar HeaderMap's
+  NAME_TOKEN_PATTERN admits beside '-': 'x_api_key' (and
+  'subscription_key', 'auth_token', 'client_secret' — underscore
+  spellings of the very tokens the class names) matched neither
+  catalog nor class and rendered their full secret verbatim through
+  every safe debug form. The classifier normalizes '_' to '-' once at
+  the fold; hyphen-only names judge byte-identically, the boundary
+  pin holding over either separator ('x_api_keychain' stays outside).
+  Driven: the five underscore spellings answer masked (red at HEAD).
+- **The zip and sidecar staging temps own unpredictable names
+  (t31-ocr43-2, security:medium)** — the r42-2 twin sweep that never
+  landed then: $stage gained its random suffix precisely because the
+  pid is predictable, while the zip temp and its sidecar twin stayed
+  pid-only in the same method (ZipArchive::open() writing through
+  whatever stands at the predicted path). Both carry the random
+  suffix now, one census comment naming the whole staging family; the
+  sweep's tail pattern rides the suffix tail-optionally, so stale
+  temps of both spellings still reclaim. Driven: a random-suffixed
+  dead-pid zip orphan is swept (red at HEAD); the two planted-blocker
+  legs invert to the guessable-spelling contract (junk at the
+  once-predictable spelling is inert, the build landing whole beside
+  it).
+- **The group-member NAME rides the grammar (t31-ocr43-3,
+  bug:medium)** — the seventh use-grammar generation:
+  groupUseMemberGrammar() validated everything around the member name
+  (emptiness, the alias, the kind, the leading separator) while "a
+  member that is not a name at all" passed every check and was
+  re-emitted verbatim by BOTH re-emit seams — compile-error bytes in
+  the zip at exit 0. The name rides the engine's own label grammar
+  (php -l-derived, high bytes admitted), one owner both seams already
+  rode. Driven: digit-initial, mid-name space/hyphen, and
+  digit-initial sub-segment rows answer the grammar's own refusal at
+  both seams (red at HEAD: re-emitted); legal members unchanged.
+- **The build removal walk owns its IO returns (t31-ocr43-4,
+  bug:medium)** — WpConnectorsBuild::rrmdir()'s per-entry (and final)
+  removal calls ran bare, so a refused removal answered with a raw
+  E_WARNING interpolating staging paths against the docblock's own
+  silent-degrade promise — under the runner's warning conversion,
+  another vocabulary inside the finally. The calls ride the @ +
+  owned-return idiom at this owner's own contract (never the harness
+  twin's loud throw — a rethrow would REPLACE the primary verdict,
+  the t31-ocr23-1 class): the refused entry stays for the sweep's
+  next run, the partial removal stands. Driven: a stranded 0555
+  subtree answers the named degrade (red at HEAD: the raw warning),
+  the readable siblings removed.
+- **The NAMESPACE keyword joins the scoped census (t31-ocr43-5,
+  maintainability:low)** — the r35-1 census's one reopened seam: the
+  declaration pattern spelled its keyword lowercase-only, so
+  `NAMESPACE Deicod\WpConnectors\Shared;` (legal PHP) skipped the
+  rewrite and refused only as an anonymous postcondition failure. The
+  keyword rides the scoped (?i:…) group, its casing verbatim in the
+  output. Driven: a NAMESPACE-spelled declaration answers the rewrite
+  verdict (red at HEAD: skipped); lowercase spellings unchanged.
+- **The slug-equals-family-leaf degenerate refuses at the config seam
+  (t31-ocr43-6, bug:low)** — a connector slug of 'shared' derives
+  namespace_suffix 'Shared' (the family's own leaf), passes every
+  gate, and composes …\Shared\Shared: the rewrite re-matches its own
+  output, a double rewrite shipping a namespace nothing loads at
+  exit 0. The vocabulary-doctrine premise is explicit now — no
+  component may compose into the family's own spelling — the
+  colliding suffix (case-insensitively) refused loudly. Driven: slug
+  'shared' answers the config refusal (red at HEAD: the degenerate
+  build SUCCEEDED); ordinary slugs unchanged.
+- **The lint summary names the count that carries the verdict
+  (t31-ocr43-7, maintainability:low)** — the exit verdict folds the
+  walk refusals in while the stdout summary named only checked and
+  failure counts: a refusal-only red run printed "0 failure(s)" while
+  exiting 1, the line and the verdict disagreeing about where the red
+  came from. The refusal count rides the same summary line (both
+  numbers when both nonzero). Driven over the locked-walk leg: the
+  refusal-only shape prints its count (red at HEAD).
+- **The aborted scan answers its partial count (t31-ocr43-8,
+  other:low)** — the unused-import collector printed every FAIL as
+  found but returned its count only at the end, so the gate's
+  abort conversion discarded every violation counted before the
+  refusal. An optional by-ref count syncs in a finally around the
+  walk (the abort flying through untouched), both gate callers
+  folding the partial in beside the abort's own FAIL. Driven through
+  the child shape: the count at the abort equals the FAIL lines
+  already printed (red at HEAD: the FAILs printed while the count
+  stayed 0).
+- **The getLastErrors narratives tell the engine's actual direction
+  (t31-ocr43-9, documentation:low)** — the documented engine shapes
+  were INVERTED: pre-8.3 DateTimeImmutable::getLastErrors() returns
+  an ARRAY on a clean parse (zero counts, keys present); the 8.3
+  change made it return FALSE when clean (the runner's 8.5 handing
+  false confirms the direction). The guard's logic was always right;
+  both narratives now tell the true direction, the invented
+  "undefined-key warning pair" mechanism dropped with the shape it
+  premised. Doc-only: guard and pins byte-unchanged.
+- **The freeze-kill pin's temp sweep is pid-scoped (t31-ocr43-10,
+  test:low)** — the finally globbed 'wpct-pathcase-*' over the shared
+  temp root, matching every process's in-flight case probe: under
+  parallel CI runners one runner's finally could unlink another LIVE
+  runner's probe mid-measurement. The sweep matches only this
+  process's pid-prefixed spelling (the probe name carries its own
+  pid); a foreign-pid probe file survives it by construction, the
+  crash sim's dead-child residue belonging in scratch or nowhere per
+  the ocr40-5 doctrine.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 42)
 
 Forty-second OCR-tool round (main 61/61, fully complete): 8 findings —
