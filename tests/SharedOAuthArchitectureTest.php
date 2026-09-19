@@ -1532,7 +1532,21 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             );
             $this->assertStringContainsString('Helper.php', $refusal->getMessage(), 'The refusal must name the file.');
             $this->assertStringContainsString('Deicod\\WpConnectors\\Shared\\Tools', $refusal->getMessage(), 'The refusal must name the declared spelling.');
-            $this->assertStringContainsString('tools', $refusal->getMessage(), 'The refusal must name the staged spelling.');
+            /*
+             * The staged-spelling pin (OCR round 47, t31-ocr47-6): the
+             * leg once asserted the bare substring 'tools' — vacuous,
+             * because the refusal's FIRST %s embeds the full swept
+             * path, and the fixture lives at …/tools/Helper.php, so
+             * the assertion passed whenever the file was named at
+             * all, never the staged-spelling sentence. The pin speaks
+             * the comparison's own vocabulary now — the verdict's
+             * casing-specific phrase — which no incidental path
+             * substring can carry: under a planted regression that
+             * drops the staged-spelling sentence (the old
+             * vacuous shape) this leg answers red (driven by
+             * construction; the old leg stayed green under it).
+             */
+            $this->assertStringContainsString('spells the namespace directories tools', $refusal->getMessage(), 'The refusal must name the staged spelling at the comparison\'s own vocabulary — never a substring the swept path incidentally carries.');
             $this->assertStringContainsString('autoloader', $refusal->getMessage(), 'The refusal must state the load consequence.');
 
             // The clean direction: the case-consistent spelling of the
