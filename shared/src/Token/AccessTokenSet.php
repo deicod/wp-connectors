@@ -637,16 +637,19 @@ final class AccessTokenSet {
 		}
 
 		/*
-		 * Both engine shapes are CLEAN (OCR round 26, t31-ocr26-6):
-		 * the pre-8.3 spelling hands FALSE on a clean parse, and the
-		 * 8.3+ rewrite hands an EMPTY ARRAY — the false !== guard
-		 * alone passed on those builds, and the two key reads below
-		 * were undefined-key accesses: a warning pair on every clean
-		 * from_array parse, diagnostics noise the verdicts never saw
-		 * (this runner's engine still hands false — the empty-array
-		 * shape is the cross-engine premise). The keys are read only
-		 * when the engine POPULATED the array; false and array()
-		 * are both the clean verdict they name.
+		 * Both engine shapes are CLEAN (OCR round 26, t31-ocr26-6 —
+		 * the narrative inverted at OCR round 43, t31-ocr43-9; the
+		 * guard's logic was always right, only the story was
+		 * backwards): the pre-8.3 spelling hands an ARRAY on a clean
+		 * parse — zero counts, both keys present — and the 8.3+
+		 * rewrite hands FALSE, so a guard keyed on ONE shape alone
+		 * mishandles the other build's clean parse (key reads on a
+		 * false, a skipped verdict on an array). The ! empty() guard
+		 * reads the keys only when the engine POPULATED the array:
+		 * false and the zero-count array are both the clean verdict
+		 * they name, on their respective engine shapes (this
+		 * runner's engine still hands false — the array shape is
+		 * the cross-engine premise).
 		 */
 		$errors = DateTimeImmutable::getLastErrors();
 		if ( ! empty( $errors ) && ( $errors['warning_count'] > 0 || $errors['error_count'] > 0 ) ) {
