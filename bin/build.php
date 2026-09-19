@@ -312,7 +312,20 @@ final class WpConnectorsBuild
          */
         $rewritten = self::replaceOrThrow(
             preg_replace_callback(
-                '/(?<![A-Za-z0-9_])((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[A-Za-z_][A-Za-z0-9_]*)*)(\s+(?i:as)\s+[A-Za-z_][A-Za-z0-9_]*)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
+                /*
+                 * The lookbehind owns the r49-1 LEFT-ANCHOR census
+                 * (t31-ocr49-2): word bytes alone never covered the
+                 * statement-start class — the separator `\` passes
+                 * `[A-Za-z0-9_]` while the engine demotes `Foo\use`
+                 * to one qualified-name token, so `use Foo\use
+                 * Deicod\WpConnectors\Shared\Clock;` matched at the
+                 * SECOND `use`, the callback spliced the rewritten
+                 * target over the matched span, and the leftover
+                 * `use Foo\` bytes shipped parse-error output at
+                 * exit 0 (driven at HEAD, the plain and brace-tail
+                 * spellings alike).
+                 */
+                '/(?<![A-Za-z0-9_\\\\])((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[A-Za-z_][A-Za-z0-9_]*)*)(\s+(?i:as)\s+[A-Za-z_][A-Za-z0-9_]*)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
                 static function ($matches) use ($sourceVersion, $vendor, $pluginSuffix, $family_leaf) {
                     // The optional groups are ABSENT keys (never
                     // null/'' — no PREG_UNMATCHED_AS_NULL here), the

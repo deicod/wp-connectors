@@ -6514,6 +6514,8 @@ FIXTURE;
          */
         foreach (array(
             'mid-name namespace (the declaration seam, no anchor at all)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Foo\\namespace Deicod\\WpConnectors\\Shared;\nclass LeftAnchorStore\n{\n}\n",
+            'mid-name use, plain statement' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Foo\\use Deicod\\WpConnectors\\Shared\\Clock;\nclass LeftAnchorStore\n{\n}\n",
+            'mid-name use, family-prefix brace tail (the same pattern one spelling over)' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Foo\\use Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap};\nclass LeftAnchorStore\n{\n}\n",
         ) as $label => $source) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/LeftAnchorStore.php'),
