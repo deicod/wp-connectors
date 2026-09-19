@@ -893,6 +893,22 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $printed), 'The rendered reason carries no line-forging or terminal-rewriting byte.');
         $this->assertSame('plain text rides untouched', wp_connectors_printable('plain text rides untouched'));
 
+        /*
+         * OCR-round-50 leg (t31-ocr50-5, the bidi half of the same
+         * forged-output lens): the neutralizer once owned C0 + DEL
+         * only, so the Unicode bidi/format class rode verbatim — an
+         * entry name carrying U+202E (RLO) could visually REORDER its
+         * own diagnostic line. The whole class neutralizes to a space
+         * now (driven with the real bytes, the same drift-proof
+         * spelling), while the ordinary multibyte body and the
+         * ASCII-only diagnostic stay byte-identical (the pin above).
+         */
+        $bidi = "before\u{202E}inspect: totally-legit.zip ACCEPTED\u{202D}\u{2066}after\u{2069}";
+        $bidi_printed = wp_connectors_printable($bidi);
+        $this->assertSame('before inspect: totally-legit.zip ACCEPTED  after ', $bidi_printed, 'Every bidi/format control (U+202E RLO, U+202D LRO, the isolates) becomes a space — an entry name can no longer reorder its own diagnostic line (red at HEAD: the controls rode verbatim).');
+        $this->assertSame(0, preg_match('/[\x{202A}-\x{202E}\x{200E}\x{200F}\x{2066}-\x{2069}]/u', $bidi_printed), 'The rendered line carries no bidi/format control of the class.');
+        $this->assertSame('café rides untouched', wp_connectors_printable('café rides untouched'), 'Ordinary multibyte UTF-8 still rides verbatim.');
+
         // End to end: a NAME_MAX-breaking entry whose component carries
         // the forged verdict text — the refusal line that interpolates
         // the captured reason carries no raw control byte on THIS
@@ -1495,6 +1511,29 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         foreach ($violations as $violation) {
             $this->assertStringNotContainsString("\ninspect: totally-legit", $violation, 'A hostile entry name cannot start a new line inside a violation message.');
         }
+
+        /*
+         * (c-bidi) The bidi twin of the same fence (OCR round 50,
+         * t31-ocr50-5, security): an entry name carrying the RLO byte
+         * (U+202E — the filename-spoof byte) renders NEUTRALIZED in
+         * the verdict line that interpolates it, never a visually
+         * reordered one (red at HEAD: the control rode verbatim). The
+         * UTF-8 flag bit carries the multibyte name through the
+         * engine's own reader byte-exact (the near-source leg's own
+         * spelling, t31-ocr20-1).
+         */
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.4.zip";
+        $bidi = "{$slug}/src/ok\u{202E}inspect: totally-legit.zip ACCEPTED (0 violation(s))\u{2069}.txt";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array($bidi, 'x'),
+            array($bidi, 'y'),
+        ), 0x0800));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
+        $flat = implode("\n", $violations);
+        $this->assertStringContainsString('more than once', $flat, 'The duplicate fence fires over the bidi-bearing name too.');
+        $this->assertSame(0, preg_match('/[\x{202A}-\x{202E}\x{200E}\x{200F}\x{2066}-\x{2069}]/u', $flat), 'No verdict line carries a bidi/format control — the interpolating seam neutralized the class (red at HEAD: the RLO rode verbatim).');
 
         // (d) Control: the same builder with no duplicates carries no
         // fence violation (the plugin above is otherwise inspectable).

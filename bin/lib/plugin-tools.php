@@ -4373,12 +4373,33 @@ function wp_connectors_ascii_lower($value)
  * sequence can no longer rewrite the terminal). The printable body —
  * including multibyte UTF-8 — rides verbatim.
  *
+ * The Unicode bidi/format controls join the substitution vocabulary
+ * (OCR round 50, t31-ocr50-5, security — the same forged-output lens):
+ * the URL and header surfaces REFUSE the class by their own screens,
+ * but this seam's input must RENDER, so U+202A-202E (the embedding
+ * and override pair LRE/RLE/PDF/LRO/RLO — U+202E RLO is the classic
+ * filename-spoof byte), U+200E/U+200F (LRM/RLM), and U+2066-2069
+ * (the isolate quartet LRI/RLI/FSI/PDI) neutralize to a space beside
+ * the C0 class — a crafted entry name can no longer visually REORDER
+ * its own diagnostic line. The map rides explicit byte sequences
+ * (array-form strtr matches the longest key first, so the multibyte
+ * entries win over any single byte of their own spelling); every
+ * sequence is pure non-ASCII bytes, so an ASCII-only diagnostic is
+ * byte-identical under the new vocabulary.
+ *
  * @param string $value The bytes about to interpolate into a diagnostic.
- * @return string The same bytes with every C0 control and DEL as a space.
+ * @return string The same bytes with every C0 control, DEL, and bidi/format control as a space.
  */
 function wp_connectors_printable($value)
 {
-    return (string) strtr((string) $value, array_combine(array_map('chr', array_merge(range(0, 31), array(127))), array_fill(0, 33, ' ')));
+    return (string) strtr((string) $value, array_merge(
+        array_combine(array_map('chr', array_merge(range(0, 31), array(127))), array_fill(0, 33, ' ')),
+        array_fill_keys(array(
+            "\u{200E}", "\u{200F}",
+            "\u{202A}", "\u{202B}", "\u{202C}", "\u{202D}", "\u{202E}",
+            "\u{2066}", "\u{2067}", "\u{2068}", "\u{2069}",
+        ), ' ')
+    ));
 }
 
 /**
