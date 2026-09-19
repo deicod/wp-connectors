@@ -746,12 +746,56 @@ final class HarnessCopyTreeTest extends TestCase
         $this->assertDirectoryExists($judge, 'The example-connector fixture tree is the crash sim\'s judged base — the exact shape the build suites copyTree() from.');
 
         $heartbeat = sys_get_temp_dir() . '/wpct-pathcase-crash-' . uniqid('', true) . '.log';
+        /*
+         * The child owns its OWN termination (OCR round 47, t31-ocr47-8):
+         * its only lifecycle owner was the finally's kill — a CI
+         * cancel/timeout, an OOM fatal, or a Ctrl-C skips finally and
+         * once orphaned a busy-looping child (reflection + stat + glob
+         * per iteration) kept running beside a dead test. The child
+         * embeds the OWNING test process's pid and probes it every
+         * iteration — the getppid() drift is useless here (the spawn
+         * shell exits at once, the child is re-parented at birth), so
+         * the liveness probe is the build's own processIsAlive
+         * doctrine spelled inline (bin/build.php — the child requires
+         * only WpHarness), with its branches REORDERED by a driven
+         * counter-proof: the doctrine's is_dir-first /proc branch
+         * CANNOT serve a hot loop — PHP's stat cache pins the first
+         * verdict per path string, and an entry that read alive at
+         * loop start kept answering alive over 20 MILLION iterations
+         * past the owner's death (driven in /tmp, a 3s stall and
+         * climbing). The signal-0 probe leads — posix_kill is
+         * cache-free and deterministic in both directions (EPERM =
+         * exists, not ours to signal; ESRCH = gone) — and the /proc
+         * is_dir rides only as the posix-less fallback, behind its
+         * own clearstatcache() (the per-call bust the hot loop
+         * needs). A dead owner answers the loud orphan exit — the
+         * heartbeat log names the death — within one iteration of the
+         * reaping (a zombie owner reads alive until its reaper takes
+         * it, seconds at most; the never-kill direction stays the
+         * failure mode: a pid-reuse false-alive keeps the child
+         * looping, exactly today's behavior, never a live test's
+         * child dead). The CENSUS (t31-ocr47-9, folded — this is the
+         * file's only site): every other spawned child in the suite
+         * runs FOREGROUND over a finite script (exec owns its
+         * lifecycle; it cannot outlive the test by orphaning), and
+         * the harness's own two while (true) walks are bounded
+         * fixpoint loops, not children — the backgrounded crash-sim
+         * child is the only unbounded child the suite spawns.
+         */
         $script = 'require ' . var_export($harnessPath, true) . ';'
+            . ' $owner = ' . (int) getmypid() . ';'
+            . ' $alive = static function (int $pid): bool {'
+            . '     if (function_exists("posix_kill")) { return @posix_kill($pid, 0) || 1 === posix_get_last_error(); }'
+            . '     clearstatcache();'
+            . '     return is_dir("/proc/" . $pid);'
+            . ' };'
             . ' $p = new ReflectionMethod("WpHarness", "caseProbeAnswer");'
             . ' $c = new ReflectionProperty("WpHarness", "case_insensitive_volumes");'
             . ' $dev = (string) stat(' . var_export($judge, true) . ')["dev"];'
             . ' fwrite(STDOUT, "looping\n");'
-            . ' while (true) { $cache = $c->getValue(null); unset($cache[$dev]); $c->setValue(null, $cache); $p->invoke(null, ' . var_export($judge, true) . '); }';
+            . ' while (true) {'
+            . '     if (! $alive($owner)) { fwrite(STDERR, "orphaned: the owning test process is gone, the crash-sim child exits on its own\n"); exit(71); }'
+            . '     $cache = $c->getValue(null); unset($cache[$dev]); $c->setValue(null, $cache); $p->invoke(null, ' . var_export($judge, true) . '); }';
 
         // The residue lens: every wpct-pathcase-* file under the
         // judged tree (the assertion's subject) — and the same sweep
