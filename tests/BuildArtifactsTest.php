@@ -8039,6 +8039,31 @@ FIXTURE;
             );
             $this->assertStringContainsString('separator names no member', $refusal->getMessage(), "The member grammar owns the engine's own rejection — the lexer bakes legal separators into the name tokens, so a bare '\\' is a parse error the walk once shipped at exit 0 ({$label}).");
         }
+
+        /*
+         * The REPEATED-KIND generation (OCR round 48, t31-ocr48-1):
+         * the kind arm once accepted a kind keyword whenever the member
+         * was not yet named — and a kind keyword never names anything,
+         * so every kind-PAIR spelling walked member-start →
+         * member-start → name → terminator and re-emitted verbatim
+         * beside the rewritten family at exit 0, parse-error bytes
+         * php -l refuses (driven red at HEAD: all four spellings
+         * returned normally, the use line shipping `function function
+         * Foo` intact). A kind is legal only at the member's start,
+         * once per member — the second answers the refusal.
+         */
+        foreach (array(
+            'function function pair' => 'use namespace\\Clock, function function Foo;',
+            'function const pair' => 'use namespace\\Clock, function const Foo;',
+            'const function pair' => 'use namespace\\Clock, const function Foo;',
+            'const const pair' => 'use namespace\\Clock, const const Foo;',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\ninterface KindPairFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/KindPairFixture.php'),
+                "A repeated kind keyword in one comma-list member must refuse the rewrite ({$label}).", \RuntimeException::class
+            );
+            $this->assertStringContainsString('kind keyword repeats', $refusal->getMessage(), "The member grammar owns the once-per-member premise — a kind names nothing, so a second one is parse-error bytes the walk once re-emitted at exit 0 ({$label}).");
+        }
         // The LEGAL fully-qualified member keeps riding verbatim beside
         // the splice — one baked \Name token, never a bare separator.
         $rewritten = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock, \\Other\\Thing;\ninterface FqMemberFixture\n{\n}\n", 'OpenAiOauth', 'shared/src/FqMemberFixture.php');

@@ -1292,9 +1292,31 @@ final class WpConnectorsBuild
                         continue;
                     }
                     if (! $member_named && (T_FUNCTION === $tail_id || T_CONST === $tail_id)) {
-                        // The kind keywords lead a member (`use A, function B;`)
-                        // — kind-led members are leaf-exempt (the census
-                        // above: the fatal is a CLASS-name check).
+                        /*
+                         * The kind keywords lead a member (`use A, function B;`)
+                         * — kind-led members are leaf-exempt (the census
+                         * above: the fatal is a CLASS-name check). The
+                         * premise is ONCE PER MEMBER (OCR round 48,
+                         * t31-ocr48-1): the arm once accepted a kind
+                         * whenever the member was not yet NAMED, and a
+                         * kind keyword never names anything, so every
+                         * REPEATED spelling (`function function Foo`,
+                         * `const const Foo`, and the mixed pairs) walked
+                         * member-start → member-start → name → terminator
+                         * and re-emitted verbatim beside the rewritten
+                         * family at exit 0 — parse-error bytes php -l
+                         * refuses (driven at HEAD). A kind is legal only
+                         * at the member's start: after one is seen the
+                         * next token must be the name, so the second
+                         * answers the engine's own verdict here.
+                         */
+                        if ($member_kind_led) {
+                            // A T_FUNCTION/T_CONST id rides an array token
+                            // (the lexer's own shape — the is_array ternary
+                            // the sibling branches spell is dead here).
+                            $rider_display = $tail_token[1];
+                            throw new RuntimeException("build: parse-error bytes ride the relative use import ({$spelling_display}) in {$sourceVersion} — the member's kind keyword repeats (here: '{$rider_display}'): a kind ('function'/'const') is legal only at the member's start, once per member, and every repeated spelling ('function function Foo', 'const const Foo', or the mixed pairs) is a parse error the engine refuses at lint while the walk once re-emitted it verbatim beside the rewritten name at exit 0; write one kind per member");
+                        }
                         $member_kind_led = true;
                         $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
 
