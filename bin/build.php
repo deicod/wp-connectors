@@ -472,10 +472,18 @@ final class WpConnectorsBuild
          * case-variant group prefix refused at the postcondition one
          * seam over — the keyword census is one vocabulary at every
          * pattern that spells the grammar.
+         *
+         * The LEFT ANCHOR rides the r49-1 census (t31-ocr49-3): the
+         * lookbehind guarded word bytes only, so `use Foo\use
+         * Deicod\WpConnectors\{Shared\Clock};` matched at the SECOND
+         * `use` and the members rewrote beside a rewritten prefix
+         * with the leftover `use Foo\` bytes shipping ahead of them —
+         * the statement-start class (word byte or separator refused,
+         * the one census comment at the declaration seam).
          */
         $rewritten = self::replaceOrThrow(
             preg_replace_callback(
-                '/((?<![A-Za-z0-9_])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
+                '/((?<![A-Za-z0-9_\\\\])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
                 static function ($matches) use ($pluginSuffix, $sourceVersion, $shared_leaf) {
                     $members = array();
                     $member_pieces = explode(',', $matches[3]);

@@ -6524,6 +6524,22 @@ FIXTURE;
             $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The refusal is the postcondition's family-reference verdict — the mid-name span rides verbatim, never rewritten ({$label}).");
             $this->assertStringContainsString('LeftAnchorStore.php', $refusal->getMessage(), "The refusal names the file ({$label}).");
         }
+        /*
+         * The GROUP-PREFIX seam's driven leg (t31-ocr49-3): the
+         * vendor-prefix group's mid-name match is observable only
+         * through what the member rewrite DID to the span — at HEAD
+         * the pattern matched the second `use` and the member
+         * GRAMMAR judged the planted illegal member (the ocr48-1
+         * repeated-kind spelling), so the splice had already
+         * happened; the anchor refuses the match before any member
+         * judgment now, and the verdict is the postcondition's own.
+         */
+        $group_anchor_refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Foo\\use Deicod\\WpConnectors\\{Shared\\Clock, function function Bad};\nclass LeftAnchorGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/LeftAnchorGroupStore.php'),
+            'A group-use prefix planted behind the separator must never enter the member rewrite — red at HEAD: the member grammar judged the planted repeated-kind member from inside the mid-name span, the splice already done.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('survived the rewrite', $group_anchor_refusal->getMessage(), 'The verdict is the postcondition\'s family-reference refusal, never the member grammar\'s — the mid-name span never entered the member rewrite.');
+        $this->assertStringContainsString('LeftAnchorGroupStore.php', $group_anchor_refusal->getMessage(), 'The refusal names the file.');
 
         /*
          * Fix-round pin (t31-r4 K1 / t31-r4-4), restructured by t31-r7:
