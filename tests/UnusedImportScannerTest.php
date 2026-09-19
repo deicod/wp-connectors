@@ -67,8 +67,15 @@ final class UnusedImportScannerTest extends TestCase
      */
     public function testTeardownReleasesNonEmptySubdirectoryTrees(): void
     {
-        mkdir($this->root . '/locked', 0755, true);
-        file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n");
+        /*
+         * The staging asserts its own landing (t31-ocr53-9, the
+         * mid-walk leg's own doctrine): a failed mkdir()/write left
+         * tearDown releasing an ALREADY-CLEAN tree and the pin green
+         * over nothing staged — vacuously, the leak it exists to
+         * redden never constructible.
+         */
+        $this->assertTrue(mkdir($this->root . '/locked', 0755, true), 'staging: the locked tree must create — a staging failure fails as staging, never as the release verdict.');
+        $this->assertNotFalse(file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n"), 'staging: the hidden source must write — a staging failure fails as staging, never as the release verdict.');
 
         $this->tearDown();
 
@@ -831,8 +838,16 @@ FIXTURE
             $this->markTestSkipped('The unopenable-root leg premises POSIX permission bits — chmod(0000) must deny the opendir, never read through a read-only attribute.');
         }
         $locked = $this->root . '/locked-root';
-        mkdir($locked, 0755, true);
-        chmod($locked, 0000);
+        /*
+         * The staging asserts its own landing (t31-ocr53-9, the
+         * mid-walk leg's own doctrine): a failed mkdir() left the
+         * probe reading opendir() false over a NONEXISTENT root — a
+         * denial it never proved — and the leg green VACUOUSLY
+         * (counted=0 through the finally over a root that never was);
+         * a silent chmod failure is the probe's premise gone quiet.
+         */
+        $this->assertTrue(mkdir($locked, 0755, true), 'staging: the locked root must create — a staging failure fails as staging, never as the refusal verdict (the vacuous channel: opendir() reads false over a nonexistent root too).');
+        $this->assertTrue(chmod($locked, 0000), 'staging: the lock must take — a chmod failure is the probe\'s own premise gone silent, never an environment verdict.');
         // The permission-denial probe (the capability this leg
         // premises, the mid-walk leg's own shape): a process the
         // permissions cannot deny can never drive the constructor's
