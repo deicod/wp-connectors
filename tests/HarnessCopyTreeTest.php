@@ -482,6 +482,23 @@ final class HarnessCopyTreeTest extends TestCase
      */
     public function testTheContainmentVerdictSpeaksTheHostsPathCaseVocabulary(): void
     {
+        /*
+         * The platform gate (OCR round 39, t31-ocr39-5 — the
+         * t31-ocr28-8 doctrine this file's sibling legs carry, the
+         * battery's one copy leg that rode ungated): the leg joins
+         * its spellings through '/' onto a sys_get_temp_dir() base,
+         * and on a host whose platform separator is not the POSIX
+         * one the base answers drive-letter-spelled — $from.'/SRC'
+         * starts with the drive letter, passes into the relative
+         * arm, and hits the Windows-absolute-target platform refusal
+         * (the t31-ocr28-3 gate) BEFORE the containment verdict this
+         * leg judges ever runs: the leg would die in a seam it does
+         * not name, never judging its own subject.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The case-vocabulary leg joins \'/\'-spelled variant targets onto a temp base — on this host the drive-letter-spelled base sends the variant into the Windows-absolute platform refusal before the containment verdict the leg judges ever runs (the t31-ocr28-8 doctrine).');
+        }
+
         $from = sys_get_temp_dir() . '/wpct-copytree-case-' . uniqid('', true);
         mkdir($from . '/src', 0755, true);
         $this->stage($from . '/src/file.php', 'original bytes');
