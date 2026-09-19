@@ -754,16 +754,47 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         // glued clause and the members report as code positions, the
         // multi-trait clause list as un-composed import positions
         // (t31-r10-11), and none of them spells the family.
+        //
+        // OCR round 46 (t31-ocr46-8): the fixture must be LEGAL PHP,
+        // and the leg below PINS it — the clean contract was proven
+        // over bytes no engine ever compiled (the gate tokenizes, it
+        // never parses), so an edit landing a shape the engine
+        // refuses would keep the gate green while proving the
+        // contract over a byte shape no compilable file carries.
+        // DRIVEN at HEAD: the finding's own premise fails on this
+        // engine — `public function self(): namespace\FormsFixture;`
+        // (the relative operator in a TYPE position) lints CLEAN on
+        // 8.5.10; the operator has been part of the type grammar
+        // since 8.0, the project floor is >= 8.2, and the
+        // 'expression-only' claim is a PHP 7 truth. The spelling
+        // stays (it is legal on the floor); the LEG is what the
+        // finding's invariant actually asked for: the fixture's
+        // compilability as a checked premise, never an assumed one.
+        $clean_fixture = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock;\nuse Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap, Url as U};\nuse function Deicod\\WpConnectors\\Shared\\Clock\\now;\nuse DateTimeImmutable;\nuse InvalidArgumentException;\ninterface FormsFixture\n{\n    public function now(): \\DateTimeImmutable;\n    public function self(): namespace\\FormsFixture;\n}\ntrait FirstHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\ntrait SecondHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\nfinal class AdaptFormsUser\n{\n    use FirstHelper, SecondHelper {\n        FirstHelper::shared_step insteadof SecondHelper;\n        shared_step as run_step;\n    }\n}\n";
+        // The lint pin premises a spawnable php -l; the gate legs below
+        // tokenize in-process and keep their full charge on every host,
+        // so the leg sleeps — visibly named — rather than skipping the
+        // sweep's own verdicts on a non-spawning host.
+        if (self::canSpawnChildren()) {
+            $lint_scratch = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-lint-') . '.php';
+            try {
+                $this->assertNotFalse(
+                    file_put_contents($lint_scratch, $clean_fixture),
+                    "The lint fixture must land at {$lint_scratch} — a failed write lints an empty file and the leg passes vacuously."
+                );
+                exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($lint_scratch) . ' 2>&1', $lint_output, $lint_exit);
+                $this->assertSame(0, $lint_exit, 'The clean-direction fixture must be legal PHP on the supported floor — the gate tokenizes rather than parses, so its clean verdict only means what the bytes compile to: ' . implode("\n", $lint_output));
+            } finally {
+                @unlink($lint_scratch);
+            }
+        }
         $clean = tempnam(sys_get_temp_dir(), 'wpct-ns-gate-clean-');
         try {
             // The write is gated (t31-ocr12-7): a failed write left the
             // tempnam EMPTY, the gate swept empty content, and the clean
             // direction passed VACUOUSLY — the control proved nothing.
             $this->assertNotFalse(
-                file_put_contents(
-                    $clean,
-                    "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock;\nuse Deicod\\WpConnectors\\Shared\\Http\\{HeaderMap, Url as U};\nuse function Deicod\\WpConnectors\\Shared\\Clock\\now;\nuse DateTimeImmutable;\nuse InvalidArgumentException;\ninterface FormsFixture\n{\n    public function now(): \\DateTimeImmutable;\n    public function self(): namespace\\FormsFixture;\n}\ntrait FirstHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\ntrait SecondHelper\n{\n    public function shared_step(): void\n    {\n    }\n}\nfinal class AdaptFormsUser\n{\n    use FirstHelper, SecondHelper {\n        FirstHelper::shared_step insteadof SecondHelper;\n        shared_step as run_step;\n    }\n}\n"
-                ),
+                file_put_contents($clean, $clean_fixture),
                 "The clean-direction fixture must land at {$clean} — a failed write runs the gate over EMPTY content and the control passes vacuously."
             );
             $gate->invoke($this, $clean);
