@@ -6332,6 +6332,22 @@ FIXTURE;
              */
             'fully-qualified member beside a rewritten sibling (the ship shape)' => 'use Deicod\\WpConnectors\\{function \\Shared\\Clock\\now as N, Shared\\Storage\\Widget as W};',
             'fully-qualified member alone' => 'use Deicod\\WpConnectors\\{\\Shared\\Clock};',
+            /*
+             * OCR round 43 (t31-ocr43-3): the member NAME's own shape,
+             * DERIVED from the engine oracle (php -l refuses '1y',
+             * 'Foo Bar', 'Foo-Bar', and 'Foo\1b' in the member slot;
+             * it accepts 'Foo\Bar' and high-byte labels). The grammar
+             * validated everything AROUND the name while a member
+             * that was not a name at all passed every check and was
+             * re-emitted VERBATIM by both re-emit seams — at HEAD
+             * these rows returned normally (red), the postcondition
+             * judging only family references and waving them through:
+             * compile-error bytes in the zip at exit 0.
+             */
+            'digit-initial member name' => 'use Deicod\\WpConnectors\\{1y};',
+            'member name with a mid-name space' => 'use Deicod\\WpConnectors\\{Foo Bar};',
+            'member name with a mid-name hyphen' => 'use Deicod\\WpConnectors\\{Foo-Bar};',
+            'digit-initial member sub-segment' => 'use Deicod\\WpConnectors\\{Storage\\1y};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass IllegalGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/IllegalGroupStore.php'),
@@ -6365,6 +6381,11 @@ FIXTURE;
             'reserved family-prefix member alias, deeper prefix: True' => 'use Deicod\\WpConnectors\\Shared\\Storage\\{Widget as True};',
             'fully-qualified family-prefix member' => 'use Deicod\\WpConnectors\\Shared\\{\\Clock};',
             'empty family-prefix member before its comma' => 'use Deicod\\WpConnectors\\Shared\\{, Clock};',
+            // t31-ocr43-3, the second seam's row: the member NAME's
+            // shape judges at BOTH re-emit seams — the family-prefix
+            // tail once re-emitted a non-name verbatim beside the
+            // rewritten prefix (red at HEAD: returned normally).
+            'non-name family-prefix member: Foo-Bar' => 'use Deicod\\WpConnectors\\Shared\\{Foo-Bar};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass FamilyPrefixGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/FamilyPrefixGroupStore.php'),

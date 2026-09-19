@@ -1792,7 +1792,11 @@ final class WpConnectorsBuild
      * - a fully-qualified member (`{ \Shared\Clock as C }` — a group
      *   member resolves against the statement's prefix, so a leading
      *   backslash names no legal member; php -l: "unexpected fully
-     *   qualified name"; OCR round 36, t31-ocr36-1).
+     *   qualified name"; OCR round 36, t31-ocr36-1);
+     * - a member that is not a NAME at all (`{1y}`, `{Foo Bar}`,
+     *   `{Foo-Bar}`, a digit-initial sub-segment — the engine's
+     *   label grammar rejects each; OCR round 43, t31-ocr43-3,
+     *   php -l-derived like the arm above it).
      *
      * @param string $member        The trimmed member piece to judge.
      * @param string $body          The whole brace body (refusal context).
@@ -1835,6 +1839,28 @@ final class WpConnectorsBuild
         }
         if ('\\' === ($member[0] ?? '')) {
             throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: a fully-qualified member (a leading backslash): the engine rejects the spelling at compile time (a group member resolves against the statement's prefix — php -l: unexpected fully qualified name), and the leaf rewrite cannot match the leading separator, so the reassembly once re-emitted the member verbatim beside its rewritten siblings — compile-error bytes in the zip at exit 0; write the member relative to the group's prefix, never with a leading backslash");
+        }
+        /*
+         * The member NAME's own shape (OCR round 43, t31-ocr43-3 —
+         * the seventh use-grammar generation), DERIVED from the
+         * engine oracle like the leading-separator verdict one arm
+         * above: label segments (letter/underscore/high-byte initial,
+         * then label bytes; PHP labels admit \x80-\xff) joined by
+         * single backslashes — php -l accepts 'Foo\\Bar' and 'Grüß'
+         * and REFUSES '1y', '9', 'Foo Bar', 'Foo-Bar', and every
+         * digit-initial sub-segment ('Foo\\1b'). The grammar once
+         * validated everything AROUND the name — emptiness, the
+         * alias, the kind, the leading separator — while 'a member
+         * that is not a name at all' passed every check and was
+         * re-emitted VERBATIM by both re-emit seams (the vendor-prefix
+         * group callback beside its rewritten sibling members, the
+         * family-prefix brace tail beside the rewritten prefix), the
+         * postcondition judging only family references and waving
+         * both shapes through: compile-error bytes in the zip at
+         * exit 0.
+         */
+        if (1 !== preg_match('/\A[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*(?:\\\\[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)*\z/', $member)) {
+            throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: a member that is not a NAME: the engine accepts only label segments (never digit-initial, never a bare separator or mid-name space/hyphen — php -l refuses every spelling below), and both re-emit seams once re-emitted the bytes verbatim beside rewritten output — compile-error bytes in the zip at exit 0; write each member as relative label segments, the group's prefix carrying the rest");
         }
 
         return array( $kind, $member, $tail );
