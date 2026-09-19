@@ -6,6 +6,89 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 42)
+
+Forty-second OCR-tool round (main 61/61, fully complete): 8 findings —
+one (the round's bug:critical) REFUTED AT HEAD with no commit, seven
+accepted and fixed. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8.
+The round's shape: the critical drift (refuted — an 'ancestor'-read-as-
+'anchor' misread of the resolution loop's variable), the stage-path
+TOCTOU (a predictable pid-only spelling under check-then-act), the
+scan-root guard's POSIX-only spellings, and the verdict-replacement
+finally beside three smaller test contracts. Round 42 answered NEW
+findings, so the OCR phase continues per plan. Fixed as
+t31-ocr42-2..8 — one commit per finding, plus this docs record, the
+full offline check green after every commit. Suite 1699 tests,
+46305 → 46310 assertions, 3 skipped unchanged.
+
+- **The critical drift is refuted at HEAD (t31-ocr42-1, bug:critical —
+  NO COMMIT)** — the finding quoted `strlen($anchor)` in copyTree()'s
+  resolution loop ("$anchor is never assigned anywhere"), but the
+  token `$anchor` appears nowhere in `tests/harness/WpHarness.php`:
+  the walk variable is `$ancestor` at every use, mechanically counted
+  (`grep -c 'strlen(\$anchor)'` → 0, `'strlen(\$ancestor)'` → 1, at
+  HEAD and at the line's ocr29-4 birth) — and the claimed symptom
+  (every resolved-source copyTree aborting under the runner's warning
+  conversion) is doubly impossible over a suite green through forty
+  rounds of exactly those copies. An 'ancestor'-clipped-as-'anchor'
+  misread; recorded here so the next lens does not re-derive it.
+- **The stage tree owns an unpredictable name (t31-ocr42-2,
+  security:medium)** — the staging spelling was pid-only and
+  predictable (pids enumerable), and the is_link → rrmdir → sweep →
+  recursive-mkdir sequence was check-then-act over it: a planted tree
+  at the predicted name rode between the checks and the mkdir
+  (TOCTOU). The name gains the mkdtemp-style random suffix
+  (`bin2hex(random_bytes(8))`, the ocr10-2 model's own spelling), the
+  same-name reclaim arm is gone (a collision is never ours to reclaim
+  — the checked mkdir owns it loudly, nothing deleted), and the
+  sweep's stale-detection pattern rides the tail tail-optionally.
+  Driven: a random-suffixed dead-pid orphan is swept (red at HEAD: the
+  pid-anchored pattern never matched it); the own-name link leg
+  inverted to the new contract (a link at every guessable spelling
+  neither blocks nor is touched).
+- **The scan-root guard speaks both separator spellings
+  (t31-ocr42-3, bug:medium)** — absoluteness ('/'-anchored first
+  byte) and containment ('/'-joined needle) were judged POSIX-only,
+  so on a '\'-separator host build's composed-tree gate falsely
+  refused every legal root. The dual-separator doctrine (ocr40-2/
+  ocr41-1, this owner): both separators in the rtrim, the
+  spelling-class absoluteness judgment (leading '/', drive-letter
+  prefix, UNC), either-separator containment needle. Construction-
+  evident; POSIX rides byte-identical.
+- **The dev-entry verdict dedupes per name (t31-ocr42-4,
+  maintainability:low)** — the violation was pushed per occurrence
+  while every neighboring collector implements the one-offense-one-
+  line census (t31-ocr27-4/t31-ocr32-5); a byte-duplicated
+  dev-segment name answered N identical lines beside its ONE
+  duplicate line. A keyed guard at the push site; driven: the
+  duplicated entry answers exactly one line (red at HEAD: 2).
+- **The corrupt-reopen pin rides the CLEAN row's own exec gate
+  (t31-ocr42-5, test:medium)** — the pin drove classifyClean()
+  directly, past runState()'s row-level canSpawnChildren() gate
+  (t31-ocr20-5), green on a disable_functions host only while the
+  corrupt bytes failed ZipArchive::open() before the php -l walk's
+  first spawn. The same gate premise now made explicit at the direct
+  call; driven: `-d disable_functions=exec,escapeshellarg` answers
+  the visible skip where HEAD answered an unearned green.
+- **The scratch maker's collision regenerates, never reclaims
+  (t31-ocr42-6, test:low)** — the reclaim arm rrmdir'd a
+  pre-existing random-suffixed root, reintroducing the
+  cross-run-destruction class (2^32 odds per pair) through the
+  reclaim arm of the maker that closed it. The suffix rolls until
+  free; the foreign tree stands untouched. Construction-evident.
+- **The forced-close leg owns the handle (t31-ocr42-7, test:low)** —
+  the ZipArchive object stayed live after the seam refused, its
+  destructor firing at method-scope teardown past the silencer and
+  the scratch release. unset($zip) inside the silencer window, per
+  the seam's own never-re-close contract. Construction-evident.
+- **The finally's residue sweep never throws (t31-ocr42-8, test:low)**
+  — the lens carries the ocr41-3 fence's $this->fail(), and an
+  exception from finally REPLACES the in-flight verdict (the
+  ocr33-7 class): the diagnostic arm swallows-with-notice now, the
+  assertion arms keeping the fence's loud spelling.
+  Construction-evident; readable trees sweep byte-identically.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 41)
 
 Forty-first OCR-tool round (main 61/61, fully complete): 4 findings,
