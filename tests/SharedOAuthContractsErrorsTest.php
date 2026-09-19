@@ -106,30 +106,49 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
      * The recursive Exception-tree walk behind the census pin above —
      * the r49-11 follow-symlinks shape (linked files join, linked
      * directories recurse) with the cycle guard that shape owed its
-     * own docblock (OCR round 51, t31-ocr51-1): a re-visited REALPATH
-     * is a loop, and the walk refuses loudly naming both spellings —
-     * the entry path and the realpath it resolves back to — never the
-     * opaque path-length/memory fatal the follow's unguarded recursion
-     * answered. The loud-refusal vocabulary covers the environment
-     * arms beside the loop: a directory that will not resolve or list
-     * refuses naming it (a silently shrunken census is the coverage
-     * hole this pin exists to close).
+     * own docblock (OCR round 51, t31-ocr51-1), the guard owning its
+     * two RE-VISIT shapes since OCR round 52 (t31-ocr52-3): a
+     * re-visited REALPATH is a LOOP only when it is an ANCESTOR of
+     * the current position (a cycle — the walk would re-enter its
+     * own ancestry forever), and the walk refuses loudly naming both
+     * spellings — the entry path and the ancestor it resolves back
+     * into — never the opaque path-length/memory fatal the follow's
+     * unguarded recursion answered. A re-visit of a NON-ancestor is
+     * a DIAMOND (two sibling links at one real directory — a
+     * terminating shape, the linked files merely reachable twice):
+     * the walk skips the duplicate entry and continues, each real
+     * file counted once (the r51 guard refused ANY re-visit with the
+     * loop vocabulary — a diamond is not a loop). The sets carry the
+     * roles explicitly: $seen owns every tree ever entered, the
+     * $ancestors stack owns the current descent. The loud-refusal
+     * vocabulary covers the environment arms beside the loop: a
+     * directory that will not resolve or list refuses naming it (a
+     * silently shrunken census is the coverage hole this pin exists
+     * to close).
      *
      * @return list<string> Sorted class names of every *.php file under the tree.
      */
     private function collectExceptionTreeClasses(string $dir): array
     {
         $classes = array();
-        $visited = array();
-        $walk = function (string $current) use (&$walk, &$classes, &$visited, $dir): void {
+        $seen = array();
+        $ancestors = array();
+        $walk = function (string $current) use (&$walk, &$classes, &$seen, &$ancestors, $dir): void {
             $real = realpath($current);
             if (false === $real) {
                 throw new \RuntimeException('The Exception-tree walk cannot resolve ' . $current . ' — an environment problem (a broken checkout, an open_basedir wall), never a census verdict.');
             }
-            if (isset($visited[$real])) {
-                throw new \RuntimeException('Symlink loop under the Exception tree: ' . $current . ' resolves back to the already-walked ' . $real . ' — the census refuses a looping tree loudly, never fatals walking it.');
+            if (isset($ancestors[$real])) {
+                throw new \RuntimeException('Symlink loop under the Exception tree: ' . $current . ' resolves back into its own ancestry (' . $real . ') — the census refuses a looping tree loudly, never fatals walking it.');
             }
-            $visited[$real] = true;
+            if (isset($seen[$real])) {
+                // A DIAMOND, not a loop: this real tree is already
+                // walked through another path (t31-ocr52-3) — skip the
+                // duplicate entry, the walk continues.
+                return;
+            }
+            $seen[$real] = true;
+            $ancestors[$real] = true;
             $entries = scandir($current);
             if (false === $entries) {
                 throw new \RuntimeException('The Exception-tree walk cannot list ' . $current . ' — the census refuses loudly, never silently shrinks the file set.');
@@ -145,6 +164,7 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
                     $classes[] = 'Deicod\\WpConnectors\\Shared\\Exception\\' . str_replace('/', '\\', substr($path, strlen($dir) + 1, -4));
                 }
             }
+            unset($ancestors[$real]);
         };
         $walk($dir);
         sort($classes);
@@ -187,6 +207,52 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
             $this->expectException(\RuntimeException::class);
             $this->expectExceptionMessage('Symlink loop');
             $this->collectExceptionTreeClasses($scratch);
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
+     * OCR-round-52 pin (t31-ocr52-3): a re-visited realpath is not
+     * always a LOOP — two sibling links pointing at the same real
+     * directory re-enter an already-walked tree through a
+     * NON-cyclic path (a DIAMOND: the walk terminates normally, the
+     * linked files just appear twice), yet the r51 guard refused
+     * ANY re-visit with the loop vocabulary (red at HEAD: the
+     * diamond answered 'Symlink loop'). The guard distinguishes the
+     * shapes now: a re-visit is a loop only when the revisited
+     * realpath is an ANCESTOR of the current position (a cycle —
+     * the walk would re-enter itself forever); a re-visit of a
+     * non-ancestor is a diamond, and the walk SKIPS the duplicate
+     * entry and continues — each real file counted once, the census
+     * complete. The planted-loop pin above keeps the other arm: a
+     * true cycle still answers the loud refusal.
+     */
+    public function testASymlinkDiamondUnderTheExceptionTreeCompletesTheCensusEachFileOnce(): void
+    {
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the planted-diamond leg did not run (the diamond-shape seam it drives is unconstructible here).');
+        }
+
+        do {
+            $scratch = sys_get_temp_dir() . '/wpct-oauth-census-diamond-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        } while (is_dir($scratch));
+
+        try {
+            $this->assertTrue(mkdir($scratch . '/Sub', 0755, true), 'staging: the scratch Exception tree must create — a staging failure fails as staging, never as the walk verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/One.php', "<?php\n"), 'staging: the scratch type file must write — a staging failure fails as staging, never as the walk verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/Sub/Two.php', "<?php\n"), 'staging: the scratch nested type file must write — a staging failure fails as staging, never as the walk verdict.');
+            // The plant: two SIBLING links at the same real directory —
+            // a diamond, never a cycle. Neither link points into its
+            // own ancestry; the walk just reaches Sub three times.
+            $this->assertTrue(symlink($scratch . '/Sub', $scratch . '/a'), 'staging: the first diamond link must take — a staging failure fails as staging, never as the walk verdict.');
+            $this->assertTrue(symlink($scratch . '/Sub', $scratch . '/b'), 'staging: the second diamond link must take — a staging failure fails as staging, never as the walk verdict.');
+
+            $expected = array(
+                'Deicod\\WpConnectors\\Shared\\Exception\\One',
+                'Deicod\\WpConnectors\\Shared\\Exception\\Sub\\Two',
+            );
+            $this->assertSame($expected, $this->collectExceptionTreeClasses($scratch), 'A diamond completes the census with each real file counted ONCE — the duplicate entry skips, the walk continues; only a re-entry of an ANCESTOR (a cycle) refuses.');
         } finally {
             WpHarness::releaseScratch($scratch);
         }
