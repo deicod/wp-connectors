@@ -258,6 +258,67 @@ final class ToolchainSmokeTest extends TestCase
     }
 
     /**
+     * OCR-round-50 pin (t31-ocr50-7, the lint twin of the collectors'
+     * no-symlinks doctrine): the walk silently SKIPPED symlinked *.php
+     * entries under a claim of "the sibling collectors' parity" — but
+     * collectFiles() and wp_connectors_php_source_files() THROW on
+     * links, they do not skip, and pre-change a symlinked source
+     * reached `php -l`, which FOLLOWS the link — the skip was a
+     * coverage regression (a linked source silently escaped the gate,
+     * red at HEAD: exit 0, the link unseen). The link answers the
+     * walk's FAIL vocabulary now (a counted walk refusal, the exit
+     * red, the tree still walked), and the exclusion judgment stays
+     * first — a link under a third-party tree the gate never charges
+     * refuses nothing.
+     */
+    public function testASymlinkedSourceAnswersTheLoudRefusalNotTheSilentSkip(): void
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the lint leg verdicts through a spawned engine and cannot run (the t31-ocr16-12 doctrine).');
+        }
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the planted-link leg did not run (the no-symlinks doctrine seam it drives is unconstructible here).');
+        }
+
+        $scratch = sys_get_temp_dir() . '/wpct-lint-link-' . uniqid('', true);
+
+        try {
+            // Staging success is ASSERTED at each site (the
+            // t31-ocr27-9 doctrine): a failed mkdir/copy/write fails as
+            // staging, never as the lint verdict.
+            $this->assertTrue(mkdir($scratch . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php'), 'staging: the lint tool must copy — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php'), 'staging: the tool library must copy — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/connectors/demo', 0755, true), 'staging: the demo connector tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/good.php', "<?php\n// lintable connector source\n"), 'staging: the good connector source must write — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/real.php', "<?php\n// the linked source's own bytes\n"), 'staging: the linked source must write — a staging failure fails as staging, never as the lint verdict.');
+            // The plant: a '*.php'-named link AT a regular file under a
+            // walked root — the follow shape every is_file() gate
+            // passes, the exact source the silent skip dropped from
+            // coverage.
+            $this->assertTrue(symlink($scratch . '/connectors/demo/real.php', $scratch . '/connectors/demo/linked.php'), 'staging: the planted link must take — a staging failure fails as staging, never as the lint verdict.');
+            // The out-of-charge control: the same link shape under the
+            // excluded third-party tree — not this doctrine's charge.
+            $this->assertTrue(mkdir($scratch . '/connectors/vendor', 0755, true), 'staging: the excluded tree must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(symlink($scratch . '/connectors/demo/real.php', $scratch . '/connectors/vendor/linked.php'), 'staging: the excluded link must take — a staging failure fails as staging, never as the lint verdict.');
+
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
+            $report = implode("\n", $output);
+
+            $this->assertSame(1, $exit, "A symlinked source answers the loud refusal — red at HEAD the gate exited 0 with the link silently skipped: {$report}");
+            $this->assertStringContainsString('symlinked source', $report, 'The refusal names the link shape in the walk\'s FAIL vocabulary.');
+            $this->assertStringContainsString('connectors/demo/linked.php', $report, 'The refusal names the linked source the walk judged.');
+            $this->assertStringContainsString('1 walk refusal(s)', $report, 'The link rides the walk-refusal count — the exit is red by its own census.');
+            $this->assertStringContainsString('0 failure(s)', $report, 'The regular sources keep their verdicts — the tree still lints beside the refusal.');
+            $this->assertStringNotContainsString('vendor/linked.php', $report, 'A link under the excluded third-party tree refuses nothing — the exclusion judgment stays first.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * OCR-round-40 pin (t31-ocr40-7): the SCANNER half of the twin
      * above. The t31-ocr31-5 dual-separator arithmetic
      * (rtrim($root, '/\\') before the below-root offset) lives in TWO
@@ -433,16 +494,19 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertStringNotContainsString('broken.php', $report);
 
             /*
-             * The non-regular-file skip (t31-ocr10-7, posix leg): a
-             * '*.php'-named symlink-to-directory passes the extension
-             * owner and once reached `php -l <dir>` — which passes
-             * VACUOUSLY (driven: exit 0 over a directory) while the
-             * linked tree's real sources escape the gate. The link is
-             * SKIPPED now (is_link || ! isFile — the collectors'
-             * parity): the checked count stays 5 (pre-fix: 6, the link
-             * itself counted), and the broken source INSIDE the linked
-             * tree is judged by nobody either way — the leg is skipped,
-             * never descended.
+             * The link-shape leg (t31-ocr10-7, superseded by
+             * t31-ocr50-7): a '*.php'-named symlink-to-directory
+             * passes the extension owner and once reached `php -l
+             * <dir>` — which passed VACUOUSLY (driven: exit 0 over a
+             * directory) while the linked tree's real sources escaped
+             * the gate. The ocr10-7 answer was the silent skip (a
+             * false "collectors' parity" — they THROW); OCR round 50
+             * took it back as the coverage regression it was: the link
+             * answers the walk's LOUD refusal now (the no-symlinks
+             * doctrine, the lint twin of the collectors' throw), the
+             * count stays 5 (the link itself never counted), and the
+             * broken source INSIDE the linked tree is judged by nobody
+             * either way — the link is refused, never descended.
              */
             /*
              * The still-fails controls, HOISTED above the capability
@@ -498,9 +562,10 @@ final class ToolchainSmokeTest extends TestCase
             $exit = 0;
             exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/bin/lint-php.php') . ' 2>&1', $output, $exit);
             $linked = implode("\n", $output);
-            $this->assertSame(0, $exit, "A '*.php'-named dir symlink is skipped, never linted as a vacuous directory: {$linked}");
-            $this->assertStringContainsString('5 file(s) checked, 0 failure(s)', $linked, 'The skipped dir-link does not change the checked count (pre-fix it was counted as a 6th file).');
-            $this->assertStringNotContainsString('dirlink.php', $linked);
+            $this->assertSame(1, $exit, "A '*.php'-named dir symlink answers the loud refusal, never the vacuous `php -l <dir>` pass and never the silent skip (the t31-ocr50-7 supersession): {$linked}");
+            $this->assertStringContainsString('symlinked source', $linked, 'The refusal names the link shape — the no-symlinks doctrine at the lint seam.');
+            $this->assertStringContainsString('dirlink.php', $linked, 'The refusal names the dir-link the walk judged.');
+            $this->assertStringContainsString('5 file(s) checked, 0 failure(s), 1 walk refusal(s)', $linked, 'The refused link does not change the checked count (pre-ocr10-7 it was counted as a 6th file) and the refusal rides the summary beside a clean parse count.');
         } finally {
             WpHarness::releaseScratch($scratch);
         }

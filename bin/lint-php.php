@@ -76,19 +76,6 @@ if (wp_connectors_cli_entry(__FILE__)) {
                     continue;
                 }
                 /*
-                 * Only REGULAR files lint (t31-ocr10-7): the walk runs
-                 * LEAVES_ONLY, so a symlink-to-directory is yielded as a
-                 * leaf — a '*.php'-named dir link passes the extension
-                 * owner and reaches `php -l <dir>`, which passes VACUOUSLY
-                 * (driven: exit 0, "No syntax errors detected" over a
-                 * directory) while the linked tree's real sources escape
-                 * the gate unseen. Non-regular files skip, the sibling
-                 * collectors' parity (is_link || ! is_file).
-                 */
-                if ($file->isLink() || ! $file->isFile()) {
-                    continue;
-                }
-                /*
                  * The exclusion rides the gate's OWN NAMED SUBSET of the
                  * development-entry vocabulary (review round t31-r12-9 put
                  * the walk on the vocabulary's owner fold; OCR round 8,
@@ -131,6 +118,44 @@ if (wp_connectors_cli_entry(__FILE__)) {
                     if (wp_connectors_segment_is_named($segment, $lint_excludes)) {
                         continue 2;
                     }
+                }
+                /*
+                 * Only REGULAR files lint (t31-ocr10-7): the walk runs
+                 * LEAVES_ONLY, so a symlink-to-directory is yielded as a
+                 * leaf — a '*.php'-named dir link passes the extension
+                 * owner and reaches `php -l <dir>`, which passes VACUOUSLY
+                 * (driven: exit 0, "No syntax errors detected" over a
+                 * directory) while the linked tree's real sources escape
+                 * the gate unseen.
+                 *
+                 * A link answers the LOUD refusal now, never the silent
+                 * skip (OCR round 50, t31-ocr50-7 — the no-symlinks
+                 * doctrine, this seam): the t31-ocr10-7 skip claimed
+                 * "the sibling collectors' parity", but collectFiles()
+                 * and wp_connectors_php_source_files() THROW on links —
+                 * they do not skip — and pre-change a symlinked source
+                 * reached `php -l`, which FOLLOWS the link: the skip was
+                 * a coverage regression (a linked source silently
+                 * escaped the gate). The refusal rides the walk's FAIL
+                 * vocabulary (the ocr30-3 shape, one seam over: a
+                 * counted refusal, the exit red, the tree still walked
+                 * so the regular sources keep their verdicts); the
+                 * exclusion judgment above stays FIRST — a link under a
+                 * third-party tree the gate never charges is not this
+                 * doctrine's charge either.
+                 */
+                if ($file->isLink()) {
+                    fwrite(STDERR, sprintf(
+                        "lint-php: FAIL %s: symlinked source (%s -> %s) — the no-symlinks doctrine refuses the charge instead of silently skipping a linked source that pre-change reached php -l\n",
+                        $root,
+                        $file->getPathname(),
+                        (string) $file->getLinkTarget()
+                    ));
+                    ++$walk_refusals;
+                    continue;
+                }
+                if (! $file->isFile()) {
+                    continue;
                 }
                 $files[] = $file->getPathname();
             }
