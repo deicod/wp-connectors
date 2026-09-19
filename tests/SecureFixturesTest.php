@@ -259,14 +259,27 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
         $tempDir = $this->scanScratchRoot('wp-connectors-scan-prune');
-        mkdir($tempDir . '/VENDOR', 0755, true);
-        mkdir($tempDir . '/Tools', 0755, true);
-        mkdir($tempDir . '/Tests', 0755, true);
-        mkdir($tempDir . '/phpunit.cache', 0755, true);
+        /*
+         * The staging-assert sweep (t31-ocr53-6 — the ocr27-9 doctrine,
+         * the sweep battery's own rule four batteries over): these
+         * batteries planted their fixtures on bare mkdir()/
+         * file_put_contents(), so a failed stage (a read-only temp,
+         * ENOSPC) surfaced as the test's own verdict — an EMPTY-REPORT
+         * 'prune' leg here (a missing tree trivially contains no
+         * 'VENDOR' fragment), a phantom 'no dev-named ancestor' below,
+         * a misleading child-exit-code failure in the fresh-process
+         * leg — never as the staging failure it was. Every staging
+         * write in this sweep asserts its own landing, naming its
+         * path (the r51-3 sweep battery's own idiom).
+         */
+        $this->assertTrue(mkdir($tempDir . '/VENDOR', 0755, true), "staging: {$tempDir}/VENDOR must create — a staging failure fails as staging, never as the maker verdict.");
+        $this->assertTrue(mkdir($tempDir . '/Tools', 0755, true), "staging: {$tempDir}/Tools must create — a staging failure fails as staging, never as the maker verdict.");
+        $this->assertTrue(mkdir($tempDir . '/Tests', 0755, true), "staging: {$tempDir}/Tests must create — a staging failure fails as staging, never as the maker verdict.");
+        $this->assertTrue(mkdir($tempDir . '/phpunit.cache', 0755, true), "staging: {$tempDir}/phpunit.cache must create — a staging failure fails as staging, never as the maker verdict.");
         foreach (array( 'VENDOR', 'Tools', 'Tests' ) as $prunedOrCovered) {
-            file_put_contents($tempDir . '/' . $prunedOrCovered . '/leak.conf', "api_key = {$zaiKey}\n");
+            $this->assertNotFalse(file_put_contents($tempDir . '/' . $prunedOrCovered . '/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$tempDir}/{$prunedOrCovered}/leak.conf must write — a staging failure fails as staging, never as the maker verdict.");
         }
-        file_put_contents($tempDir . '/phpunit.cache/cached.xml', "<r>{$zaiKey}</r>\n");
+        $this->assertNotFalse(file_put_contents($tempDir . '/phpunit.cache/cached.xml', "<r>{$zaiKey}</r>\n"), "staging: {$tempDir}/phpunit.cache/cached.xml must write — a staging failure fails as staging, never as the maker verdict.");
 
         try {
             $report = implode("\n", wp_connectors_scan_paths(array( $tempDir )));
@@ -307,8 +320,8 @@ final class SecureFixturesTest extends WpConnectorsTestCase
              */
             $holder = dirname($tempDir) . '/wp-connectors-scan-ancestor-' . getmypid() . '-' . bin2hex(random_bytes(4));
             $ancestor = $holder . '/DIST';
-            mkdir($ancestor . '/root', 0755, true);
-            file_put_contents($ancestor . '/root/leak.conf', "api_key = {$zaiKey}\n");
+            $this->assertTrue(mkdir($ancestor . '/root', 0755, true), "staging: {$ancestor}/root must create — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
+            $this->assertNotFalse(file_put_contents($ancestor . '/root/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$ancestor}/root/leak.conf must write — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
             try {
                 $ancestorReport = implode("\n", wp_connectors_scan_paths(array( $ancestor . '/root' )));
                 $this->assertStringContainsString('root' . DIRECTORY_SEPARATOR . 'leak.conf', $ancestorReport, 'A dev-named ANCESTOR (case-variant, the folded spelling) of the scan root never prunes the scan itself.');
@@ -337,10 +350,10 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
         $tempDir = $this->scanScratchRoot('wp-connectors-scan-artifact');
-        mkdir($tempDir . '/VENDOR', 0755, true);
-        mkdir($tempDir . '/plain', 0755, true);
-        file_put_contents($tempDir . '/VENDOR/leak.conf', "api_key = {$zaiKey}\n");
-        file_put_contents($tempDir . '/plain/leak.conf', "api_key = {$zaiKey}\n");
+        $this->assertTrue(mkdir($tempDir . '/VENDOR', 0755, true), "staging: {$tempDir}/VENDOR must create — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
+        $this->assertTrue(mkdir($tempDir . '/plain', 0755, true), "staging: {$tempDir}/plain must create — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
+        $this->assertNotFalse(file_put_contents($tempDir . '/VENDOR/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$tempDir}/VENDOR/leak.conf must write — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
+        $this->assertNotFalse(file_put_contents($tempDir . '/plain/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$tempDir}/plain/leak.conf must write — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
 
         try {
             $repoReport = implode("\n", wp_connectors_scan_paths(array( $tempDir ), true));
@@ -388,10 +401,10 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
 
         $tempDir = $this->scanScratchRoot('wp-connectors-scan-only');
-        mkdir($tempDir . '/VENDOR', 0755, true);
-        mkdir($tempDir . '/plain', 0755, true);
-        file_put_contents($tempDir . '/VENDOR/leak.conf', "api_key = {$zaiKey}\n");
-        file_put_contents($tempDir . '/plain/leak.conf', "api_key = {$zaiKey}\n");
+        $this->assertTrue(mkdir($tempDir . '/VENDOR', 0755, true), "staging: {$tempDir}/VENDOR must create — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
+        $this->assertTrue(mkdir($tempDir . '/plain', 0755, true), "staging: {$tempDir}/plain must create — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
+        $this->assertNotFalse(file_put_contents($tempDir . '/VENDOR/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$tempDir}/VENDOR/leak.conf must write — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
+        $this->assertNotFalse(file_put_contents($tempDir . '/plain/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$tempDir}/plain/leak.conf must write — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
 
         try {
             /*
