@@ -230,6 +230,43 @@ FIXTURE
                 1,
             ),
             /*
+             * OCR round 46 (t31-ocr46-9 — the r35-1 doctrine's scanner
+             * sibling): the statement patterns spelled use/function/
+             * const/as byte-exact lowercase while the engine — and
+             * the rewriter's own r35-1 census in bin/build.php —
+             * treats every keyword case-insensitively, so `Use …`,
+             * `use FUNCTION …`, and `… AS C;` in connectors/ went
+             * unscanned: a dead case-variant import was invisible to
+             * the gate, the exact silent-false-negative class the
+             * gate exists for (glm20-3's own charge). The keyword
+             * axes ride the scoped case-insensitive census at every
+             * keyword-bearing pattern in the file.
+             */
+            'unused case-variant Use import flags (t31-ocr46-9)' => array(
+                "<?php\nUse Vendor\\Package\\DeadCase;",
+                1,
+            ),
+            'unused case-variant use FUNCTION import flags (t31-ocr46-9)' => array(
+                "<?php\nUSE FUNCTION Vendor\\dead_case_fn;",
+                1,
+            ),
+            'unused case-variant AS alias flags (t31-ocr46-9)' => array(
+                "<?php\nuse Vendor\\Package\\Widget AS UnusedAliasCase;",
+                1,
+            ),
+            'used case-variant import does not flag (t31-ocr46-9)' => array(
+                "<?php\nUse Vendor\\Package\\Widget;\n\$x = new Widget();",
+                0,
+            ),
+            'unused case-variant group member flags (t31-ocr46-9)' => array(
+                "<?php\nUse Vendor\\Package\\{Used, Dead};\n\$x = new Used();",
+                1,
+            ),
+            'unused case-variant group member kind and alias flags (t31-ocr46-9)' => array(
+                "<?php\nuse Vendor\\Pkg\\{CONST FLAG AS F, Widget};\n\$x = new Widget();",
+                1,
+            ),
+            /*
              * glm20-3: group-use declarations were invisible to the gate
              * — the single-class pattern stops at the '{', so a dead
              * import inside a group never flagged. Every import inside

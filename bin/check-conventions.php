@@ -269,9 +269,25 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              */
             $code_view = $views['masked'];
 
+            /*
+             * The KEYWORD axes ride the engine's case-insensitivity
+             * (OCR round 46, t31-ocr46-9 — the r35-1 doctrine's
+             * scanner sibling, this owner): the statement patterns
+             * once spelled use/function/const/as byte-exact
+             * lowercase while PHP accepts `Use`, `use FUNCTION`,
+             * `Const`, and `AS` alike — so a case-variant import in
+             * connectors/ went unscanned, a dead one invisible to the
+             * gate (the exact silent-false-negative class the gate
+             * exists for). The keywords match through SCOPED (?i:…)
+             * groups at every keyword-bearing pattern in this file —
+             * the statement pair here, the two keyword-prefix strips
+             * below (the qualified-name and group-prefix derivations
+             * must strip what the widened patterns now match), and
+             * the member kind/alias parses in the group unroller.
+             */
             $matches = array();
             preg_match_all(
-                '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+(?:\s+as\s+(\w+))?\s*;/m',
+                '/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[\w\\\\]+(?:\s+(?i:as)\s+(\w+))?\s*;/m',
                 $code_view,
                 $matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -293,7 +309,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              */
             $group_matches = array();
             preg_match_all(
-                '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+\s*\{/m',
+                '/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[\w\\\\]+\s*\{/m',
                 $code_view,
                 $group_matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -342,7 +358,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 // The short name is the alias when one is given, else the
                 // last segment of the qualified name (the whole name for a
                 // global class import with no backslash).
-                $qualified = trim(preg_replace('/^use\s+(?:function\s+|const\s+)?/', '', substr($match[0][0], 0, -1)));
+                $qualified = trim(preg_replace('/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?/', '', substr($match[0][0], 0, -1)));
                 $lastBackslash = strrpos($qualified, '\\');
                 $alias = isset($match[1][0]) && \is_string($match[1][0]) ? $match[1][0] : '';
                 $short = '' !== $alias
@@ -395,7 +411,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 }
                 $statement_end = $close + 1 + strlen($semi[0]);
 
-                $prefix = preg_replace('/^use\s+(?:function\s+|const\s+)?|[\s{]+$/', '', $match[0][0]);
+                $prefix = preg_replace('/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?|[\s{]+$/', '', $match[0][0]);
                 $member_imports = wp_connectors_group_use_imports(
                     (string) $prefix,
                     (string) substr($code_view, $open + 1, $close - $open - 1)
@@ -512,12 +528,12 @@ function wp_connectors_group_use_imports(string $prefix, string $body): array
          * (use function Vendor\{...}) is already handled where the
          * prefix is built above the group walk.
          */
-        if (1 === preg_match('/^(function|const)\s+/', $member, $member_kind)) {
+        if (1 === preg_match('/^(?:(?i:function)|(?i:const))\s+/', $member, $member_kind)) {
             $member = trim(substr($member, strlen($member_kind[0])));
         }
 
         $alias = '';
-        if (1 === preg_match('/^([\w\\\\]+)\s+as\s+(\w+)$/', $member, $parts)) {
+        if (1 === preg_match('/^([\w\\\\]+)\s+(?i:as)\s+(\w+)$/', $member, $parts)) {
             $alias = $parts[2];
             $member = $parts[1];
         } elseif (1 !== preg_match('/^[\w\\\\]+$/', $member)) {
