@@ -561,8 +561,30 @@ final class HarnessCopyTreeTest extends TestCase
      * derivation on that volume for the rest of the process. The
      * failed plant answers the conservative case-sensitive verdict
      * UNMEASURED now and the cache holds only measured answers — a
-     * later call with a plantable base re-measures (driven red at
-     * HEAD: the read-only base's volume key sat in the cache).
+     * later call with a plantable base re-measures.
+     *
+     * OCR round 39 (t31-ocr39-7): the r38 pin never drove its OWN
+     * subject. caseProbeAnswer() short-circuits on the per-volume
+     * cache BEFORE any plant is attempted, and the pin's holder sat
+     * under sys_get_temp_dir() on the very volume the battery's
+     * earlier legs already measured — in suite order the probe
+     * answered the CACHED entry, the planted-fail arm never ran, and
+     * the pin passed vacuously over the code it existed to judge;
+     * worse, on a case-insensitive host the cached TRUE reddened the
+     * planted-fail expectation spuriously, the pin failing on exactly
+     * the host class it serves. The pin drives the REAL subject now:
+     * the seam unsets the volume's cache key through the same
+     * ReflectionProperty the snapshot rode (the one test-visible
+     * spelling that forces the plant path — with the key absent, the
+     * short-circuit cannot answer, so the plant path is the only
+     * path), and the CONTROL below re-measures and RESTORES the host
+     * truth the unset set aside, so the cache's own doctrine — host
+     * truth, never test state, re-measurement deterministic —
+     * survives the seam bit-for-bit. The expectations are
+     * host-correct on BOTH classes: the failed plant answers the
+     * conservative false everywhere (the plant path RAN), and the
+     * cache-hit path — the very path whose unchecked ride made the
+     * r38 pin vacuous — is pinned beside the plant path it starved.
      */
     public function testAFailedCaseProbePlantIsNeverAMeasuredCachedAnswer(): void
     {
@@ -588,30 +610,50 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         try {
-            chmod($holder, 0555);
             $probe = new \ReflectionMethod(WpHarness::class, 'caseProbeAnswer');
             $cache = new \ReflectionProperty(WpHarness::class, 'case_insensitive_volumes');
+            $volume = (string) stat($holder)['dev'];
             /*
-             * The cache snapshot, taken BEFORE the failed-plant call:
-             * an earlier test may have MEASURED this volume already
-             * (a legal entry, host truth the cache exists to hold), so
-             * the pin judges what THIS call adds — a failed plant
-             * writes NOTHING: no new key, no overwritten value (red at
-             * HEAD in isolation: the unmeasured false was inserted).
+             * THE SEAM (t31-ocr39-7): the volume's cache key — put
+             * there legally by whatever earlier leg measured the temp
+             * volume, absent in an isolation run — is UNSET before the
+             * planted-fail call, forcing the plant path the pin judges
+             * (the cache short-circuit is the only other path, and
+             * with the key absent it cannot answer; this is the exact
+             * unchecked ride that made the r38 pin vacuous in suite
+             * order). The prior entry, when one exists, is held for
+             * the control's restore pin below; the unset is undone by
+             * RE-MEASUREMENT, never by writing an answer back, so no
+             * test-simulated truth ever enters the cache.
              */
             $before = $cache->getValue(null);
+            $warmed = $before[ $volume ] ?? null;
+            $forced = $before;
+            unset($forced[ $volume ]);
+            $cache->setValue(null, $forced);
+
+            chmod($holder, 0555);
             $answer = $probe->invoke(null, $holder);
-            $this->assertFalse($answer, 'A failed plant answers the CONSERVATIVE case-sensitive verdict — the containment verdicts err byte-wise wherever the volume goes unmeasured.');
-            $this->assertSame($before, $cache->getValue(null), 'A failed plant writes NOTHING to the per-volume cache — no new key, no overwritten value: one failed plant must not poison a case-insensitive volume\'s derivations for the whole process.');
+            $this->assertFalse($answer, 'A failed plant answers the CONSERVATIVE case-sensitive verdict — the containment verdicts err byte-wise wherever the volume goes unmeasured, and on this host class the answer rode the plant path the seam forced (red as a PIN at HEAD: the r38 shape answered the cache instead, the plant never attempted).');
+            $this->assertArrayNotHasKey($volume, $cache->getValue(null), 'A failed plant writes NOTHING to the per-volume cache — no new key, no overwritten value: one failed plant must not poison a case-insensitive volume\'s derivations for the whole process.');
 
             // The control: a PLANTABLE base on the same volume still
             // measures and caches — the machinery answers, only the
-            // unmeasured shape stays out.
+            // unmeasured shape stays out, and the re-measurement
+            // RESTORES the host truth the seam's unset set aside.
             chmod($holder, 0755);
             $measured = $probe->invoke(null, $holder);
-            $volume = (string) stat($holder)['dev'];
-            $this->assertArrayHasKey($volume, $cache->getValue(null), 'A MEASURED answer still enters the cache — the control proves the failed-plant arm silenced only itself, never the probe.');
-            $this->assertSame($measured, $cache->getValue(null)[ $volume ], 'The cached measured answer is the probe\'s own verdict.');
+            $restored = $cache->getValue(null);
+            $this->assertArrayHasKey($volume, $restored, 'A MEASURED answer still enters the cache — the control proves the failed-plant arm silenced only itself, never the probe.');
+            $this->assertSame($measured, $restored[ $volume ], 'The cached measured answer is the probe\'s own verdict.');
+            if (null !== $warmed) {
+                $this->assertSame($warmed, $measured, 'The control RESTORES the entry the seam set aside — re-measurement is deterministic, and the cache holds host truth on every exit path this pin can take, never test state.');
+            }
+
+            // The cache-hit belt: the path whose unchecked ride made
+            // the r38 pin vacuous, pinned beside the plant path it
+            // starved — the next call answers the measured truth.
+            $this->assertSame($measured, $probe->invoke(null, $holder), 'The cache-hit path answers the measured truth for the rest of the process — the very ride that starved the r38 pin, now an assertion of its own.');
         } finally {
             @chmod($holder, 0755);
             WpHarness::releaseScratch($holder);
