@@ -267,7 +267,28 @@ final class Url {
 		 * looks like an IP literal refuses exactly like its malformed
 		 * siblings.
 		 */
-		if ( $well_formed_bracket_pair && false === filter_var( (string) substr( $host_port, 1, (int) $bracket_end - 1 ), FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 ) ) {
+		$inner_literal = (string) substr( $host_port, 1, (int) $bracket_end - 1 );
+
+		/*
+		 * The ZONE-ID half of the content leg (OCR round 45,
+		 * t31-ocr45-3): 'https://[fe80::1%25eth0]/' is an RFC 6874
+		 * spelling the WHATWG parser accepts — but the engine's
+		 * FILTER_VALIDATE_IP, the ONE IP-literal validator this
+		 * screen charters, rejects the %25-spelled literal, and the
+		 * PHP-side transport cannot resolve it. The spelling keeps
+		 * its refusal (accepting it would hand-roll a second
+		 * IP-literal grammar beside the engine's own validator — the
+		 * one-validator doctrine — for a link-local-scoped host no
+		 * http(s) endpoint client means to send) under its OWN name:
+		 * the generic malformed-host sentence below lied about the
+		 * class, naming no zone id. The percent probe rides FIRST so
+		 * every percent-bearing literal — the %25 spelling and the
+		 * bare percent alike — answers the named verdict.
+		 */
+		if ( $well_formed_bracket_pair && false !== strpos( $inner_literal, '%' ) ) {
+			throw new InvalidArgumentException( 'A bracketed host must not carry an RFC 6874 zone identifier ("[fe80::1%25eth0]") — the engine IP validator this screen rides rejects the %25-spelled literal and the PHP-side transport cannot resolve it, and accepting it would hand-roll a second IP-literal grammar beside that validator for a link-local-scoped host no http(s) endpoint client means to send: write the address without the zone id, never inside the host literal.' );
+		}
+		if ( $well_formed_bracket_pair && false === filter_var( $inner_literal, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 ) ) {
 			throw new InvalidArgumentException( 'A bracketed host must be a well-formed IPv6 address ("[2001:db8::1]") — the bracket shape alone does not make an IP literal, and an authority like "[abc]" is a malformed host no client means to send.' );
 		}
 

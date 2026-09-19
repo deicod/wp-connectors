@@ -643,7 +643,6 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'bad hex digit' => 'http://[1234::g]/x',
             'five groups' => 'http://[1:2:3:4:5]/x',
             'dotted quad inside brackets' => 'http://[127.0.0.1]/x',
-            'zone id spelling' => 'http://[fe80::1%25eth0]/x',
             'userinfo does not hide it' => 'http://user:pw@[abc]/x',
         );
 
@@ -678,6 +677,50 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('[2001:db8::1]', Url::parse_validated('http://[2001:db8::1]/token')['authority']);
         $this->assertSame('[2001:db8::1]:8443', Url::parse_validated('http://[2001:db8::1]:8443/token')['authority']);
         $this->assertSame('[ffff::1]', Url::parse_validated('http://[FFFF::1]/token')['authority'], 'Uppercase hex is legal IPv6 (the rebuilt authority folds it, as every host folds).');
+    }
+
+    /**
+     * OCR-round-45 pin (t31-ocr45-3, the ocr2-5 content leg's named
+     * verdict): 'https://[fe80::1%25eth0]/' is an RFC 6874 spelling the
+     * WHATWG parser accepts (the browser-facing channel this file
+     * cites), but the engine's FILTER_VALIDATE_IP — the ONE IP-literal
+     * validator the content screen charters — rejects the %25-spelled
+     * literal, and the PHP-side transport cannot resolve it. The
+     * spelling still refuses (no hand-rolled second IP grammar beside
+     * the engine's validator for a link-local-scoped host no http(s)
+     * endpoint client means to send) — but under its OWN name now,
+     * never the generic malformed-host sentence that lied about the
+     * class (red at HEAD: the ocr2-5 battery's zone-id row answered
+     * 'must be a well-formed IPv6 address', which names no zone id).
+     */
+    public function testABracketedZoneIdentifierAnswersItsOwnNamedRefusal(): void
+    {
+        $hostile_urls = array(
+            'the RFC 6874 repro' => 'https://[fe80::1%25eth0]/',
+            'a zone id with a port' => 'http://[fe80::1%25eth0]:8443/token',
+            'a zone id behind userinfo' => 'http://user:pw@[fe80::1%25eth0]/x',
+            'the bare percent (no %25 spelling)' => 'http://[fe80::1%eth0]/x',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A bracketed zone-identifier host (%s) must be refused by the shared URL owner.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('zone identifier', $e->getMessage(), "The refusal names the zone-id class, never the generic malformed-host sentence ({$label}).");
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A bracketed zone-identifier host (%s) must be refused by the request VO too.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('zone identifier', $e->getMessage(), "The request VO answers the same refusal ({$label}).");
+            }
+        }
+
+        // Plain IPv6 literals ride the content leg unchanged — the
+        // named verdict owns the percent spelling alone.
+        $this->assertSame('[fe80::1]', Url::parse_validated('http://[fe80::1]/token')['authority'], 'A plain link-local literal stays legal — the screen refuses the zone-id spelling, never the address.');
     }
 
     /**
