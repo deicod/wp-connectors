@@ -2275,6 +2275,44 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
         $this->assertFalse(SecretMask::is_sensitive_header_name('Request-Id.'), 'The boundary pin keeps its charge over the edge twin — bound delimiters on a non-credential name mask nothing.');
         $this->assertFalse(SecretMask::is_sensitive_header_name('x-api-keychain-'), 'The trailing-delimiter twin of the keychain pin — empty bound segments do not dissolve the segment boundary the class judges.');
+
+        /*
+         * OCR-round-52 pin (t31-ocr52-2 — the generic 'key' token,
+         * the consistency gap in the masking boundary): the class
+         * carried 'api-key'/'subscription-key' while missing the
+         * generic token both end in, so the final-token judgment
+         * masked 'X-Client-Secret' and 'X-Api-Key' while
+         * 'X-Secret-Key' — the class's own 'secret' beside the 'key'
+         * every key-bearing member spells — and 'X-Access-Key'
+         * (the object-storage/S3-compatible auth spelling) rendered
+         * verbatim through every safe debug form (red at HEAD:
+         * unmasked). 'key' joins the generic tier 'token'/'secret'/
+         * 'auth' occupy (the r24 over-masking-errs-safe doctrine —
+         * a non-credential '-key' name costs a correlation tail,
+         * never a secret), subsuming the hyphenated compounds
+         * ('api-key', 'subscription-key' — the ocr33-3 doctrine)
+         * while their flattened twins stay beside the round's own
+         * 'secretkey'/'accesskey' (the r49-5 flattened-family
+         * doctrine). The rejected shape — an
+         * any-credential-token-in-the-name rule — leaves
+         * 'X-Access-Key' verbatim ('access' names no classed
+         * token): the exact inconsistency this round closes.
+         */
+        $key_tail_secret = FakeSecrets::accessToken();
+        foreach (array('X-Secret-Key', 'secret-key', 'X-Access-Key', 'x_access_key', 'x.access.key', 'secretkey', 'accesskey', 'x-secretkey', 'api-key', 'x-api-key', 'apikey', 'subscription-key', 'Ocp-Apim-Subscription-Key') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — the generic 'key' token owns the key-bearing family and the subsumed hyphenated compounds stay sensitive through it (red at HEAD: 'X-Secret-Key' and its family unmasked).");
+        }
+        $key_tail_map = new HeaderMap(array(
+            'X-Secret-Key' => $key_tail_secret,
+            'x-request-id' => 'req-52',
+        ));
+        foreach (array('dump' => print_r($key_tail_map, true), 'serialize' => serialize($key_tail_map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($key_tail_secret, $rendered, "The 'X-Secret-Key' value renders masked in the {$channel} channel — pre-fix the class masked 'X-Client-Secret' and rendered this one verbatim, the inconsistency the generic tier closes.");
+            $this->assertStringContainsString('req-52', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
+        }
+        foreach (array('x-keychain', 'x-monkey', 'x.keychain') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling stays verbatim — the suffix bytes never span the segment the class judges, the generic tier included.");
+        }
     }
 
     /* ---------------------------------------------------------------

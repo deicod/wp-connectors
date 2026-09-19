@@ -218,11 +218,38 @@ final class SecretMask {
 	 * boundary still refuses suffix bytes SPANNING a separator
 	 * ('x-apikeychain' stays outside, over every delimiter).
 	 *
+	 * OCR round 52 (t31-ocr52-2, security — the generic 'key' token,
+	 * one census over the family): the class carried 'api-key' and
+	 * 'subscription-key' while missing the generic token both END in
+	 * — and the final-token judgment turned that into an internal
+	 * inconsistency: 'X-Client-Secret' and 'X-Api-Key' masked while
+	 * 'X-Secret-Key' (composed of the class's own 'secret' beside the
+	 * 'key' every key-bearing member spells) and 'X-Access-Key' (the
+	 * object-storage/S3-compatible auth spelling) rendered verbatim
+	 * (driven at HEAD). The shape chosen is the GENERIC token, the
+	 * same tier 'token'/'secret'/'auth' already occupy (the r24
+	 * adjudication: those are vendor-documented credential tokens,
+	 * and over-masking a non-credential '-key' name in DEBUG output
+	 * errs safe — a correlation tail lost, never a secret, the exact
+	 * trade 'X-Multi-Token' already rides): 'key' joins, and the
+	 * hyphenated compounds it subsumes ('api-key',
+	 * 'subscription-key' — every '…-api-key' ends '-key') leave per
+	 * the ocr33-3 subsumption doctrine, their FLATTENED twins staying
+	 * (no separator, the generic tail cannot reach them) beside the
+	 * round's own twins 'secretkey'/'accesskey' (the r49-5 doctrine:
+	 * a recognized credential name's undelimited spelling is the
+	 * name). The alternative shape — an any-credential-token-in-the-
+	 * name rule — was rejected for consistency: it leaves
+	 * 'X-Access-Key' verbatim ('access' names no classed token), the
+	 * exact inconsistency the round exists to close. The boundary is
+	 * unchanged: 'x-keychain' and 'x-monkey' stay outside — the
+	 * suffix bytes never span the segment the class judges.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'api-key', 'subscription-key', 'auth', 'authorization', 'token', 'secret', 'apikey', 'subscriptionkey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'token', 'secret', 'key', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
