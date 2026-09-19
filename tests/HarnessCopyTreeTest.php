@@ -736,13 +736,27 @@ final class HarnessCopyTreeTest extends TestCase
         // as the finally's cleanup, so the pin leaves the repository
         // exactly as it found it whatever the verdict (the at-HEAD
         // residue this pin reddens over is reclaimed here too).
-        $residueOf = static function (string $root): array {
+        /*
+         * The sweep fences its walk (OCR round 41, t31-ocr41-3 — the
+         * exact shape both production owners fence, rrmdir
+         * t31-ocr33-6 and copyTree t31-ocr34-2): an unreadable
+         * subtree under the judged tree (a stranded chmod, an FS/AV
+         * lock) aborted the descent in the SPL iterator's own
+         * UnexpectedValueException — another library's vocabulary
+         * dying inside the test's own diagnostic helper. The fence
+         * answers the test's failure vocabulary, naming the path.
+         */
+        $residueOf = function (string $root): array {
             $residue = array();
-            $walk = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
-            foreach ($walk as $file) {
-                if ($file->isFile() && 0 === strpos($file->getFilename(), 'wpct-pathcase-')) {
-                    $residue[] = $file->getPathname();
+            try {
+                $walk = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+                foreach ($walk as $file) {
+                    if ($file->isFile() && 0 === strpos($file->getFilename(), 'wpct-pathcase-')) {
+                        $residue[] = $file->getPathname();
+                    }
                 }
+            } catch (UnexpectedValueException $walk_refusal) {
+                $this->fail('The residue sweep cannot list ' . $root . ' — an unreadable subtree under the judged fixtures tree is an environment verdict this pin names, never the SPL iterator\'s own vocabulary (the t31-ocr33-6/ocr34-2 fence, the diagnostic twin): ' . $walk_refusal->getMessage());
             }
 
             return $residue;
