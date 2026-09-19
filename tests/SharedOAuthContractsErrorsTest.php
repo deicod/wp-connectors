@@ -73,7 +73,22 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
         $dir = dirname(__DIR__) . '/shared/src/Exception';
         $base = strlen($dir) + 1;
         $from_tree = array();
-        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS)) as $file) {
+        /*
+         * The walk FOLLOWS SYMLINKS (OCR round 49, t31-ocr49-11):
+         * without FOLLOW_SYMLINKS a symlink-to-directory under
+         * shared/src/Exception is neither isFile()-true (stat follows
+         * the link to a directory) nor recursed — the linked subtree
+         * escaped the census while the pin's failure message claimed
+         * "at any depth", and PSR-4 maps a linked subdirectory
+         * exactly like a real one: the family grows through it
+         * whether the census sees it or not. The no-symlinks
+         * doctrine (a link is never silently skipped) reads the tree
+         * whole: the linked files join the walk, a stray link fails
+         * the file-set pin naming the class, and the message tells
+         * the truth. Construction-evident (the shipped tree carries
+         * no links; driven by planting one).
+         */
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::FOLLOW_SYMLINKS)) as $file) {
             if (! $file->isFile() || 'php' !== strtolower($file->getExtension())) {
                 continue;
             }
