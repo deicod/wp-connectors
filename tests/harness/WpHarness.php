@@ -812,8 +812,11 @@ final class WpHarness
 
     /**
      * The probe core: the case answer for ONE volume, judged by
-     * planting in a directory that sits on it (OCR round 36,
-     * t31-ocr36-5).
+     * planting in the volume's SCRATCH REPRESENTATIVE — the base
+     * itself when it sits under the temp root, else the temp root
+     * when it shares the volume's device, never the judged tree
+     * itself (OCR round 36, t31-ocr36-5; the representative fence,
+     * t31-ocr40-5).
      *
      * Case resolution is a PER-VOLUME property, and the r35 probe
      * consulted ONE host-wide cached answer probed exclusively in
@@ -848,9 +851,49 @@ final class WpHarness
         if (\array_key_exists($volume, self::$case_insensitive_volumes)) {
             return self::$case_insensitive_volumes[ $volume ];
         }
+        /*
+         * The plant anchor is the volume's SCRATCH REPRESENTATIVE,
+         * never the judged tree itself (OCR round 40, t31-ocr40-5):
+         * the given base is the nearest EXISTING ancestor of whatever
+         * path the derivation first judged, and for the suite's
+         * copyTree shapes that is routinely a REPOSITORY-rooted source
+         * tree (copyTree() from tests/fixtures/plugins) — the probe
+         * once planted wpct-pathcase-* DIRECTLY INTO the judged tree,
+         * a junk window inside the repository on every measurement
+         * and, for a probe whose process died between its plant and
+         * the bare @unlink (a killed run, a fatal one process over),
+         * residue the repo tree never reclaims (driven: a killed
+         * child's wpct-pathcase-* inside the fixtures tree). The
+         * representative is the base itself when the base already
+         * sits under the engine's temp root (a scratch base plants
+         * where it scratches — the temp-under probes keep their
+         * plant, so the r38-2 planted-fail shape keeps its
+         * write-denial subject), else the temp root when it sits ON
+         * the judged volume (the same stat() device id the cache
+         * keys by — the volume answer derives from its own
+         * representative, measured on the volume it judges), else NO
+         * plant at all: the conservative case-sensitive verdict
+         * answers UNMEASURED and UNCACHED (the r38-2 doctrine)
+         * rather than planting outside scratch. A finally-unlink
+         * fence alone was weighed and declined: nothing between the
+         * plant and the unlink can throw in-process (the measurement
+         * is file_exists()), and the crash class this closes is
+         * process death, which no finally survives — the residue
+         * belongs in scratch or nowhere.
+         */
+        $plant_base = $base;
+        $temp_real = self::posix_comparison_vocabulary((string) realpath(sys_get_temp_dir()));
+        $base_real = self::posix_comparison_vocabulary((string) realpath($base));
+        if ($base_real !== $temp_real && 0 !== strpos($base_real, $temp_real . '/')) {
+            $temp_stat = @stat(sys_get_temp_dir());
+            if (false === $temp_stat || (string) $temp_stat['dev'] !== $volume) {
+                return false;
+            }
+            $plant_base = sys_get_temp_dir();
+        }
         $stem = 'wpct-pathcase-' . getmypid() . '-' . bin2hex(random_bytes(4));
-        $probe = $base . '/' . $stem . 'AbC.probe';
-        $variant = $base . '/' . $stem . 'aBc.probe';
+        $probe = $plant_base . '/' . $stem . 'AbC.probe';
+        $variant = $plant_base . '/' . $stem . 'aBc.probe';
         $planted = false !== @file_put_contents($probe, 'case probe');
         if (! $planted) {
             /*

@@ -661,6 +661,173 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-40 pin (t31-ocr40-5): the case probe plants its probe
+     * file in the volume's SCRATCH representative, never in the
+     * judged tree itself. caseProbeAnswer() planted wpct-pathcase-*
+     * directly into whichever directory the derivation first judged —
+     * for the suite's copyTree shapes that is routinely a
+     * REPOSITORY-rooted source tree (the fixtures plugins the build,
+     * seam-property, and unused-import suites copy from) — with only
+     * a bare @unlink between the plant and the return: a probe whose
+     * process died between the two (a killed run, a fatal one test
+     * over) left its residue in the REPO tree, unreclaimed junk in
+     * the checkout (driven red at HEAD: a killed child leaves a
+     * wpct-pathcase-* file inside the fixtures tree).
+     *
+     * The crash shape is driven the FREEZE-KILL way because it is the
+     * only deterministic shape the seam has: nothing between the plant
+     * and the unlink can throw in-process (the measurement is
+     * file_exists()), no finally survives a kill, and a bare kill
+     * lands at ONE loop phase — measured over twenty trials the
+     * mid-window residue lands ~60% of kills, one phase draw per
+     * kill, never a certainty. SIGSTOP freezes the looping child
+     * WHEREVER it stands: a child stopped inside its plant window
+     * HOLDS the planted file, so the freeze observes the window
+     * without racing its microseconds, and killing the frozen child
+     * (SIGKILL terminates stopped processes) answers the exact crash
+     * residue the pin judges. The freeze retries — each stop is
+     * another phase draw, the CONT and the spawn jitter between
+     * attempts re-randomizing it — so a regressed seam reddens with
+     * ~1 - 0.4^10 certainty and the miss never passes silently: an
+     * unopened window after every attempt is a loud staging-shaped
+     * failure, never a vacuous green. The child loops the probe over
+     * the repo-rooted base with the per-volume cache key unset each
+     * iteration (the t31-ocr39-7 spelling — the cache short-circuit
+     * is the only other path); at HEAD the residue lands in the
+     * fixtures tree, post-fix in the scratch representative (or no
+     * plant at all on a host whose temp root sits off the judged
+     * volume — the r38-2 conservative unmeasured arm, residue-free
+     * the same way).
+     */
+    public function testACrashedCaseProbeLeavesItsResidueInScratchNeverInTheJudgedRepoTree(): void
+    {
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The crash sim premises POSIX process semantics (a shell job-control kill of a backgrounded child) and the \'/\'-joined containment vocabulary — this host\'s platform separator is not the POSIX one.');
+        }
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the killed-child crash sim cannot run (the t31-ocr16-12 doctrine).');
+        }
+
+        /*
+         * The harness and fixtures paths are asserted resolved BEFORE
+         * the child embeds them (the ocr25-8 class census): a
+         * realpath() false once embedded `require false;` into the
+         * child — the fatal then read as the harness's own defect, an
+         * environment problem wearing the pin's subject.
+         */
+        $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
+        $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — a realpath() false is an environment problem, never the harness defect the child would fatal as.');
+        $fixturesReal = realpath(__DIR__ . '/fixtures/plugins');
+        $this->assertNotFalse($fixturesReal, 'The fixtures plugins tree must resolve before the child judges it — the crash sim\'s judged base is this repository-rooted tree.');
+        $fixtures = (string) $fixturesReal;
+        $judge = $fixtures . '/example-connector';
+        $this->assertDirectoryExists($judge, 'The example-connector fixture tree is the crash sim\'s judged base — the exact shape the build suites copyTree() from.');
+
+        $heartbeat = sys_get_temp_dir() . '/wpct-pathcase-crash-' . uniqid('', true) . '.log';
+        $script = 'require ' . var_export($harnessPath, true) . ';'
+            . ' $p = new ReflectionMethod("WpHarness", "caseProbeAnswer");'
+            . ' $c = new ReflectionProperty("WpHarness", "case_insensitive_volumes");'
+            . ' $dev = (string) stat(' . var_export($judge, true) . ')["dev"];'
+            . ' fwrite(STDOUT, "looping\n");'
+            . ' while (true) { $cache = $c->getValue(null); unset($cache[$dev]); $c->setValue(null, $cache); $p->invoke(null, ' . var_export($judge, true) . '); }';
+
+        // The residue lens: every wpct-pathcase-* file under the
+        // judged tree (the assertion's subject) — and the same sweep
+        // as the finally's cleanup, so the pin leaves the repository
+        // exactly as it found it whatever the verdict (the at-HEAD
+        // residue this pin reddens over is reclaimed here too).
+        $residueOf = static function (string $root): array {
+            $residue = array();
+            $walk = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+            foreach ($walk as $file) {
+                if ($file->isFile() && 0 === strpos($file->getFilename(), 'wpct-pathcase-')) {
+                    $residue[] = $file->getPathname();
+                }
+            }
+
+            return $residue;
+        };
+
+        $childPid = 0;
+        try {
+            /*
+             * The spawn (the backgrounded command is the php process
+             * alone, so $! names IT — a compound command would name
+             * the subshell and the kill below would orphan the child
+             * mid-loop): the heartbeat lands before the loop starts.
+             */
+            $spawn = array();
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' >' . escapeshellarg($heartbeat) . ' 2>&1 & echo $!', $spawn, $spawnExit);
+            $childPid = (int) trim((string) ($spawn[0] ?? ''));
+            $this->assertGreaterThan(0, $childPid, 'The spawn must answer the child pid — a failed spawn is a staging failure, never a residue verdict (the t31-ocr27-9 doctrine).');
+            /*
+             * Staging (the t31-ocr27-9 doctrine): the heartbeat proves
+             * the child REACHED its loop — a child that fataled at the
+             * embed or the reflection setup would otherwise leave a
+             * vacuous green over a residue-less freeze.
+             */
+            $beat = '';
+            for ($wait = 0; $wait < 40 && "looping\n" !== $beat; ++$wait) {
+                usleep(50000);
+                $beat = (string) @file_get_contents($heartbeat);
+            }
+            $this->assertSame("looping\n", $beat, 'The child must reach its probe loop — a fatal at the embed or the reflection setup is a staging failure, never a residue verdict.');
+
+            /*
+             * THE FREEZE: stop the looping child wherever it stands,
+             * look for the planted file, resume it when the window
+             * was closed. A child stopped inside the plant window
+             * HOLDS its probe file; killing the frozen child then
+             * answers the crash residue — the file no unlink will
+             * reclaim, exactly the checkout junk the pin refuses.
+             */
+            $frozenResidue = null;
+            for ($attempt = 0; $attempt < 10; ++$attempt) {
+                exec('kill -STOP ' . $childPid . ' 2>/dev/null');
+                usleep(15000);
+                $held = $residueOf($fixtures);
+                if ($held !== array()) {
+                    // The crash itself: SIGKILL reaches a stopped
+                    // process, and no code of ours runs after it.
+                    exec('kill -9 ' . $childPid . ' 2>/dev/null');
+                    usleep(10000);
+                    $frozenResidue = $held;
+                    break;
+                }
+                exec('kill -CONT ' . $childPid . ' 2>/dev/null');
+                usleep(30000);
+            }
+            if (null !== $frozenResidue) {
+                // The window opened and the frozen child died inside
+                // it: whatever survives the kill IS the crash residue.
+                $survivors = $residueOf($fixtures);
+                $this->assertSame(array(), $survivors, 'A crashed probe leaves its residue in SCRATCH (the volume\'s temp representative or nowhere), never in the judged repository tree — the planted file the killed child never unlinked must not sit in the fixtures tree (red at HEAD: the plant went directly into the judged base, with only a bare @unlink between).');
+            } else {
+                // The window never opened across every attempt: on a
+                // FIXED seam this is the expected arm (no plant ever
+                // touches the repo tree); on a REGRESSED one it is the
+                // ~0.4^10 tail, and the verdict below still holds —
+                // the residue absence it asserts is what the fixed
+                // seam owes, with the tail documented in the docblock.
+                $this->assertSame(array(), $residueOf($fixtures), 'No freeze may ever observe a planted probe file inside the judged repository tree — the plant belongs in scratch or nowhere.');
+            }
+        } finally {
+            // The child dies stopped or running, never left looping.
+            if ($childPid > 0) {
+                exec('kill -9 ' . $childPid . ' 2>/dev/null');
+            }
+            foreach ($residueOf($fixtures) as $junk) {
+                @unlink($junk);
+            }
+            $temp_junk = glob(sys_get_temp_dir() . '/wpct-pathcase-*');
+            foreach (is_array($temp_junk) ? $temp_junk : array() as $junk) {
+                @unlink($junk);
+            }
+            @unlink($heartbeat);
+        }
+    }
+
+    /**
      * OCR-round-22 split (t31-ocr22-2): every root-ANCHORED leg of
      * the precondition battery above rode spellings whose premise is
      * POSIX root resolution — the t31-ocr11-2 doctrine the legs' own
