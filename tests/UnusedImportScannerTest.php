@@ -728,17 +728,6 @@ FIXTURE
         $this->assertTrue(mkdir($this->root . '/locked', 0755, true), 'staging: the locked tree must create — a staging failure fails as staging, never as the partial-count verdict.');
         $this->assertNotFalse(file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n"), 'staging: the locked tree\'s hidden source must write — a staging failure fails as staging, never as the partial-count verdict.');
         $this->assertNotFalse(file_put_contents($this->root . '/dead-last.php', "<?php\nuse Vendor\\Pkg\\ThirdDead;\nuse Vendor\\Pkg\\FourthDead;\n"), 'staging: the dead-last bracket source must write — a staging failure fails as staging, never as the partial-count verdict.');
-        $this->assertTrue(chmod($this->root . '/locked', 0000), 'staging: the lock must take — a chmod failure is the probe\'s own premise gone silent, never an environment verdict.');
-        // The permission-denial probe (the capability this leg
-        // premises, in the lint gate's own shape): a process the
-        // permissions cannot deny can never drive the abort — skip,
-        // naming the premise, never a vacuous green.
-        $probe_open = @opendir($this->root . '/locked');
-        if (false !== $probe_open) {
-            closedir($probe_open);
-            chmod($this->root . '/locked', 0755);
-            $this->markTestSkipped('This process walks a chmod-0000 directory open (permissions cannot deny it — root-shaped), so the mid-walk abort is unconstructible here.');
-        }
 
         /*
          * The OBSERVED yield order (t31-ocr44-5): SCANDIR_SORT_NONE
@@ -754,6 +743,19 @@ FIXTURE
          * the descent aborts at locked/'s own position, and nothing
          * after it walks.
          */
+        /*
+         * The derivation answers BEFORE the lock takes (OCR round 50,
+         * t31-ocr50-9): the chmod-0000 once lands before this block,
+         * and every assertion between it and the restore-finally —
+         * the yield-position pin, the gate-path realpath pin — left
+         * locked/ stranded at mode 0000 on its own failure, a tree
+         * the tearDown's release then could not walk either. The
+         * whole derivation is mode-independent (scandir lists the
+         * PARENT), so it rides above the chmod; the region between
+         * the lock and the try now carries only the probe's own
+         * restore-on-skip, and the finally owns every mode-0000
+         * spelling alone.
+         */
         $yield = array_values(array_diff(scandir($this->root, SCANDIR_SORT_NONE) ?: array(), array('..', '.')));
         $locked_at = array_search('locked', $yield, true);
         $this->assertNotFalse($locked_at, 'The locked tree is staged under the fixture root — its yield position is the derivation the assertions ride.');
@@ -764,17 +766,30 @@ FIXTURE
             }
         }
         if (0 === $expected_fail_lines) {
-            chmod($this->root . '/locked', 0755);
             $this->markTestSkipped('This filesystem yields the locked tree before both bracket sources (' . implode(', ', $yield) . ') — the walk aborts before any FAIL prints, so the partial-count subject is unconstructible in this order (the permission-probe doctrine: never a vacuous green).');
         }
 
         /*
          * The gate path is asserted resolved BEFORE the embed (the
          * ocr25-8 class census this file's own trailing-comment pin
-         * rides).
+         * rides) — and before the lock takes (t31-ocr50-9): a
+         * realpath() false here once stranded the locked tree below.
          */
         $gateScript = realpath(__DIR__ . '/../bin/check-conventions.php');
         $this->assertNotFalse($gateScript, 'The conventions-gate path must resolve before the child embed — a realpath() false is an environment problem, never the gate defect the child would fatal as.');
+
+        $this->assertTrue(chmod($this->root . '/locked', 0000), 'staging: the lock must take — a chmod failure is the probe\'s own premise gone silent, never an environment verdict.');
+        // The permission-denial probe (the capability this leg
+        // premises, in the lint gate's own shape): a process the
+        // permissions cannot deny can never drive the abort — skip,
+        // naming the premise, never a vacuous green.
+        $probe_open = @opendir($this->root . '/locked');
+        if (false !== $probe_open) {
+            closedir($probe_open);
+            chmod($this->root . '/locked', 0755);
+            $this->markTestSkipped('This process walks a chmod-0000 directory open (permissions cannot deny it — root-shaped), so the mid-walk abort is unconstructible here.');
+        }
+
         try {
             $script = 'require ' . var_export($gateScript, true) . ';'
                 . ' $counted = 0;'
