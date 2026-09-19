@@ -37,6 +37,31 @@ final class WpConnectorsBuild
     /** Fixed zip timestamp epoch (2000-01-01 UTC). */
     const FIXED_MTIME = 946684800;
 
+    /*
+     * The SPECIAL-CLASS-NAME census (OCR round 47, t31-ocr47-1/2 —
+     * the ninth use-grammar family, the reserved-SEGMENT generation):
+     * fifteen spellings, php -l-derived on this engine, that the
+     * engine refuses as the name an UN-ALIASED CLASS import binds to
+     * — `use A\B\true;` / `use A\{B\true};` fatal at compile ("Cannot
+     * use A\B\true as true because 'true' is a special class name"),
+     * mid-name or bare. The ALIAS slot refuses the same fourteen
+     * minus 'static' at parse and its token walk owns 'static'
+     * (T_STATIC) — ONE list serves both vocabularies, the positions
+     * own their premises: a following `as X` dissolves the fatal
+     * (`A\B\true as X` binds X and lints clean), the function/const
+     * kinds dissolve it (`use function A\B\true;` lints clean — the
+     * check is a CLASS-name check), and a NAMESPACE DECLARATION owns
+     * no reserved vocabulary at all (`namespace Foo\true;` and
+     * `namespace true;` both lint clean — the declaration seam's
+     * whole grammar is the r46 label anchor). The alias oracle's
+     * hand-rolled twin folded into this list; a future special class
+     * name joins ONE owner, never three seams.
+     */
+    const SPECIAL_CLASS_NAMES = array(
+        'self', 'parent', 'static', 'true', 'false', 'null',
+        'int', 'float', 'bool', 'string', 'void', 'iterable', 'object', 'mixed', 'never',
+    );
+
     /**
      * Rewrites shared-source namespace into a plugin-private namespace.
      *
@@ -1743,7 +1768,12 @@ final class WpConnectorsBuild
      *   yet never parse in the slot (self/parent, the three literals,
      *   the type keywords; 'as self'/'as True'/'as Int'/'as array'
      *   all refuse) — the lexer cannot tell them from a name, only
-     *   the parser refuses them, so they ride the hand list below;
+     *   the parser refuses them, so they ride the hand list (the
+     *   SPECIAL_CLASS_NAMES census since OCR round 47, its
+     *   reserved-SEGMENT fold: the segment positions refuse the same
+     *   vocabulary plus 'static' as a compile FATAL, and the alias
+     *   verdict over 'static' — its walk already refused T_STATIC —
+     *   rides unchanged);
      * - the HARD half: every keyword that lexes as its OWN token id
      *   (array, fn, list, if, foreach, function, class, new, match,
      *   readonly, … — the oracle REFUSED every own-token keyword in
@@ -1772,6 +1802,10 @@ final class WpConnectorsBuild
      * answer false here (the identifier-SHAPE seams own their own
      * verdicts; this census owns only the reserved vocabulary). The
      * fold rides the ONE ASCII owner (the r11-6/ocr10-4 doctrine).
+     * The soft half rides the SPECIAL_CLASS_NAMES census since OCR
+     * round 47 (the reserved-SEGMENT generation named below); the
+     * token walk is the ONE identifier walk every single-segment
+     * position reuses.
      *
      * @param string $alias Candidate alias identifier.
      * @return bool True when the engine rejects the identifier in an alias slot.
@@ -1779,10 +1813,7 @@ final class WpConnectorsBuild
     private static function aliasIdentifierIsEngineIllegal($alias)
     {
         $alias = (string) $alias;
-        if (in_array(wp_connectors_ascii_lower($alias), array(
-            'self', 'parent', 'true', 'false', 'null',
-            'int', 'float', 'bool', 'string', 'void', 'iterable', 'object', 'mixed', 'never',
-        ), true)) {
+        if (in_array(wp_connectors_ascii_lower($alias), self::SPECIAL_CLASS_NAMES, true)) {
             return true;
         }
         if (1 !== preg_match('/\A[A-Za-z0-9_]+\z/', $alias)) {
@@ -1796,25 +1827,37 @@ final class WpConnectorsBuild
             // pre-refuse the walk's own class before it is judged.
             return false;
         }
-        /*
-         * The HARD half, derived from the lexer at every call: the
-         * alias position's token stream must be EXACTLY ONE
-         * identifier token spelling the FULL alias — a keyword lexes
-         * as its own token id (never T_STRING) in the position,
-         * case-insensitively, and a spelling that lexes as MORE THAN
-         * ONE token is engine-illegal by the same census ('0foo' is
-         * T_LNUMBER('0') + T_STRING('foo'), '9x' T_LNUMBER('9') +
-         * T_STRING('x'); OCR round 46, t31-ocr46-2 — the walk once
-         * compared each token's TEXT to the FULL alias, so a
-         * multi-token spelling matched no single token and fell
-         * through as legal, and the member grammar re-emitted the
-         * digit-initial alias at exit 0). The one spelling of the
-         * class that cannot drift from the engine: count and name the
-         * tokens, never a text compare against the whole.
-         */
+
+        return !self::identifierLexesAsOneName($alias);
+    }
+
+    /**
+     * Whether an identifier lexes as EXACTLY ONE plain name token —
+     * the ONE identifier walk (OCR round 46, t31-ocr46-2 coined it in
+     * the alias oracle; every single-identifier position reuses it
+     * since OCR round 47): the candidate's token stream in the alias
+     * position must be exactly one T_STRING spelling the FULL
+     * candidate, so a keyword that lexes as its own token id
+     * ('list', 'foreach', 'static', … case-insensitively) and a
+     * spelling that lexes as MORE THAN ONE token ('0foo' is
+     * T_LNUMBER('0') + T_STRING('foo')) both answer false. The lexer
+     * tokens a bare identifier identically whatever template frames
+     * it, so the alias template derives the verdict for every
+     * single-segment slot — the alias oracle, the group-use member
+     * NAME (a bare keyword member parses-error the same way, OCR
+     * round 47, t31-ocr47-1). The one spelling of the class that
+     * cannot drift from the engine: count and name the tokens, never
+     * a text compare against the whole.
+     *
+     * @param string $identifier Candidate identifier (identifier bytes only).
+     * @return bool True when the lexer spells it one plain T_STRING.
+     */
+    private static function identifierLexesAsOneName($identifier)
+    {
+        $identifier = (string) $identifier;
         $position_tokens = array();
         $in_position = false;
-        foreach (token_get_all("<?php use A\\B as {$alias};") as $token) {
+        foreach (token_get_all("<?php use A\\B as {$identifier};") as $token) {
             if (is_array($token) && T_WHITESPACE === $token[0]) {
                 continue;
             }
@@ -1831,10 +1874,35 @@ final class WpConnectorsBuild
             $position_tokens[] = $token;
         }
 
-        return !(1 === count($position_tokens)
+        return 1 === count($position_tokens)
             && is_array($position_tokens[0])
             && T_STRING === $position_tokens[0][0]
-            && $alias === $position_tokens[0][1]);
+            && $identifier === $position_tokens[0][1];
+    }
+
+    /**
+     * Whether a namespace NAME's LEAF segment is a special class name
+     * — the reserved-SEGMENT census's compile-fatal half (OCR round
+     * 47, t31-ocr47-1/2): an UN-ALIASED CLASS import whose leaf is
+     * one of SPECIAL_CLASS_NAMES fatals at compile wherever it is
+     * spelled — a group-use member, a plain use's sub-segment tail, a
+     * relative-list member. The CALLER owns the position premises
+     * (no alias follows, no function/const kind leads): those
+     * dissolve the fatal, and this method judges the vocabulary
+     * alone. A bare hard KEYWORD mid-name or leaf (`…\list`) is
+     * legal in every non-alias position and answers false here —
+     * that class is the walk's, not the list's.
+     *
+     * @param string $name A '\'-joined namespace name (leading separators tolerated).
+     * @return bool True when the last segment is a special class name.
+     */
+    private static function nameLeafIsSpecialClass($name)
+    {
+        return in_array(
+            wp_connectors_ascii_lower((string) substr((string) strrchr('\\' . (string) $name, '\\'), 1)),
+            self::SPECIAL_CLASS_NAMES,
+            true
+        );
     }
 
     /**
@@ -1876,7 +1944,20 @@ final class WpConnectorsBuild
      * - a member that is not a NAME at all (`{1y}`, `{Foo Bar}`,
      *   `{Foo-Bar}`, a digit-initial sub-segment — the engine's
      *   label grammar rejects each; OCR round 43, t31-ocr43-3,
-     *   php -l-derived like the arm above it).
+     *   php -l-derived like the arm above it);
+     * - a member that IS a keyword token (`{list}`, `{foreach}`,
+     *   `{static}`, `{function list}` — legal label bytes every one,
+     *   so the shape grammar above waved them through and both
+     *   re-emit seams shipped them at exit 0) and a member whose LEAF
+     *   is a special class name (`{Shared\Storage\int}` — an
+     *   un-aliased class import binding one fatals at compile): the
+     *   reserved-SEGMENT census, OCR round 47, t31-ocr47-1 — the
+     *   alias oracle's vocabulary applied to the NAME position
+     *   (php -l-derived on this engine: an alias dissolves the leaf
+     *   fatal — `{Storage\true as X}` lints clean — and the
+     *   function/const kinds dissolve it too, while a keyword GLUED
+     *   into a multi-segment member — `{list\Bar}` — parses clean
+     *   and rides).
      *
      * @param string $member        The trimmed member piece to judge.
      * @param string $body          The whole brace body (refusal context).
@@ -1963,6 +2044,43 @@ final class WpConnectorsBuild
          */
         if (1 !== preg_match('/\A[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*(?:\\\\[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)*\z/', $member)) {
             throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: a member that is not a NAME: the engine accepts only label segments (never digit-initial, never a bare separator or mid-name space/hyphen — php -l refuses every spelling below), and both re-emit seams once re-emitted the bytes verbatim beside rewritten output — compile-error bytes in the zip at exit 0; write each member as relative label segments, the group's prefix carrying the rest");
+        }
+        /*
+         * The reserved-SEGMENT census (OCR round 47, t31-ocr47-1 —
+         * the ninth use-grammar family): the shape grammar above
+         * validates LABEL BYTES only, and every keyword of the
+         * language is legal label bytes — `use …\{Shared\Clock,
+         * list};` matched the vendor-prefix pattern, the member
+         * `list` survived the shape verdict, and both re-emit seams
+         * re-emitted it verbatim beside the rewritten sibling: the
+         * zip shipped a parse error at exit 0 with every gate green
+         * (driven at HEAD: the ship shape returned normally, the
+         * postcondition judging family references and waving a
+         * target-prefixed sibling's statement through). The alias
+         * oracle's vocabulary applied to the NAME position, both
+         * halves driven on this engine —
+         *
+         * - the BARE-KEYWORD half (a parse error): a member whose
+         *   WHOLE spelling is one keyword token — the ONE identifier
+         *   walk reuses the alias oracle's derivation, a single-segment
+         *   member occupying the same one-identifier slot. A keyword
+         *   GLUED into a multi-segment member is LEGAL here (php -l
+         *   accepts `{list\Bar}` — the lexer bakes the separator into
+         *   one name token), so the walk consults single segments
+         *   only, never a leaf that follows a separator;
+         * - the SPECIAL-CLASS-LEAF half (a compile FATAL): a member
+         *   whose last segment binds a special class name — the
+         *   SPECIAL_CLASS_NAMES census, and ONLY when the import is
+         *   un-aliased and class-kind (an `as X` binds X and lints
+         *   clean; `function`/`const` members lint clean — the check
+         *   is a class-name check; both probed on this engine).
+         */
+        $leaf_segment = (string) substr((string) strrchr('\\' . $member, '\\'), 1);
+        if (false === strpos($member, '\\') && !self::identifierLexesAsOneName($member)) {
+            throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: the member IS a keyword token ('{$member}'): the engine expects an identifier or namespaced name in the slot and refuses the spelling at parse time, case-insensitively ('{LIST}' refuses alike), and both re-emit seams re-emit the member verbatim beside rewritten output — compile-error bytes in the zip at exit 0; write a member that is a name (a keyword glued into a multi-segment member — 'list\\Bar' — parses clean and rides)");
+        }
+        if ('' === $kind && '' === $tail && self::nameLeafIsSpecialClass($member)) {
+            throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: the member's leaf segment ('{$leaf_segment}') is a special class name: the un-aliased class import binds it and the engine fatals at compile (\"Cannot use … as {$leaf_segment} because '{$leaf_segment}' is a special class name\"), case-insensitively, and both re-emit seams re-emit the member verbatim beside rewritten output — fatal bytes in the zip at exit 0; write a leaf the engine accepts as a class name, or dissolve the fatal with an alias or a function/const kind");
         }
 
         return array( $kind, $member, $tail );

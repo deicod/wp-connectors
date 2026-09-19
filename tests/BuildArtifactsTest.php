@@ -6531,6 +6531,35 @@ FIXTURE;
              */
             'digit-initial member alias: 0foo (lexes as two tokens)' => 'use Deicod\\WpConnectors\\{Shared\\Clock as 0foo};',
             'digit-initial member alias: 9x' => 'use Deicod\\WpConnectors\\{Shared\\Clock as 9x};',
+            /*
+             * OCR round 47 (t31-ocr47-1 — the reserved-SEGMENT
+             * generation): the shape grammar validates LABEL BYTES
+             * only, and every keyword of the language is legal label
+             * bytes — the member `list` beside a rewritten sibling
+             * re-emitted VERBATIM and the statement shipped at exit 0
+             * (red at HEAD: the ship row returned normally, the
+             * postcondition waving a target-prefixed sibling's
+             * statement through; the alone rows refused one verdict
+             * late, at the postcondition's survived-reference walk).
+             * The reserved-vocabulary census applies to the NAME
+             * position now: a member that IS a keyword token
+             * (single-segment, the ONE identifier walk) and a member
+             * whose LEAF is a special class name (the
+             * SPECIAL_CLASS_NAMES list — an un-aliased class import
+             * binding one fatals at compile; `{Shared\Storage\int}`
+             * beside its rewritten leading segment was the leaf half's
+             * ship shape). The dissolvers stay legal and are pinned in
+             * the legal battery below: an alias (`{Storage\true as
+             * X}`), a function/const kind (`{function true}`), and a
+             * keyword GLUED into a multi-segment member
+             * (`{Shared\Storage\list}`) all lint clean on this engine.
+             */
+            'bare keyword member beside a rewritten sibling (the ship shape): list' => 'use Deicod\\WpConnectors\\{Shared\\Clock, list};',
+            'bare keyword member alone: foreach' => 'use Deicod\\WpConnectors\\{foreach};',
+            'case-folded bare keyword member: LIST' => 'use Deicod\\WpConnectors\\{LIST};',
+            'kind-led bare keyword member: function list' => 'use Deicod\\WpConnectors\\{function list};',
+            'special-class leaf member (the leaf half ship shape)' => 'use Deicod\\WpConnectors\\{Shared\\Storage\\int};',
+            'special-class leaf member bare beside a sibling' => 'use Deicod\\WpConnectors\\{Shared\\Clock, never};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass IllegalGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/IllegalGroupStore.php'),
@@ -6578,6 +6607,17 @@ FIXTURE;
              * round's HEAD: returned normally).
              */
             'digit-initial family-prefix member alias: 0foo' => 'use Deicod\\WpConnectors\\Shared\\{Clock as 0foo};',
+            /*
+             * OCR round 47 (t31-ocr47-1): the reserved-SEGMENT census
+             * rides the ONE member grammar at BOTH re-emit seams —
+             * the family-prefix tail once re-emitted a bare-keyword
+             * member and a special-class leaf verbatim beside the
+             * rewritten prefix (red at HEAD: returned normally, the
+             * prefix rewritten target-first waving the statement
+             * through the postcondition).
+             */
+            'bare keyword family-prefix member: list' => 'use Deicod\\WpConnectors\\Shared\\{Clock, list};',
+            'special-class leaf family-prefix member: Storage\\true' => 'use Deicod\\WpConnectors\\Shared\\{Storage\\true};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass FamilyPrefixGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/FamilyPrefixGroupStore.php'),
@@ -6592,6 +6632,25 @@ FIXTURE;
         // rewrite is pinned above in the $groupUse battery).
         $familyPrefixLegal = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\{Clock, Storage\\Widget as W};\nclass FamilyPrefixLegalStore\n{\n}\n", 'OpenAiOauth', 'shared/src/FamilyPrefixLegalStore.php');
         $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\{Clock, Storage\\Widget as W};', $familyPrefixLegal, 'A LEGAL family-prefix group rewrites the prefix and rides its members verbatim — validation owns the refusal, never the re-spelling.');
+
+        /*
+         * OCR round 47 (t31-ocr47-1): the reserved-SEGMENT census's
+         * DISSOLVERS stay legal and keep rewriting — the refusal
+         * owns the un-aliased class-kind binding only. php -l accepts
+         * every spelling below on this engine: a keyword GLUED into a
+         * multi-segment member (`{Shared\Storage\list}` — the lexer
+         * bakes the separator into one name token), an alias binding
+         * X over a special-class source leaf (`{Shared\true as X}`),
+         * and a kind-led member whose leaf is a special class name
+         * (`{function Shared\true}` — the fatal is a CLASS-name
+         * check). A census that refused these would refuse legal
+         * source the build must carry.
+         */
+        $dissolvers = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Storage\\list};\nuse Deicod\\WpConnectors\\{Shared\\true as X};\nuse Deicod\\WpConnectors\\{function Shared\\true};\nclass DissolverStore\n{\n}\n";
+        $dissolver_battery = WpConnectorsBuild::rewriteSharedNamespace($dissolvers, 'OpenAiOauth', 'shared/src/DissolverStore.php');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\{OpenAiOauth\\Shared\\Storage\\list};', $dissolver_battery, 'A keyword glued into a multi-segment member is legal and rewrites at its leading Shared segment.');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\{OpenAiOauth\\Shared\\true as X};', $dissolver_battery, 'An aliased special-class source leaf binds the alias and rewrites legally.');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\{function OpenAiOauth\\Shared\\true};', $dissolver_battery, 'A kind-led member carries a special-class leaf exempt — the fatal is a class-name check, function/const members lint clean.');
 
         /*
          * OCR round 46 (t31-ocr46-3): the alias SHAPE speaks the
