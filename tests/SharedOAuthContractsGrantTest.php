@@ -658,6 +658,37 @@ final class SharedOAuthContractsGrantTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-41 pin (t31-ocr41-2): delete() retires the install's
+     * save counters alongside the grant — saveCount() reports the
+     * CURRENT install's commits, per-install semantics, never a
+     * lifetime total across a delete/reinstall. The fake's delete()
+     * used to unset only the persisted grant, so
+     * save→delete→save answered 2: the first install's commit
+     * counting into the second's — and the class docblock
+     * advertises reuse by the encrypted-storage and
+     * refresh-coordination suites, whose comparison shapes delete
+     * between phases and would read the prior install's commits as
+     * this one's.
+     */
+    public function testDeleteRetiresTheInstallSaveCounters(): void
+    {
+        $storage = new InMemoryTokenStorage();
+        $grant = $this->connectedGrant();
+
+        $storage->save('fixture-provider', $grant, TokenStorageInterface::EXPECT_NO_GRANT);
+        $storage->delete('fixture-provider');
+
+        // The reinstall: the emptied slot answers EXPECT_NO_GRANT again.
+        $this->assertTrue($storage->save('fixture-provider', $grant, TokenStorageInterface::EXPECT_NO_GRANT), 'The reinstall commits over the emptied slot.');
+        $this->assertSame(1, $storage->saveCount('fixture-provider'), 'Per-install semantics: the second install\'s counter starts at its own commit, never the deleted install\'s lifetime total (red at HEAD: 2).');
+
+        // Plain save sequences keep their semantics within one
+        // install: no delete between them, no retirement.
+        $this->assertTrue($storage->save('fixture-provider', $grant->with_generation(4), 3));
+        $this->assertSame(2, $storage->saveCount('fixture-provider'));
+    }
+
+    /**
      * Verifier-round pin (t31-r11-5): the SERIALIZATION channel rides
      * the redaction contract. The grant's secret material lives in its
      * token set; without __debugInfo() the engine dumped the raw

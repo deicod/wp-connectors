@@ -133,7 +133,14 @@ final class InMemoryTokenStorage implements TokenStorageInterface
     {
         self::screen_key($provider_id);
 
-        unset($this->grants[$provider_id]);
+        /*
+         * The install's counters retire with the grant (OCR round 41,
+         * t31-ocr41-2): saveCount() reports the CURRENT install's
+         * commits — per-install semantics — so a delete/reinstall
+         * cycle never reads the prior install's lifetime total into
+         * the new one's count.
+         */
+        unset($this->grants[$provider_id], $this->saveCounts[$provider_id]);
     }
 
     /**
