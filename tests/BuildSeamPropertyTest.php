@@ -228,6 +228,23 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 throw new \ValueError('extra-throw: the planted engine-shaped throw must ride the row channel');
             },
         ));
+        /*
+         * The row's own gate premise (OCR round 46, t31-ocr46-6 — the
+         * t31-ocr42-5 class over the row channel): the pin drives
+         * runState() with an 'expect' => 'CLEAN' row but asserted its
+         * FAIL verdict unconditionally — on a host with exec/
+         * escapeshellarg in disable_functions the row-level gate
+         * (t31-ocr20-5) answers SKIP before the extra channel ever
+         * runs, and the assertion failed as an environment-looking
+         * defect. The pin rides the premise the row itself enforces:
+         * the SKIP verdict IS the gate answering, named by its own
+         * why; the FAIL assertions run only where the row can.
+         */
+        if ('SKIP' === $verdict['class']) {
+            $this->assertStringContainsString('t31-ocr20-5', $verdict['why'], 'The skip names its premise — the CLEAN row\'s own exec-capability gate, never an environment-shaped assertion failure.');
+
+            return;
+        }
         $this->assertSame('FAIL', $verdict['class'], 'An extra-channel throw is a FAIL row, never a battery abort (red at HEAD: the ValueError escaped runState as a test ERROR, masking the states behind it).');
         $this->assertStringContainsString('extra control threw', $verdict['why'], 'The row names the channel the throw rode.');
         $this->assertStringContainsString('ValueError', $verdict['why'], 'The row names the throw\'s class.');
