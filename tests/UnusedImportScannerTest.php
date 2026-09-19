@@ -610,6 +610,78 @@ FIXTURE
         $this->assertSame(1, wp_connectors_unused_import_violations($this->root));
     }
 
+    /**
+     * OCR-round-43 pin (t31-ocr43-8): the collector answers its
+     * PARTIAL count under the mid-walk abort. The function prints
+     * every FAIL as it is found but once returned its count only at
+     * the END, so the gate's abort conversion (glm17-17) silently
+     * dropped every violation counted before the refusal — the tally
+     * losing exactly the FAIL lines it had already printed. The
+     * by-ref count syncs in a finally around the walk now (the abort
+     * flying through untouched, the gate folding the partial in
+     * beside its own FAIL), driven here through the child shape the
+     * trailing-comment pin rides: the dead-import source is created
+     * AFTER the locked tree (this iterator build walks each
+     * directory's entries INVERTED from creation order, so the
+     * second-created source is walked before the first-created
+     * directory descends), and the child prints the count it held at
+     * the abort beside the collector's own FAIL lines.
+     */
+    public function testTheMidWalkAbortAnswersThePartialCountToo(): void
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process abort leg cannot run (the t31-ocr16-12 doctrine).');
+        }
+
+        // The locked tree FIRST (the walk-order premise the assertions
+        // below name): this iterator build materializes each
+        // directory's entries INVERTED from creation order, so the
+        // source created SECOND is walked FIRST — its two dead imports
+        // each printing their own FAIL (and syncing the by-ref count)
+        // before the walk ever descends into the locked tree.
+        mkdir($this->root . '/locked', 0755, true);
+        file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n");
+        file_put_contents($this->root . '/dead.php', "<?php\nuse Vendor\\Pkg\\DeadThing;\nuse Vendor\\Pkg\\AlsoDead;\n");
+        chmod($this->root . '/locked', 0000);
+        // The permission-denial probe (the capability this leg
+        // premises, in the lint gate's own shape): a process the
+        // permissions cannot deny can never drive the abort — skip,
+        // naming the premise, never a vacuous green.
+        $probe_open = @opendir($this->root . '/locked');
+        if (false !== $probe_open) {
+            closedir($probe_open);
+            chmod($this->root . '/locked', 0755);
+            $this->markTestSkipped('This process walks a chmod-0000 directory open (permissions cannot deny it — root-shaped), so the mid-walk abort is unconstructible here.');
+        }
+
+        /*
+         * The gate path is asserted resolved BEFORE the embed (the
+         * ocr25-8 class census this file's own trailing-comment pin
+         * rides).
+         */
+        $gateScript = realpath(__DIR__ . '/../bin/check-conventions.php');
+        $this->assertNotFalse($gateScript, 'The conventions-gate path must resolve before the child embed — a realpath() false is an environment problem, never the gate defect the child would fatal as.');
+        try {
+            $script = 'require ' . var_export($gateScript, true) . ';'
+                . ' $counted = 0;'
+                . ' try { wp_connectors_unused_import_violations(' . var_export($this->root, true) . ', $counted); echo "done counted={$counted}\\n"; }'
+                . ' catch (UnexpectedValueException $e) { echo "aborted counted={$counted}\\n"; }';
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+            $message = implode("\n", $output);
+
+            $this->assertSame(0, $exit, "The child owns its own exit — the abort is caught and the partial count printed, never an uncaught fatal: {$message}");
+            $this->assertStringContainsString('aborted counted=', $message, 'The locked tree aborts the walk mid-recursion (the glm17-17 shape) — a green walk here means the leg never drove its subject.');
+            $fail_lines = substr_count($message, 'conventions: FAIL');
+            $this->assertGreaterThanOrEqual(2, $fail_lines, "Both dead imports print their FAIL lines before the walk reaches the locked tree (creation order on this temp root) — fewer means the order premise broke, never the contract: {$message}");
+            $this->assertSame(1, preg_match('/aborted counted=(\d+)/', $message, $m) ? 1 : 0, 'The abort line carries its count.');
+            $this->assertSame($fail_lines, (int) $m[1], "The by-ref count answers EXACTLY the violations whose FAIL lines already printed — the abort never drops a counted offense (red at HEAD: the FAILs printed while the count stayed 0): {$message}");
+        } finally {
+            chmod($this->root . '/locked', 0755);
+        }
+    }
+
     public function testStrippedCommentsKeepTheirLineTerminator(): void
     {
         /*

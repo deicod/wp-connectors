@@ -85,10 +85,19 @@ if (wp_connectors_cli_entry(__FILE__)) {
      * stack trace — and the partial count scanned so far is kept.
      */
     try {
-        $plugin_failures += wp_connectors_unused_import_violations($repoRoot . '/connectors');
+        $connectors_partial = 0;
+        $plugin_failures += wp_connectors_unused_import_violations($repoRoot . '/connectors', $connectors_partial);
     } catch (UnexpectedValueException $e) {
         fwrite(STDERR, "conventions: FAIL connectors: unreadable subdirectory — the unused-import scan aborted ({$e->getMessage()}).\n");
-        ++$plugin_failures;
+        /*
+         * The PARTIAL count rides the abort's own FAIL (OCR round 43,
+         * t31-ocr43-8): the abort once discarded every violation
+         * counted before the refusal, the tally undercounting by
+         * exactly the FAIL lines it had already printed — the by-ref
+         * count answers under the abort now (the collector's finally
+         * owns the sync), so the summary keeps every printed offense.
+         */
+        $plugin_failures += $connectors_partial + 1;
     }
 
     /*
@@ -102,10 +111,13 @@ if (wp_connectors_cli_entry(__FILE__)) {
      */
     if (is_dir($repoRoot . '/shared/src')) {
         try {
-            $shared_failures += wp_connectors_unused_import_violations($repoRoot . '/shared/src');
+            $shared_partial = 0;
+            $shared_failures += wp_connectors_unused_import_violations($repoRoot . '/shared/src', $shared_partial);
         } catch (UnexpectedValueException $e) {
             fwrite(STDERR, "conventions: FAIL shared/src: unreadable subdirectory — the unused-import scan aborted ({$e->getMessage()}).\n");
-            ++$shared_failures;
+            // The partial count rides the abort here too (the same
+            // t31-ocr43-8 seam, both roots).
+            $shared_failures += $shared_partial + 1;
         }
     }
 
@@ -141,249 +153,278 @@ if (wp_connectors_cli_entry(__FILE__)) {
  * every import kind, never a narrowing).
  *
  * @param string $root Directory to scan recursively for .php files.
+ * @param int|null $counted Output: the violations counted so FAR — set
+ *                          even when the walk aborts mid-recursion, so
+ *                          the caller keeps every offense the abort
+ *                          would otherwise drop (OCR round 43,
+ *                          t31-ocr43-8; the prints happen as found,
+ *                          the return only at the end).
+ * @param-out int $counted The sync always assigns an int (the finally
+ *                         owns it), null being only the default the
+ *                         optional caller starts from.
  * @return int Violation count.
  * @throws UnexpectedValueException When a subdirectory cannot be opened
  *                                  mid-recursion (the scan cannot step
  *                                  past it; the CLI gate converts the
- *                                  abort to a counted FAIL — glm17-17).
+ *                                  abort to a counted FAIL — glm17-17 —
+ *                                  folding $counted in beside it).
  */
-function wp_connectors_unused_import_violations(string $root): int
+function wp_connectors_unused_import_violations(string $root, ?int &$counted = null): int
 {
     $violations = 0;
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
     );
 
-    foreach ($iterator as $file) {
-        if ($file->isDir()) {
-            // The iterator yields directories too, and one NAMED *.php
-            // passes the extension gate below (glm17-10).
-            continue;
-        }
-        // The extension judgment rides the ONE case-insensitive owner
-        // (t31-r4-9) — a '.PHP'-spelled source is judged like any other.
-        if (! wp_connectors_is_php_source($file->getPathname())) {
-            continue;
-        }
-
-        /*
-         * glm25-8: the file's views come from the ONE shared tokenizer
-         * provider — the self-containment analyzer over the same file
-         * in this process already paid for the tokenization (two
-         * token_get_all passes per file per check, four per gate run,
-         * with the tokenize the scanners' dominant cost).
-         */
-        $views = wp_connectors_file_code_views($file->getPathname());
-        if (null === $views) {
-            /*
-             * Loud, never silently compliant: the (string) cast used
-             * to turn a read failure into '' — an unreadable file was
-             * skipped with zero violations and a green gate, making
-             * the unused-import guarantee vacuous for exactly the
-             * files something is wrong with (glm17-10). Counted as a
-             * violation so the exit code stays non-zero.
-             *
-             * The below-root offset rides the sibling's rtrim spelling
-             * at ALL THREE FAIL sites of this scan (OCR round 32,
-             * t31-ocr32-6 — the t31-ocr14-4 parity lint-php.php
-             * replaced its bare substr(getPathname(), strlen($root)+1)
-             * with in this same update; this scan's three sites are
-             * the sweep): a trailing-separator root once ate one byte
-             * too few, and every FAIL line named its file one
-             * character short — the offset derives from the root
-             * AFTER its separator is stripped, the one spelling both
-             * scanners' diagnostics share. The strip is the
-             * DUAL-SEPARATOR class since t31-ocr31-5 moved the
-             * sibling (bin/lib/secret-scanner.php) to
-             * rtrim($root, '/\\'): the native-separator-only strip
-             * keeps a '/'-suffixed root on a '\' host one byte over,
-             * so these sites spell the same class — the offset judges
-             * the spelling CLASS, never the host it runs on, and on a
-             * POSIX host the arithmetic is byte-identical to the
-             * former rtrim.
-             */
-            fwrite(STDERR, sprintf(
-                "conventions: FAIL %s: unreadable file — the unused-import scan cannot run.\n",
-                substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1)
-            ));
-            ++$violations;
-            continue;
-        }
-        $source = $views['source'];
-
-        /*
-         * glm17-8: imports are FOUND on the token-masked view, never the
-         * raw source — the glm15-2 idiom (wp_connectors_strip_comments()
-         * + wp_connectors_mask_string_contents(), both same-length). A
-         * column-0 `use ...;` line inside a nowdoc/heredoc body or a
-         * block comment is DATA, not code; the raw-source regex treated
-         * it as a real import and flagged a phantom unused import when
-         * the short name appeared nowhere else. Both transforms are
-         * length-preserving, so an offset captured in the masked view is
-         * the same byte offset in $source. The matched TEXT may differ
-         * from the raw bytes (glm17-15: a comment between the qualified
-         * name and the `as` alias is legal PHP and blanks to spaces in
-         * the view), so the statement bytes are sliced from $source
-         * below, never taken from the match text.
-         */
-        $code_view = $views['masked'];
-
-        $matches = array();
-        preg_match_all(
-            '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+(?:\s+as\s+(\w+))?\s*;/m',
-            $code_view,
-            $matches,
-            PREG_SET_ORDER | PREG_OFFSET_CAPTURE
-        );
-
-        /*
-         * glm20-3: GROUP-USE declarations (use Foo\{A, B as C};) are
-         * their own form — the single-class pattern above stops at the
-         * '{', so until now every import inside a group was invisible
-         * to the gate (a silent false negative of the exact
-         * phantom-dependency class the gate exists for). The opening is
-         * matched on the SAME masked view; the closing brace comes from
-         * the shared brace walk (string contents are masked and
-         * comments blanked, so no data brace can unbalance it), and the
-         * members are unrolled from the MASKED statement bytes — a
-         * comment blanked to spaces inside the body cannot hide the
-         * comma that splits two members the way its raw bytes would
-         * (glm17-15's length-not-text invariant, applied to the split).
-         */
-        $group_matches = array();
-        preg_match_all(
-            '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+\s*\{/m',
-            $code_view,
-            $group_matches,
-            PREG_SET_ORDER | PREG_OFFSET_CAPTURE
-        );
-
-        if ($matches === array() && $group_matches === array()) {
-            continue;
-        }
-
-        foreach ($matches as $match) {
-            /*
-             * glm17-11: the offset capture IS the statement's position.
-             * The old code re-derived it with an unanchored strpos over
-             * the whole source, which removes the FIRST textual copy of
-             * the statement text — not necessarily the matched statement
-             * — and paid a full-source string copy plus rescan per match.
-             * The dead `false !== $usePosition` guard is gone too — the
-             * offset comes from the matcher itself.
-             */
-            $statement_offset = $match[0][1];
-            // The REAL bytes at the captured offset, same LENGTH as the
-            // masked match (a mid-statement comment blanks to spaces in
-            // the view, so the match text is not the statement): used
-            // for the removal and the flag message (glm17-15).
-            $statement        = substr($source, $statement_offset, strlen($match[0][0]));
-
-            /*
-             * glm28-1 (glm28-22 hardening): a comment anywhere in the
-             * statement — glm17-15 met it between the name and the
-             * alias, the round-28 verifier met it before the terminator
-             * (a trailing note rode into the short name, flagging a
-             * genuinely USED import), and the security verifier met it
-             * between the keyword and the name (a real-bytes cut there
-             * emptied the derived name and silently SKIPPED a dead
-             * import the pre-round scanner flagged). The qualified name
-             * derives from the MASKED match text now: every comment
-             * blanks to a space run there (glm17-14 keeps the line
-             * terminator, which \s+ spans), the import's own bytes are
-             * word chars and backslashes only — never masked — and the
-             * keyword-prefix regex's \s+ spans the blanked run wherever
-             * the comment sits. The REAL statement bytes above still
-             * serve the one-copy removal below (glm17-15) and the
-             * statement's LENGTH; the flag message prints the clean
-             * derived name.
-             */
-            // The short name is the alias when one is given, else the
-            // last segment of the qualified name (the whole name for a
-            // global class import with no backslash).
-            $qualified = trim(preg_replace('/^use\s+(?:function\s+|const\s+)?/', '', substr($match[0][0], 0, -1)));
-            $lastBackslash = strrpos($qualified, '\\');
-            $alias = isset($match[1][0]) && \is_string($match[1][0]) ? $match[1][0] : '';
-            $short = '' !== $alias
-                ? $alias
-                : (false === $lastBackslash ? $qualified : substr($qualified, $lastBackslash + 1));
-
-            if ($short === '') {
+    /*
+     * The finally owns the by-ref sync (OCR round 43, t31-ocr43-8):
+     * the collector prints every violation as it is found but once
+     * returned its count only at the END, so the mid-walk abort's
+     * conversion at the gate silently dropped every offense counted
+     * before the refusal — the tally losing exactly the FAIL lines it
+     * had already printed. The iterator's UnexpectedValueException
+     * flies through UNTOUCHED (the gate's conversion is the verdict)
+     * and $counted still answers: one sync point covering every
+     * increment site and every abort shape, never a per-site
+     * bookkeeping twin.
+     */
+    try {
+        foreach ($iterator as $file) {
+            if ($file->isDir()) {
+                // The iterator yields directories too, and one NAMED *.php
+                // passes the extension gate below (glm17-10).
+                continue;
+            }
+            // The extension judgment rides the ONE case-insensitive owner
+            // (t31-r4-9) — a '.PHP'-spelled source is judged like any other.
+            if (! wp_connectors_is_php_source($file->getPathname())) {
                 continue;
             }
 
-            // Remove exactly the matched statement bytes at the
-            // captured offset (glm16-17: the removal must take ONE copy
-            // — str_replace removed every copy, so a comment line
-            // ending in the exact use-statement text was stripped too,
-            // flagging an import whose only other mention was that
-            // comment), then require at least one word-boundary mention
-            // of the short name anywhere in the remaining source (code,
-            // comments, or docblocks).
-            $withoutUse = substr_replace($source, '', $statement_offset, strlen($statement));
-            // Case-insensitive: PHP class and function name resolution is
-            // itself case-insensitive (glm17-9), so `new widget()` is a
-            // real use of an import of ...Widget. The i modifier only
-            // widens what counts as a use — strictly more conservative.
-            if (preg_match('/\b' . preg_quote($short, '/') . '\b/i', $withoutUse) === 1) {
+            /*
+             * glm25-8: the file's views come from the ONE shared tokenizer
+             * provider — the self-containment analyzer over the same file
+             * in this process already paid for the tokenization (two
+             * token_get_all passes per file per check, four per gate run,
+             * with the tokenize the scanners' dominant cost).
+             */
+            $views = wp_connectors_file_code_views($file->getPathname());
+            if (null === $views) {
+                /*
+                 * Loud, never silently compliant: the (string) cast used
+                 * to turn a read failure into '' — an unreadable file was
+                 * skipped with zero violations and a green gate, making
+                 * the unused-import guarantee vacuous for exactly the
+                 * files something is wrong with (glm17-10). Counted as a
+                 * violation so the exit code stays non-zero.
+                 *
+                 * The below-root offset rides the sibling's rtrim spelling
+                 * at ALL THREE FAIL sites of this scan (OCR round 32,
+                 * t31-ocr32-6 — the t31-ocr14-4 parity lint-php.php
+                 * replaced its bare substr(getPathname(), strlen($root)+1)
+                 * with in this same update; this scan's three sites are
+                 * the sweep): a trailing-separator root once ate one byte
+                 * too few, and every FAIL line named its file one
+                 * character short — the offset derives from the root
+                 * AFTER its separator is stripped, the one spelling both
+                 * scanners' diagnostics share. The strip is the
+                 * DUAL-SEPARATOR class since t31-ocr31-5 moved the
+                 * sibling (bin/lib/secret-scanner.php) to
+                 * rtrim($root, '/\\'): the native-separator-only strip
+                 * keeps a '/'-suffixed root on a '\' host one byte over,
+                 * so these sites spell the same class — the offset judges
+                 * the spelling CLASS, never the host it runs on, and on a
+                 * POSIX host the arithmetic is byte-identical to the
+                 * former rtrim.
+                 */
+                fwrite(STDERR, sprintf(
+                    "conventions: FAIL %s: unreadable file — the unused-import scan cannot run.\n",
+                    substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1)
+                ));
+                ++$violations;
                 continue;
             }
-
-            fwrite(STDERR, sprintf(
-                "conventions: FAIL %s: unused import '%s' — the short name appears nowhere else in the file.\n",
-                substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
-                $qualified
-            ));
-            ++$violations;
-        }
-
-        foreach ($group_matches as $match) {
-            $open = $match[0][1] + strlen($match[0][0]) - 1;
-            $close = wp_connectors_matching_brace_end($code_view, $open);
+            $source = $views['source'];
 
             /*
-             * The declaration must close with ';' right after the
-             * matching brace on the masked view; anything else (an
-             * unbalanced body the walk ran to EOF on, a missing
-             * terminator) is not a well-formed declaration — @lint owns
-             * unparseable files (the glm17 boundary), so the scanner
-             * stays neutral on that class.
+             * glm17-8: imports are FOUND on the token-masked view, never the
+             * raw source — the glm15-2 idiom (wp_connectors_strip_comments()
+             * + wp_connectors_mask_string_contents(), both same-length). A
+             * column-0 `use ...;` line inside a nowdoc/heredoc body or a
+             * block comment is DATA, not code; the raw-source regex treated
+             * it as a real import and flagged a phantom unused import when
+             * the short name appeared nowhere else. Both transforms are
+             * length-preserving, so an offset captured in the masked view is
+             * the same byte offset in $source. The matched TEXT may differ
+             * from the raw bytes (glm17-15: a comment between the qualified
+             * name and the `as` alias is legal PHP and blanks to spaces in
+             * the view), so the statement bytes are sliced from $source
+             * below, never taken from the match text.
              */
-            if (1 !== preg_match('/^[ \t\r\n]*;/', (string) substr($code_view, $close + 1), $semi)) {
-                continue;
-            }
-            $statement_end = $close + 1 + strlen($semi[0]);
+            $code_view = $views['masked'];
 
-            $prefix = preg_replace('/^use\s+(?:function\s+|const\s+)?|[\s{]+$/', '', $match[0][0]);
-            $member_imports = wp_connectors_group_use_imports(
-                (string) $prefix,
-                (string) substr($code_view, $open + 1, $close - $open - 1)
+            $matches = array();
+            preg_match_all(
+                '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+(?:\s+as\s+(\w+))?\s*;/m',
+                $code_view,
+                $matches,
+                PREG_SET_ORDER | PREG_OFFSET_CAPTURE
             );
 
             /*
-             * The RAW bytes at the captured offset (glm17-15), removed
-             * once for every member's mention check — the whole group
-             * statement is the declaration surface.
+             * glm20-3: GROUP-USE declarations (use Foo\{A, B as C};) are
+             * their own form — the single-class pattern above stops at the
+             * '{', so until now every import inside a group was invisible
+             * to the gate (a silent false negative of the exact
+             * phantom-dependency class the gate exists for). The opening is
+             * matched on the SAME masked view; the closing brace comes from
+             * the shared brace walk (string contents are masked and
+             * comments blanked, so no data brace can unbalance it), and the
+             * members are unrolled from the MASKED statement bytes — a
+             * comment blanked to spaces inside the body cannot hide the
+             * comma that splits two members the way its raw bytes would
+             * (glm17-15's length-not-text invariant, applied to the split).
              */
-            $statement = substr($source, $match[0][1], $statement_end - $match[0][1]);
-            $withoutUse = substr_replace($source, '', $match[0][1], strlen($statement));
+            $group_matches = array();
+            preg_match_all(
+                '/^use\s+(?:function\s+|const\s+)?[\w\\\\]+\s*\{/m',
+                $code_view,
+                $group_matches,
+                PREG_SET_ORDER | PREG_OFFSET_CAPTURE
+            );
 
-            foreach ($member_imports as $member_import) {
-                // Same mention contract as the single form: one
-                // word-boundary mention anywhere (code, comments,
-                // docblocks), case-insensitive (glm17-9).
-                if (preg_match('/\b' . preg_quote($member_import['short'], '/') . '\b/i', $withoutUse) === 1) {
+            if ($matches === array() && $group_matches === array()) {
+                continue;
+            }
+
+            foreach ($matches as $match) {
+                /*
+                 * glm17-11: the offset capture IS the statement's position.
+                 * The old code re-derived it with an unanchored strpos over
+                 * the whole source, which removes the FIRST textual copy of
+                 * the statement text — not necessarily the matched statement
+                 * — and paid a full-source string copy plus rescan per match.
+                 * The dead `false !== $usePosition` guard is gone too — the
+                 * offset comes from the matcher itself.
+                 */
+                $statement_offset = $match[0][1];
+                // The REAL bytes at the captured offset, same LENGTH as the
+                // masked match (a mid-statement comment blanks to spaces in
+                // the view, so the match text is not the statement): used
+                // for the removal and the flag message (glm17-15).
+                $statement        = substr($source, $statement_offset, strlen($match[0][0]));
+
+                /*
+                 * glm28-1 (glm28-22 hardening): a comment anywhere in the
+                 * statement — glm17-15 met it between the name and the
+                 * alias, the round-28 verifier met it before the terminator
+                 * (a trailing note rode into the short name, flagging a
+                 * genuinely USED import), and the security verifier met it
+                 * between the keyword and the name (a real-bytes cut there
+                 * emptied the derived name and silently SKIPPED a dead
+                 * import the pre-round scanner flagged). The qualified name
+                 * derives from the MASKED match text now: every comment
+                 * blanks to a space run there (glm17-14 keeps the line
+                 * terminator, which \s+ spans), the import's own bytes are
+                 * word chars and backslashes only — never masked — and the
+                 * keyword-prefix regex's \s+ spans the blanked run wherever
+                 * the comment sits. The REAL statement bytes above still
+                 * serve the one-copy removal below (glm17-15) and the
+                 * statement's LENGTH; the flag message prints the clean
+                 * derived name.
+                 */
+                // The short name is the alias when one is given, else the
+                // last segment of the qualified name (the whole name for a
+                // global class import with no backslash).
+                $qualified = trim(preg_replace('/^use\s+(?:function\s+|const\s+)?/', '', substr($match[0][0], 0, -1)));
+                $lastBackslash = strrpos($qualified, '\\');
+                $alias = isset($match[1][0]) && \is_string($match[1][0]) ? $match[1][0] : '';
+                $short = '' !== $alias
+                    ? $alias
+                    : (false === $lastBackslash ? $qualified : substr($qualified, $lastBackslash + 1));
+
+                if ($short === '') {
+                    continue;
+                }
+
+                // Remove exactly the matched statement bytes at the
+                // captured offset (glm16-17: the removal must take ONE copy
+                // — str_replace removed every copy, so a comment line
+                // ending in the exact use-statement text was stripped too,
+                // flagging an import whose only other mention was that
+                // comment), then require at least one word-boundary mention
+                // of the short name anywhere in the remaining source (code,
+                // comments, or docblocks).
+                $withoutUse = substr_replace($source, '', $statement_offset, strlen($statement));
+                // Case-insensitive: PHP class and function name resolution is
+                // itself case-insensitive (glm17-9), so `new widget()` is a
+                // real use of an import of ...Widget. The i modifier only
+                // widens what counts as a use — strictly more conservative.
+                if (preg_match('/\b' . preg_quote($short, '/') . '\b/i', $withoutUse) === 1) {
                     continue;
                 }
 
                 fwrite(STDERR, sprintf(
-                    "conventions: FAIL %s: unused import '%s' (group-use member) — the short name appears nowhere else in the file.\n",
+                    "conventions: FAIL %s: unused import '%s' — the short name appears nowhere else in the file.\n",
                     substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
-                    $member_import['qualified']
+                    $qualified
                 ));
                 ++$violations;
             }
+
+            foreach ($group_matches as $match) {
+                $open = $match[0][1] + strlen($match[0][0]) - 1;
+                $close = wp_connectors_matching_brace_end($code_view, $open);
+
+                /*
+                 * The declaration must close with ';' right after the
+                 * matching brace on the masked view; anything else (an
+                 * unbalanced body the walk ran to EOF on, a missing
+                 * terminator) is not a well-formed declaration — @lint owns
+                 * unparseable files (the glm17 boundary), so the scanner
+                 * stays neutral on that class.
+                 */
+                if (1 !== preg_match('/^[ \t\r\n]*;/', (string) substr($code_view, $close + 1), $semi)) {
+                    continue;
+                }
+                $statement_end = $close + 1 + strlen($semi[0]);
+
+                $prefix = preg_replace('/^use\s+(?:function\s+|const\s+)?|[\s{]+$/', '', $match[0][0]);
+                $member_imports = wp_connectors_group_use_imports(
+                    (string) $prefix,
+                    (string) substr($code_view, $open + 1, $close - $open - 1)
+                );
+
+                /*
+                 * The RAW bytes at the captured offset (glm17-15), removed
+                 * once for every member's mention check — the whole group
+                 * statement is the declaration surface.
+                 */
+                $statement = substr($source, $match[0][1], $statement_end - $match[0][1]);
+                $withoutUse = substr_replace($source, '', $match[0][1], strlen($statement));
+
+                foreach ($member_imports as $member_import) {
+                    // Same mention contract as the single form: one
+                    // word-boundary mention anywhere (code, comments,
+                    // docblocks), case-insensitive (glm17-9).
+                    if (preg_match('/\b' . preg_quote($member_import['short'], '/') . '\b/i', $withoutUse) === 1) {
+                        continue;
+                    }
+
+                    fwrite(STDERR, sprintf(
+                        "conventions: FAIL %s: unused import '%s' (group-use member) — the short name appears nowhere else in the file.\n",
+                        substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
+                        $member_import['qualified']
+                    ));
+                    ++$violations;
+                }
+            }
         }
+    } finally {
+        // The by-ref sync (t31-ocr43-8): the abort flies through
+        // UNTOUCHED — the gate owns the verdict — and the partial
+        // count still answers beside it.
+        $counted = $violations;
     }
 
     return $violations;
