@@ -1988,6 +1988,28 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the suffix class — '.' is a tchar the header grammar admits, and the credential boundary speaks the whole delimiter census (red at HEAD: unmasked).");
         }
         $this->assertFalse(SecretMask::is_sensitive_header_name('x.api.keychain'), 'The dot twin of the boundary pin — a name whose final segment merely CONTAINS the suffix bytes is not credential-bearing, over any separator spelling.');
+
+        /*
+         * OCR-round-46 pin (t31-ocr46-4): the EDGE-DELIMITER twin —
+         * the same r12-4 leak class the ocr43-1/ocr44-2 closures
+         * claimed closed. 'Authorization.' is a legal RFC 7230 token
+         * (the trailing '.' is a tchar), and its fold
+         * 'authorization-' has an EMPTY final segment: the exact
+         * match failed and str_ends_with('-authorization') failed
+         * over the empty-segment shape, so the credential rendered
+         * verbatim through every safe debug form (red at HEAD:
+         * unmasked). The boundary segments BEFORE emptiness is
+         * judged — an empty BOUND segment never disqualifies a
+         * credential-bearing name, over either edge (the class is
+         * symmetric: '.Authorization' and 'Authorization_' mask the
+         * same), while an empty MID segment changes nothing the
+         * boundary already owned.
+         */
+        foreach (array('Authorization.', '.Authorization', 'Authorization_', 'X_Api_Key.', 'x.api.key.') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — an empty BOUND segment never disqualifies a credential-bearing name (red at HEAD: unmasked).");
+        }
+        $this->assertFalse(SecretMask::is_sensitive_header_name('Request-Id.'), 'The boundary pin keeps its charge over the edge twin — bound delimiters on a non-credential name mask nothing.');
+        $this->assertFalse(SecretMask::is_sensitive_header_name('x-api-keychain-'), 'The trailing-delimiter twin of the keychain pin — empty bound segments do not dissolve the segment boundary the class judges.');
     }
 
     /* ---------------------------------------------------------------

@@ -266,12 +266,31 @@ final class SecretMask {
 		 */
 		$delimiters = HeaderMap::NAME_TOKEN_DELIMITER_CLASS;
 		$folded     = strtr( AsciiFold::lower( $name ), $delimiters, str_repeat( '-', strlen( $delimiters ) ) );
-		if ( \in_array( $folded, self::SENSITIVE_HEADER_NAMES, true ) ) {
+
+		/*
+		 * The boundary SEGMENTS before emptiness is judged (OCR round
+		 * 46, t31-ocr46-4 — the EDGE-DELIMITER twin of the r12-4 leak
+		 * class the ocr43-1/ocr44-2 closures claimed closed):
+		 * 'Authorization.' is a legal RFC 7230 token (the trailing '.'
+		 * is a tchar), and its fold 'authorization-' has an EMPTY
+		 * final segment — the exact match failed and str_ends_with(
+		 * '-authorization') failed over the empty-segment shape, so
+		 * the credential rendered verbatim through every safe debug
+		 * form. An empty BOUND segment never disqualifies a
+		 * credential-bearing name: the judged name sheds its bound
+		 * separators once at the fold (the class is symmetric — a
+		 * leading '.Authorization' and a trailing 'Authorization_'
+		 * mask the same), while an empty MID segment changes nothing
+		 * the boundary already owned and a name of separators alone
+		 * judges the empty string (no credential bytes).
+		 */
+		$judged = trim( $folded, '-' );
+		if ( \in_array( $judged, self::SENSITIVE_HEADER_NAMES, true ) ) {
 			return true;
 		}
 
 		foreach ( self::SENSITIVE_HEADER_NAME_SUFFIXES as $suffix ) {
-			if ( $folded === $suffix || \str_ends_with( $folded, '-' . $suffix ) ) {
+			if ( $judged === $suffix || \str_ends_with( $judged, '-' . $suffix ) ) {
 				return true;
 			}
 		}
