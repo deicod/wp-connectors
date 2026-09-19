@@ -158,6 +158,14 @@ if (wp_connectors_cli_entry(__FILE__)) {
         }
     }
 
-    printf("lint-php: %d file(s) checked, %d failure(s)\n", count($files), $failures);
+    /*
+     * The summary names every count the EXIT verdict folds in (OCR
+     * round 43, t31-ocr43-7): the refusal-only shape once printed
+     * '0 failure(s)' while exiting 1 — the printed line and the
+     * verdict disagreeing about where the red came from. The refusal
+     * count rides the same line (both numbers when both nonzero, the
+     * zero spelling when the verdict is clean).
+     */
+    printf("lint-php: %d file(s) checked, %d failure(s), %d walk refusal(s)\n", count($files), $failures, $walk_refusals);
     exit($failures === 0 && $walk_refusals === 0 ? 0 : 1);
 }

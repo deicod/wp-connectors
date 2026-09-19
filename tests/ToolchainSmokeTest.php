@@ -603,6 +603,14 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertSame(1, $exit, "The unreadable subdirectory fails the gate by its own named verdict — never the uncaught fatal's exit 255 (red at HEAD): {$refusal}");
             $this->assertStringContainsString('unreadable subdirectory', $refusal, 'The refusal names the unreadable-entry class — the tree is named, never a stack trace.');
             $this->assertStringContainsString('file(s) checked', $refusal, 'The partial count from the readable trees stays loud in the summary (the glm17-17 conversion shape).');
+            /*
+             * OCR round 43 (t31-ocr43-7): the summary names the count
+             * that CARRIES the verdict — the refusal-only red shape
+             * once printed '0 failure(s)' while exiting 1, the line
+             * and the verdict disagreeing about where the red came
+             * from (red at HEAD: no refusal count in the output).
+             */
+            $this->assertStringContainsString('0 failure(s), 1 walk refusal(s)', $refusal, 'The refusal count rides the summary line beside the failure count — the printed line and the exit verdict agree about the red\'s source.');
             $this->assertStringNotContainsString('Fatal error', $refusal, 'No uncaught SPL fatal rides the walk anymore.');
             $this->assertStringNotContainsString('Hidden.php', $refusal, 'The unreachable source itself is never linted — the tree is judged whole or not at all.');
         } finally {
