@@ -410,10 +410,22 @@ final class SelfContainmentCompoundWritesTest extends TestCase
      */
     public function testAnOutsideOrRelativeScanRootRefusesAtTheBoundary(): void
     {
+        /*
+         * The staging writes OWN THEIR RETURNS (OCR round 52,
+         * t31-ocr52-5 — the ocr27-9 staging doctrine): the boundary
+         * refuses a MISSING scan root with the SAME RuntimeException
+         * class and message vocabulary as an outside root, so an
+         * unchecked mkdir()/file_put_contents() failure (a read-only
+         * temp, a full disk) surfaced as the EXPECTED refusal and the
+         * leg passed without testing anything — a reachable vacuous
+         * pass over the very refusal the test exists to drive. A
+         * staging failure now fails the test AS a staging failure
+         * naming its path.
+         */
         // A SIBLING of the plugin root — outside must not sit inside it.
         $outside = sys_get_temp_dir() . '/wpct-scanroot-outside-' . uniqid('', true);
-        mkdir($outside . '/sub', 0755, true);
-        file_put_contents($outside . '/sub/spy.php', "<?php\n\$f = dirname(__DIR__, 2) . '/../escape.php';\nrequire \$f;\n");
+        $this->assertTrue(mkdir($outside . '/sub', 0755, true), 'staging: the outside scan root must create — a staging failure fails as staging, never as the boundary verdict.');
+        $this->assertNotFalse(file_put_contents($outside . '/sub/spy.php', "<?php\n\$f = dirname(__DIR__, 2) . '/../escape.php';\nrequire \$f;\n"), 'staging: the outside-root fixture must write — a staging failure fails as staging, never as the boundary verdict.');
 
         try {
             // The verdicts ride the ONE refusal owner (t31-ocr15-7,
@@ -463,7 +475,7 @@ final class SelfContainmentCompoundWritesTest extends TestCase
              * (RuntimeException, the channel pin above).
              */
             $fileRoot = $this->root . '/plain.txt';
-            file_put_contents($fileRoot, 'a file, not a walk root');
+            $this->assertNotFalse(file_put_contents($fileRoot, 'a file, not a walk root'), 'staging: the file-root fixture must write — a staging failure fails as staging (a missing root answers the same refusal vocabulary), never as the boundary verdict.');
             $caught = WpHarness::refusalOf(
                 fn() => wp_connectors_self_containment_violations($this->root, $fileRoot),
                 'A FILE scan root must refuse at the boundary — it once died in the iterator constructor\'s engine vocabulary.',
