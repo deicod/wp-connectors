@@ -6,6 +6,81 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 39)
+
+Thirty-ninth OCR-tool round (main 61/61, fully complete): 7
+findings from 8 comments (the two inspect-artifact:511 comments one
+finding plus the reviewer's own correction), driver accepts all.
+Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8.
+The round's shape: the regression-pin generation — the r38-2 pin
+judged on whether it drives its own subject (it did not: the cache
+short-circuits before the plant), plus the drive-letter degenerate
+survivor and the extractTo escape. Round 39 answered NEW findings,
+so the OCR phase continues per plan. Fixed as t31-ocr39-1..7 — one
+commit per finding, plus this docs record, the full offline check
+green after every commit. Suite 1696 → 1696 tests, 46278 → 46282
+assertions, 3 skipped unchanged.
+
+- **The extractTo throw answers the whole-or-not-at-all refusal,
+  never an uncaught escape (t31-ocr39-1, bug:low)** — the r12-20
+  finally restored the capture handler but owned nothing else, so a
+  throw escaped uncaught past the restore, past $zip->close(), and
+  past every verdict surface: the CLI died at exit 255 with an
+  engine stack trace and no verdict, the test call site aborting its
+  whole battery. The catch rides inside the try statement whose
+  finally restores the handler — the catch's return runs that
+  finally exactly once, no nested finally — and the throw answers
+  the same refusal the false return answers, the reason rendered
+  through the one printable seam.
+- **The whole-path degenerate fence owns the bare drive-letter
+  spelling (t31-ocr39-2, bug:low)** — 'C:' survived the fence (rtrim
+  keeps it, no tail to strip) and is_dir('C:') is true on Windows:
+  the walk would name the drive root, a directory the caller never
+  named. The stripped probe refuses the drive-letter root spelling
+  set the ocr33-5 root clause already names, judged before any
+  is_dir() can follow the spelling; driven red at HEAD through a
+  literal 'C:' directory — the walk emptied it.
+- **save()'s @return names false's actual meaning (t31-ocr39-3,
+  documentation:low)** — the summary claimed 'false when the
+  precondition failed', contradicting the contract the docblock and
+  @throws state: three of the four precondition classes throw,
+  never return false, and the t31-ocr15-2 domain rule reserves false
+  for genuine fence verdicts. The @return names that class alone;
+  the throwing classes live in @throws only.
+- **The landing loop's prefix speaks the iterator's own join
+  (t31-ocr39-4, bug:medium)** — the relativize prefix was
+  '/'-joined while RecursiveDirectoryIterator joins child pathnames
+  through the native separator (the ocr28-8/ocr30-7 doctrine the
+  file's own gates state), so on a separator host the prefix never
+  matched any pathname and the first leaf tripped the
+  cannot-relativize refusal. The prefix derives from
+  DIRECTORY_SEPARATOR; POSIX byte-unchanged.
+- **The case-vocabulary leg gates itself the sibling way
+  (t31-ocr39-5, test:low)** — the battery's one copy leg with no
+  isPosixHost() gate: on a '\' host the drive-letter-spelled temp
+  base sends the '/SRC' variant into the Windows-absolute-target
+  platform refusal before containment ever runs. The gate rides the
+  leg, the skip message naming the premise.
+- **The suite's STDERR diagnostics answer one stream-resolving
+  spelling (t31-ocr39-6, maintainability:low)** — the ocr38-5 skip
+  notice was the suite's only bare STDERR-constant writer executing
+  in the test process, inconsistent with the ocr38-4 doctrine the
+  release guard beside it already kept. WpHarness::stderrNotice() is
+  the one writer — php://stderr in every SAPI, an unopenable stream
+  degrading silently — and both sites ride it.
+- **The ocr38-2 pin drives its own subject (t31-ocr39-7,
+  test:high)** — caseProbeAnswer() short-circuits on the per-volume
+  cache before any plant is attempted, and the pin's holder sat on
+  the volume the battery's earlier legs already cached: in suite
+  order the planted-fail arm never ran (the pin vacuous), and on a
+  case-insensitive host the cached answer reddened the expectation
+  spuriously. The seam unsets the volume's cache key — the plant
+  path the only path — and the control re-measures and restores the
+  host truth the unset set aside; expectations host-correct on both
+  classes, the cache-hit path pinned beside the plant path it
+  starved.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 38)
 
 Thirty-eighth OCR-tool round (main 61/61, fully complete): 5
