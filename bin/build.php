@@ -253,11 +253,49 @@ final class WpConnectorsBuild
                         }
                     }
 
+                    /*
+                     * The FAMILY-PREFIX brace tail rides the SAME
+                     * member grammar (OCR round 40, t31-ocr40-1 — the
+                     * sixth use-grammar generation): a group whose
+                     * PREFIX is the family itself (`use …\Shared\{Clock
+                     * as self};`, or deeper through the sub-segment
+                     * tail `…\Shared\Storage\{…}`) matches THIS
+                     * pattern — the vendor-prefix group pattern below
+                     * owns only the spelling whose brace sits
+                     * immediately after the vendor prefix — and the
+                     * tail once re-emitted VERBATIM beside the
+                     * rewritten prefix: the members are relative to
+                     * the prefix, so riding them verbatim is the
+                     * correct REWRITE, but riding them unvalidated
+                     * shipped the engine-illegal member spellings
+                     * (`as self`, a fully-qualified member, an empty
+                     * member) the member grammar exists to refuse —
+                     * compile-error bytes in the zip at exit 0 with
+                     * every gate green (the postcondition judges
+                     * family references, and a member riding a
+                     * target-prefixed prefix waves through). The
+                     * census: every seam that re-emits a group BODY
+                     * validates it through the ONE member-grammar
+                     * owner below — the vendor-prefix group callback
+                     * (which also rewrites the members' leading
+                     * Shared segment) and this return (which never
+                     * re-spells a member, its prefix already carrying
+                     * the rewrite).
+                     */
+                    $brace_tail = (string) ($matches[4] ?? '');
+                    if ('' !== $brace_tail) {
+                        $body = (string) substr($brace_tail, (int) strpos($brace_tail, '{') + 1, -1);
+                        $member_pieces = explode(',', $body);
+                        foreach ($member_pieces as $member_index => $member_piece) {
+                            self::groupUseMemberGrammar(trim($member_piece), $body, $member_index, count($member_pieces), $sourceVersion);
+                        }
+                    }
+
                     // The plain target spelling (the callback returns
                     // raw bytes, never a replacement template — the
                     // former $target_escaped side decoded to exactly
                     // this through the replacement parser).
-                    return $matches[1] . $vendor . '\\' . $pluginSuffix . '\\' . $family_leaf . ($matches[2] ?? '') . $alias_group . ($matches[4] ?? '') . ';';
+                    return $matches[1] . $vendor . '\\' . $pluginSuffix . '\\' . $family_leaf . ($matches[2] ?? '') . $alias_group . $brace_tail . ';';
                 },
                 $rewritten
             ),
@@ -300,151 +338,35 @@ final class WpConnectorsBuild
                 static function ($matches) use ($pluginSuffix, $sourceVersion, $shared_leaf) {
                     $members = array();
                     $member_pieces = explode(',', $matches[3]);
-                    foreach ($member_pieces as $member_index => $member) {
-                        $member = trim($member);
+                    foreach ($member_pieces as $member_index => $member_piece) {
                         /*
                          * The member grammar is validated BEFORE
-                         * reassembly (OCR round 31, t31-ocr31-4): the
-                         * callback once reassembled member bytes
+                         * reassembly (OCR round 31, t31-ocr31-4; the
+                         * ONE owner since t31-ocr40-1, shared with the
+                         * family-prefix brace tail one pattern above):
+                         * the callback once reassembled member bytes
                          * through explode/trim/implode with no
                          * refusal of its own, so every illegal member
-                         * spelling normalized into a silent pass —
-                         * the empty member (`{, Shared\Clock}`), the
-                         * trailing comma (`{Shared\Clock,}`), the
-                         * empty body (`{}`), a dangling `as`
-                         * (`{Shared\Clock as}`) — and the rewritten
-                         * group SHIPPED the parse-error spelling
-                         * verbatim at exit 0 (driven red at HEAD;
-                         * the empty body alone reached a late,
-                         * mis-named postcondition refusal). The
+                         * spelling normalized into a silent pass. The
                          * rewriter owns what it reassembles: each
-                         * illegal shape refuses HERE, at the seam,
-                         * naming the spelling the engine rejects.
+                         * illegal shape refuses at the grammar's own
+                         * seam, naming the spelling the engine
+                         * rejects. THIS seam additionally rewrites the
+                         * member's leading Shared segment (the members
+                         * of a vendor-prefix group carry it — the
+                         * family-prefix tail above never does, its
+                         * prefix already ending in the family).
                          */
-                        if ('' === $member) {
-                            $shape = '' === trim($matches[3])
-                                ? 'an empty brace body'
-                                : (0 === $member_index
-                                    ? 'an empty member before its comma'
-                                    : ($member_index === count($member_pieces) - 1
-                                        ? 'a trailing comma'
-                                        : 'an empty member between commas'));
-                            throw new RuntimeException("build: the group-use member grammar refuses the statement (body: '" . trim($matches[3]) . "') in {$sourceVersion} — here: {$shape}: every one of these spellings is a parse error the engine rejects at compile time, and the reassembly once normalized it through explode/trim/implode into a silent pass that shipped the parse-error bytes verbatim at exit 0; write one named member per comma, never an empty one");
-                        }
-                        if (1 === preg_match('/\bas\s*$/i', $member)) {
-                            throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' with no identifier after it: a dangling alias is a parse error the engine rejects at compile time, and the reassembly once reassembled it into rewritten output that shipped ' as}' verbatim at exit 0; write the member as 'Name as Alias' or the bare 'Name'");
-                        }
-                        $tail = '';
-                        /*
-                         * The extraction matches ANY `as`-tail
-                         * (case-insensitively — `AS` is a legal
-                         * keyword spelling the engine accepts, and the
-                         * lowercase-only cut once let a legal `Clock AS
-                         * C` member fall through to the leaf rewrite;
-                         * the tail's own shape is judged below, never
-                         * the keyword's case).
-                         */
-                        if (1 === preg_match('/^(.+?)\s+as\s+(.+)$/i', $member, $alias_parts)) {
-                            /*
-                             * The member's ALIAS rides the same
-                             * engine-illegal refusal (OCR round 32,
-                             * t31-ocr32-2 — the round's census over
-                             * every seam that re-emits an alias): the
-                             * grammar validated the member and its
-                             * dangling `as` but re-emitted the
-                             * extracted identifier unvalidated, so
-                             * `{Shared\Clock as self}` member-rewrote
-                             * to `<Suffix>\Shared\Clock as self`
-                             * verbatim — the same exit-0 compile-error
-                             * class the use-statement seam refused at
-                             * t31-ocr32-1, one re-emit seam over. The
-                             * identifier consults the ONE reserved-
-                             * vocab owner (php -l-derived, case-
-                             * insensitively).
-                             */
-                            if (self::aliasIdentifierIsEngineIllegal($alias_parts[2])) {
-                                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: the alias '{$alias_parts[2]}' is a reserved spelling the engine forbids in the slot, case-insensitively (every keyword the lexer does not spell a name), and the reassembly re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write 'Name as Alias' with a plain identifier the engine accepts");
-                            }
-                            /*
-                             * An `as`-tail that is not ONE plain
-                             * identifier refuses, never the verbatim
-                             * re-emit (OCR round 32, t31-ocr32-3): the
-                             * identifier-only capture once left a
-                             * non-matching tail (`{Shared\Clock as
-                             * Foo\Bar}`, a backslash-separated alias
-                             * the single-identifier grammar cannot
-                             * spell) attached to the member, and the
-                             * whole member string flowed into the leaf
-                             * rewrite — the leading segment rewritten,
-                             * ` as Foo\Bar` re-emitted verbatim beside
-                             * it at exit 0 (driven at HEAD), the
-                             * engine accepting only a bare identifier
-                             * in the slot (php -l: the qualified alias
-                             * refuses).
-                             */
-                            if (1 !== preg_match('/\A[A-Za-z0-9_]+\z/', $alias_parts[2])) {
-                                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' whose tail ('{$alias_parts[2]}') is not one plain identifier: the engine accepts only a bare identifier in the alias slot, and the reassembly once re-emitted the tail verbatim beside the rewritten name at exit 0; write 'Name as Alias' with a plain identifier");
-                            }
-                            $member = $alias_parts[1];
-                            $tail = ' as ' . $alias_parts[2];
-                        }
-                        $kind = '';
-                        /*
-                         * The member KIND keyword rides the engine's
-                         * case-insensitivity too (t31-ocr35-1's sweep,
-                         * the group-body twin of the prefix axes): the
-                         * case-exact extraction once left a `FUNCTION
-                         * Shared\…` member un-stripped, the leaf
-                         * rewrite matched no leading Shared segment on
-                         * it, and the member rode verbatim — the
-                         * keyword census is one vocabulary at every
-                         * seam that spells the grammar, member bodies
-                         * included. The kind's own casing rides the
-                         * reassembly verbatim ($member_kind[0]).
-                         */
-                        if (1 === preg_match('/^(?:function|const)\s+/i', $member, $member_kind)) {
-                            $kind = $member_kind[0];
-                            $member = (string) substr($member, strlen($member_kind[0]));
-                        }
-                        /*
-                         * The member NAME's leading-separator verdict
-                         * is DERIVED from the engine oracle (OCR round
-                         * 36, t31-ocr36-1 — the fifth generation of
-                         * the use-grammar family): a fully-qualified
-                         * member (`{ \Shared\Clock as C }`) is a parse
-                         * error the engine rejects at compile time
-                         * (php -l: "unexpected fully qualified name" —
-                         * a group member resolves against the
-                         * statement's prefix, so a leading backslash
-                         * names no legal member), and the grammar once
-                         * validated everything AROUND the name (the
-                         * empty/dangling/alias/kind shapes) while the
-                         * name itself rode unjudged: the leaf rewrite
-                         * cannot match the leading separator, so the
-                         * member re-emitted VERBATIM — and beside a
-                         * rewritten sibling the postcondition saw no
-                         * family reference in it at all (an absolute
-                         * member reports un-composed, and the composed
-                         * sibling kept the prefix's own spelling from
-                         * reporting — driven at HEAD: the mixed body
-                         * returned normally, compile-error bytes in
-                         * the zip at exit 0; the alone body refused at
-                         * the postcondition's anonymous seam one
-                         * verdict late). Write the member relative to
-                         * the group's prefix.
-                         */
-                        if ('\\' === ($member[0] ?? '')) {
-                            throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: a fully-qualified member (a leading backslash): the engine rejects the spelling at compile time (a group member resolves against the statement's prefix — php -l: unexpected fully qualified name), and the leaf rewrite cannot match the leading separator, so the reassembly once re-emitted the member verbatim beside its rewritten siblings — compile-error bytes in the zip at exit 0; write the member relative to the group's prefix, never with a leading backslash");
-                        }
-                        $members[] = $kind . self::replaceOrThrow(
+                        $grammar = self::groupUseMemberGrammar(trim($member_piece), $matches[3], $member_index, count($member_pieces), $sourceVersion);
+                        $members[] = $grammar[0] . self::replaceOrThrow(
                             preg_replace(
                                 '/^' . $shared_leaf . '(?![A-Za-z0-9_])/',
                                 $pluginSuffix . '\\\\' . $shared_leaf,
-                                $member
+                                $grammar[1]
                             ),
                             'group-use member rewrite',
                             $sourceVersion
-                        ) . $tail;
+                        ) . $grammar[2];
                     }
 
                     return $matches[1] . $matches[2] . implode(', ', $members) . $matches[4] . ';';
@@ -1833,6 +1755,89 @@ final class WpConnectorsBuild
         }
 
         return false;
+    }
+
+    /**
+     * Validates ONE group-use member against the member grammar and
+     * returns its parsed pieces — the ONE owner of the member
+     * validation every seam that re-emits a group BODY rides (OCR
+     * round 40, t31-ocr40-1: the vendor-prefix group callback — which
+     * also rewrites the member's leading Shared segment — and the
+     * plain use-statement seam's FAMILY-PREFIX brace tail, which
+     * re-emits its members verbatim beside the rewritten prefix).
+     *
+     * The grammar is validated BEFORE any reassembly (OCR round 31,
+     * t31-ocr31-4): the reassembly once normalized every illegal
+     * member spelling through explode/trim/implode into a silent pass
+     * that shipped the parse-error bytes verbatim at exit 0. The
+     * rewriter owns what it reassembles: each illegal shape refuses
+     * HERE, at the seam, naming the spelling the engine rejects —
+     *
+     * - the empty member (`{, Shared\Clock}`), the trailing comma
+     *   (`{Shared\Clock,}`), the empty body (`{}`), and a dangling
+     *   `as` (`{Shared\Clock as}`);
+     * - an `as`-tail that is not ONE plain identifier (`{Shared\Clock
+     *   as Foo\Bar}` — php -l accepts only a bare identifier in the
+     *   slot; OCR round 32, t31-ocr32-3), extracted case-
+     *   insensitively (`AS` is a legal keyword spelling that keeps
+     *   riding; the tail's own shape is judged, never the keyword's
+     *   case);
+     * - a member ALIAS the engine forbids (`{Shared\Clock as self}`,
+     *   case-insensitively — the same reserved-vocab owner
+     *   t31-ocr32-1 established at the use-statement seam, the
+     *   t31-ocr33-1 complete class since);
+     * - a member KIND keyword (function/const, case-insensitively —
+     *   t31-ocr35-1), stripped and returned so the caller's rewrite
+     *   sees the bare name;
+     * - a fully-qualified member (`{ \Shared\Clock as C }` — a group
+     *   member resolves against the statement's prefix, so a leading
+     *   backslash names no legal member; php -l: "unexpected fully
+     *   qualified name"; OCR round 36, t31-ocr36-1).
+     *
+     * @param string $member        The trimmed member piece to judge.
+     * @param string $body          The whole brace body (refusal context).
+     * @param int    $member_index  Zero-based index of the piece within the comma split.
+     * @param int    $piece_count   Count of the comma split's pieces.
+     * @param string $sourceVersion Provenance string (refusal context).
+     * @return list<string> The parsed member: [kind prefix, name, alias tail].
+     * @throws RuntimeException When the member is a spelling the engine rejects.
+     */
+    private static function groupUseMemberGrammar($member, $body, $member_index, $piece_count, $sourceVersion)
+    {
+        if ('' === $member) {
+            $shape = '' === trim($body)
+                ? 'an empty brace body'
+                : (0 === $member_index
+                    ? 'an empty member before its comma'
+                    : ($member_index === $piece_count - 1
+                        ? 'a trailing comma'
+                        : 'an empty member between commas'));
+            throw new RuntimeException("build: the group-use member grammar refuses the statement (body: '" . trim($body) . "') in {$sourceVersion} — here: {$shape}: every one of these spellings is a parse error the engine rejects at compile time, and the reassembly once normalized it through explode/trim/implode into a silent pass that shipped the parse-error bytes verbatim at exit 0; write one named member per comma, never an empty one");
+        }
+        if (1 === preg_match('/\bas\s*$/i', $member)) {
+            throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' with no identifier after it: a dangling alias is a parse error the engine rejects at compile time, and the reassembly once reassembled it into rewritten output that shipped ' as}' verbatim at exit 0; write the member as 'Name as Alias' or the bare 'Name'");
+        }
+        $tail = '';
+        if (1 === preg_match('/^(.+?)\s+as\s+(.+)$/i', $member, $alias_parts)) {
+            if (self::aliasIdentifierIsEngineIllegal($alias_parts[2])) {
+                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: the alias '{$alias_parts[2]}' is a reserved spelling the engine forbids in the slot, case-insensitively (every keyword the lexer does not spell a name), and the reassembly re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write 'Name as Alias' with a plain identifier the engine accepts");
+            }
+            if (1 !== preg_match('/\A[A-Za-z0-9_]+\z/', $alias_parts[2])) {
+                throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' whose tail ('{$alias_parts[2]}') is not one plain identifier: the engine accepts only a bare identifier in the alias slot, and the reassembly once re-emitted the tail verbatim beside the rewritten name at exit 0; write 'Name as Alias' with a plain identifier");
+            }
+            $member = $alias_parts[1];
+            $tail = ' as ' . $alias_parts[2];
+        }
+        $kind = '';
+        if (1 === preg_match('/^(?:function|const)\s+/i', $member, $member_kind)) {
+            $kind = $member_kind[0];
+            $member = (string) substr($member, strlen($member_kind[0]));
+        }
+        if ('\\' === ($member[0] ?? '')) {
+            throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: a fully-qualified member (a leading backslash): the engine rejects the spelling at compile time (a group member resolves against the statement's prefix — php -l: unexpected fully qualified name), and the leaf rewrite cannot match the leading separator, so the reassembly once re-emitted the member verbatim beside its rewritten siblings — compile-error bytes in the zip at exit 0; write the member relative to the group's prefix, never with a leading backslash");
+        }
+
+        return array( $kind, $member, $tail );
     }
 
     /**

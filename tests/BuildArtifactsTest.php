@@ -6260,6 +6260,46 @@ FIXTURE;
         }
 
         /*
+         * OCR round 40 (t31-ocr40-1 — the sixth use-grammar
+         * generation): the FAMILY-PREFIX brace tail. A group whose
+         * PREFIX is the family itself (`use …\Shared\{…};`, or deeper
+         * through the sub-segment tail `…\Shared\Storage\{…}`) matches
+         * the PLAIN use-statement pattern — the vendor-prefix group
+         * seam above owns only the spelling whose brace sits
+         * immediately after the vendor prefix — and the tail once
+         * re-emitted VERBATIM beside the rewritten prefix with NO
+         * member validation: the members are relative to the prefix
+         * (riding them verbatim is the correct rewrite), but the
+         * engine-illegal member spellings rode with them — `as self`
+         * re-emitted at exit 0, compile-error bytes in the zip with
+         * every gate green (the postcondition judges family
+         * references, and a member riding a target-prefixed prefix
+         * waves through). Both group seams ride the ONE member-grammar
+         * owner now; every row here refused at the POSTCONDITION or
+         * not at all at HEAD (driven red: the rewrite returned
+         * normally over the alias row).
+         */
+        foreach (array(
+            'reserved family-prefix member alias: self' => 'use Deicod\\WpConnectors\\Shared\\{Clock as self};',
+            'reserved family-prefix member alias, deeper prefix: True' => 'use Deicod\\WpConnectors\\Shared\\Storage\\{Widget as True};',
+            'fully-qualified family-prefix member' => 'use Deicod\\WpConnectors\\Shared\\{\\Clock};',
+            'empty family-prefix member before its comma' => 'use Deicod\\WpConnectors\\Shared\\{, Clock};',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass FamilyPrefixGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/FamilyPrefixGroupStore.php'),
+                "An illegal family-prefix brace-group member must refuse the rewrite ({$label}) — red at HEAD: the tail re-emitted verbatim beside the rewritten prefix, compile-error bytes in the zip at exit 0.", \RuntimeException::class
+            );
+            $this->assertStringContainsString('group-use member grammar refuses', $refusal->getMessage(), "The refusal names the ONE member grammar both group spellings ride ({$label}).");
+        }
+        // The LEGAL family-prefix control: the prefix rewrites, the
+        // members ride verbatim (they are relative to it) — the
+        // grammar validates what re-emits, it never re-spells a
+        // member at this seam (the vendor-prefix group's member
+        // rewrite is pinned above in the $groupUse battery).
+        $familyPrefixLegal = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\{Clock, Storage\\Widget as W};\nclass FamilyPrefixLegalStore\n{\n}\n", 'OpenAiOauth', 'shared/src/FamilyPrefixLegalStore.php');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\{Clock, Storage\\Widget as W};', $familyPrefixLegal, 'A LEGAL family-prefix group rewrites the prefix and rides its members verbatim — validation owns the refusal, never the re-spelling.');
+
+        /*
          * OCR round 32 (t31-ocr32-1): the alias grammar at the
          * USE-STATEMENT seam. The optional alias group re-emitted any
          * identifier spelling verbatim — including the fourteen
