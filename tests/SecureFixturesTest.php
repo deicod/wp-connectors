@@ -190,7 +190,10 @@ final class SecureFixturesTest extends WpConnectorsTestCase
      * that died between its mkdir and its finally) is reclaimed,
      * HEAD's sites reclaiming nothing. The FOREIGN leg: a tree in the
      * same name vocabulary under a pid this process does not hold
-     * (the recycled-pid leftover, the r42-6 collision class) stands
+     * (the recycled-pid leftover shape, the r42-6 collision class —
+     * planted under a pid ONE ABOVE the kernel's 2^22 pid ceiling,
+     * claimable by no live process per the t31-ocr52-4 census below)
+     * stands
      * untouched — the sweep's pid scope can never name it, and the
      * roll never reclaims it; a widened glob (the scope dropped) or a
      * restored reclaim arm over foreign names answers here. The FRESH
@@ -205,8 +208,24 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertTrue(mkdir($stale, 0755, true), 'staging: the stale debris tree must create — a staging failure fails as staging, never as the maker verdict.');
         $this->assertNotFalse(file_put_contents($stale . '/debris.conf', "api_key = stale\n"), 'staging: the stale debris marker must write — a staging failure fails as staging, never as the maker verdict.');
 
+        /*
+         * The foreign pid rides ONE ABOVE THE KERNEL'S OWN CEILING
+         * (PID_MAX_LIMIT, 2^22 = 4194304 on every 64-bit Linux build —
+         * a pid above it is claimable by NO live process; OCR round
+         * 52, t31-ocr52-4): the plant once spelled getmypid() + 1, an
+         * ADJACENT pid — and adjacent pids are exactly two runners
+         * spawned by one orchestrator (the parallel-CI shape the
+         * HarnessCopyTreeTest 'parallel CI runners sharing the temp
+         * root' doctrine contemplates), so the plant could sit on a
+         * REAL runner's live scratch vocabulary and the simulation
+         * collide with what it simulates. Above the ceiling the
+         * docblock's 'foreign by construction' claim holds
+         * unconditionally: the sweep's pid scope can never name it
+         * and no live process ever will.
+         */
+        $foreignPid = 4194305;
         do {
-            $foreign = sys_get_temp_dir() . '/wp-connectors-scan-' . (getmypid() + 1) . '-' . bin2hex(random_bytes(4));
+            $foreign = sys_get_temp_dir() . '/wp-connectors-scan-' . $foreignPid . '-' . bin2hex(random_bytes(4));
         } while (is_dir($foreign));
         $this->assertTrue(mkdir($foreign, 0755, true), 'staging: the foreign tree must create — a staging failure fails as staging, never as the maker verdict.');
         $this->assertNotFalse(file_put_contents($foreign . '/foreign.conf', "foreign run tree\n"), 'staging: the foreign marker must write — a staging failure fails as staging, never as the maker verdict.');
