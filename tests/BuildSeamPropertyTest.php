@@ -999,6 +999,23 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             } catch (RuntimeException $e) {
                 $refused = $e->getMessage();
             } finally {
+                /*
+                 * The leg owns the handle (OCR round 42, t31-ocr42-7 —
+                 * derived from the seam's own contract): a failed
+                 * close() "tears the archive object down with it … the
+                 * caller never re-closes on this path" (the seam's own
+                 * docblock) — but the OBJECT stayed live in $zip, and
+                 * its destructor fired at METHOD-scope teardown, after
+                 * restore_error_handler() and the scratch release, an
+                 * engine vocabulary (whatever the discard emits on this
+                 * libzip build) escaping past the leg's silencer into
+                 * the next test's output. The dead handle discards
+                 * INSIDE the silencer window, before the handler
+                 * restore: the destructor's bytes, if any, ride the
+                 * silencer out, and the verdict's channel stays the
+                 * leg's own.
+                 */
+                unset($zip);
                 restore_error_handler();
             }
             chmod($staged, 0644);
