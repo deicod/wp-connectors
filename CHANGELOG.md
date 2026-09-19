@@ -6,6 +6,107 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 47)
+
+Forty-seventh OCR-tool round (main 61/61, fully complete): 9 findings,
+all accepted and fixed (the ninth folded into the eighth's commit per
+its own census instruction). Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9.
+The round's shape: the reserved-segment generation — the ninth
+use-grammar family, the reserved-keyword census applied to SEGMENT
+positions (member names AND sub-segment tails, the oracle's
+vocabulary existing while its application stopped at aliases), the
+multi-tail '/..' adjudication, the orphaned-children termination, and
+the vacuous-assertion pair. Round 47 answered NEW findings, so the
+OCR phase continues per plan. Fixed as t31-ocr47-1..8 (47-9 folded
+into 47-8) — one commit per finding, plus this docs record, the full
+offline check green after every commit. Suite 1716 → 1716 tests,
+46431 → 46458 assertions (+11/+11/+0/+3/+1/+0/+1/+0), 3 skipped
+unchanged.
+
+- **The member NAME rides the reserved-segment census
+  (t31-ocr47-1, bug:medium)** — the member-name check validated label
+  SHAPE only, and every keyword of the language is legal label bytes:
+  a bare `list` member beside a rewritten sibling re-emitted verbatim
+  and the zip shipped a parse error at exit 0. Two driven halves: a
+  bare-keyword member (single segment — the ONE identifier walk
+  extracted from the alias oracle) and a special-class LEAF (the
+  fifteen-spelling SPECIAL_CLASS_NAMES census, the alias soft list
+  folded in plus static; an un-aliased class import binding one
+  fatals at compile). The dissolvers stay legal: an alias, a
+  function/const kind, and a keyword glued into a multi-segment
+  member all lint clean and keep rewriting. Driven: six vendor-prefix
+  rows and two family-prefix rows answer the grammar's own refusal
+  (red at HEAD: the ship shapes returned normally).
+- **The sub-segment tail and the relative-list member ride the same
+  census (t31-ocr47-2, bug:medium)** — the plain use pattern's tail
+  group and the relative-use walk's member judgment carried the same
+  gap: `use …\Shared\true;` re-emitted its tail verbatim and the zip
+  shipped a compile FATAL ("Cannot use … as true because 'true' is a
+  special class name"), at exit 0, judged by nobody; the relative
+  seam shipped the same fatal bytes twice over (a list member and its
+  own run's leaf). Driven honestly: the finding's `list` example
+  lints clean at the tail (the 8.0+ lexer glues a hard keyword into
+  the name token) — the refused class is the special-class leaf
+  alone. The tail and member checks ride the un-aliased class-kind
+  binding only; the namespace-declaration seam is adjudicated clean
+  by the same oracle (a declaration owns no reserved vocabulary).
+  Driven: three tail rows and two relative rows answer their seam's
+  refusal; two dissolver batteries pin the legal controls rewriting.
+- **hash_file() and filesize() join the owned-return @ idiom
+  (t31-ocr47-3, bug:low ×2, one commit)** — both checked calls spelled
+  the call bare, emitting a raw E_WARNING before the seam's own named
+  refusal while both neighbors already carried the suppression.
+  Construction-evident; clean paths unchanged.
+- **The multi-tail '/..' strip adjudicated no-pop for every tail
+  count (t31-ocr47-4, bug:low)** — the probe's strip loop was
+  adjudicated for the single tail only; the multi-tail landing
+  ('/a/b/../..' probes '/a/b', never the semantic '/') is now
+  derived, ledgered, and pinned: the landing is the PROBE spelling,
+  never a resolver — a popped component would hide a link's own
+  spelling from the probe chain (the ocr9-1 blast radius, multi-tail
+  edition), while every component of a spelling IS traversed by the
+  engine's own resolution. Pinned both directions: a multi-tail
+  spelling through a link still names the link (red under the popping
+  correction), and a real multi-tail source still copies the tree it
+  semantically names.
+- **The lint leg's scratch finally owns the tempnam base
+  (t31-ocr47-5, test:low)** — tempnam() mints the extension-less base
+  before the '.php' twin is written, and the finally unlinked only
+  the twin: one empty /tmp file leaked per spawnable run. Both
+  spellings removed now, the residue pinned (red at HEAD: the base
+  survived).
+- **The staged-spelling pin speaks the comparison's own vocabulary
+  (t31-ocr47-6, test:low)** — the PSR-4 casing leg asserted the bare
+  substring 'tools', which the refusal's embedded swept path carries
+  incidentally: the leg passed whenever the file was named at all.
+  The pin asserts the verdict's casing-specific phrase, which no
+  incidental path substring can carry — red under exactly the
+  regression it exists to catch.
+- **The CR-only leg owns its must-trip premise (t31-ocr47-7,
+  test:low)** — the loop skipped declaration references inline and
+  asserted nothing else, so a collector regression reporting only the
+  declaration left ZERO assertions and the pin silently stopped
+  biting. The non-declaration references are collected and their
+  presence asserted first (the ocr33-2 trip-guard idiom); the
+  declaration-only regression answers a named failure.
+- **The crash-sim child owns its own termination (+ the 47-9 census,
+  folded; t31-ocr47-8, other:medium)** — the crash-sim child ran
+  `while (true)` with no in-child termination, its only lifecycle
+  owner the test's finally kill: a CI cancel/timeout, OOM fatal, or
+  Ctrl-C orphaned a busy-looping child beside a dead test. The child
+  embeds the owning test process's pid and probes it every iteration
+  — the signal-0 probe LEADS (driven counter-proof: the /proc is_dir
+  branch rides PHP's stat cache and kept answering alive over twenty
+  million iterations past the owner's death; the first cut of this
+  fix would have shipped it), the /proc fallback clears the cache per
+  call. A dead owner answers the loud orphan exit within one
+  iteration of the reaping (driven twice in /tmp: exit 71, ~5ms); the
+  leg runs green and pgrep answers clean. The 47-9 census: this is
+  the suite's only backgrounded unbounded child — every other spawn
+  runs foreground over a finite script, and the harness's two
+  while (true) walks are bounded fixpoint loops.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 46)
 
 Forty-sixth OCR-tool round (main 61/61, fully complete): 10 findings,
