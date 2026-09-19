@@ -70,35 +70,126 @@ final class SharedOAuthContractsErrorsTest extends WpConnectorsTestCase
      */
     public function testTheConcreteTypeListCoversTheWholeExceptionDirectory(): void
     {
-        $dir = dirname(__DIR__) . '/shared/src/Exception';
-        $base = strlen($dir) + 1;
-        $from_tree = array();
         /*
-         * The walk FOLLOWS SYMLINKS (OCR round 49, t31-ocr49-11):
-         * without FOLLOW_SYMLINKS a symlink-to-directory under
-         * shared/src/Exception is neither isFile()-true (stat follows
-         * the link to a directory) nor recursed — the linked subtree
-         * escaped the census while the pin's failure message claimed
-         * "at any depth", and PSR-4 maps a linked subdirectory
-         * exactly like a real one: the family grows through it
-         * whether the census sees it or not. The no-symlinks
-         * doctrine (a link is never silently skipped) reads the tree
-         * whole: the linked files join the walk, a stray link fails
-         * the file-set pin naming the class, and the message tells
-         * the truth. Construction-evident (the shipped tree carries
-         * no links; driven by planting one).
+         * The walk behind this census FOLLOWS SYMLINKS (OCR round 49,
+         * t31-ocr49-11): without FOLLOW_SYMLINKS a
+         * symlink-to-directory under shared/src/Exception is neither
+         * isFile()-true (stat follows the link to a directory) nor
+         * recursed — the linked subtree escaped the census while the
+         * pin's failure message claimed "at any depth", and PSR-4
+         * maps a linked subdirectory exactly like a real one: the
+         * family grows through it whether the census sees it or not.
+         * The no-symlinks doctrine (a link is never silently skipped)
+         * reads the tree whole: the linked files join the walk, a
+         * stray link fails the file-set pin naming the class, and the
+         * message tells the truth. Construction-evident (the shipped
+         * tree carries no links; driven by planting one).
+         *
+         * The follow owns its CYCLE shape too (OCR round 51,
+         * t31-ocr51-1): FOLLOW_SYMLINKS keeps no visited set, so a
+         * directory symlink closing a loop recursed until the
+         * path-length or memory limit fataled the process — the
+         * "driven by planting one" promise above was, on a loop, an
+         * unkept fatal. The walk (collectExceptionTreeClasses below,
+         * the extraction this round) carries a visited-realpath set
+         * at every directory it enters; the loop leg is driven at
+         * testASymlinkLoopUnderTheExceptionTreeAnswersTheLoudRefusalNotTheFatal.
          */
-        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::FOLLOW_SYMLINKS)) as $file) {
-            if (! $file->isFile() || 'php' !== strtolower($file->getExtension())) {
-                continue;
-            }
-            $from_tree[] = 'Deicod\\WpConnectors\\Shared\\Exception\\' . str_replace('/', '\\', substr($file->getPathname(), $base, -4));
-        }
+        $from_tree = $this->collectExceptionTreeClasses(dirname(__DIR__) . '/shared/src/Exception');
         $listed = array_merge($this->concreteTypes(), array(OAuthRuntimeException::class, OAuthTransientException::class));
-        sort($from_tree);
         sort($listed);
 
         $this->assertSame($from_tree, $listed, 'concreteTypes() must cover every type anywhere under shared/src/Exception/ — a new file there, at any depth, grows the list or fails this pin.');
+    }
+
+    /**
+     * The recursive Exception-tree walk behind the census pin above —
+     * the r49-11 follow-symlinks shape (linked files join, linked
+     * directories recurse) with the cycle guard that shape owed its
+     * own docblock (OCR round 51, t31-ocr51-1): a re-visited REALPATH
+     * is a loop, and the walk refuses loudly naming both spellings —
+     * the entry path and the realpath it resolves back to — never the
+     * opaque path-length/memory fatal the follow's unguarded recursion
+     * answered. The loud-refusal vocabulary covers the environment
+     * arms beside the loop: a directory that will not resolve or list
+     * refuses naming it (a silently shrunken census is the coverage
+     * hole this pin exists to close).
+     *
+     * @return list<string> Sorted class names of every *.php file under the tree.
+     */
+    private function collectExceptionTreeClasses(string $dir): array
+    {
+        $classes = array();
+        $visited = array();
+        $walk = function (string $current) use (&$walk, &$classes, &$visited, $dir): void {
+            $real = realpath($current);
+            if (false === $real) {
+                throw new \RuntimeException('The Exception-tree walk cannot resolve ' . $current . ' — an environment problem (a broken checkout, an open_basedir wall), never a census verdict.');
+            }
+            if (isset($visited[$real])) {
+                throw new \RuntimeException('Symlink loop under the Exception tree: ' . $current . ' resolves back to the already-walked ' . $real . ' — the census refuses a looping tree loudly, never fatals walking it.');
+            }
+            $visited[$real] = true;
+            $entries = scandir($current);
+            if (false === $entries) {
+                throw new \RuntimeException('The Exception-tree walk cannot list ' . $current . ' — the census refuses loudly, never silently shrinks the file set.');
+            }
+            foreach ($entries as $entry) {
+                if ('.' === $entry || '..' === $entry) {
+                    continue;
+                }
+                $path = $current . '/' . $entry;
+                if (is_dir($path)) {
+                    $walk($path);
+                } elseif (is_file($path) && 'php' === strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+                    $classes[] = 'Deicod\\WpConnectors\\Shared\\Exception\\' . str_replace('/', '\\', substr($path, strlen($dir) + 1, -4));
+                }
+            }
+        };
+        $walk($dir);
+        sort($classes);
+
+        return $classes;
+    }
+
+    /**
+     * OCR-round-51 pin (t31-ocr51-1): the driven probe the r49-11
+     * docblock names ("driven by planting one") fatals on a LOOP, it
+     * does not drive anything — a directory symlink closing a cycle
+     * under the walked tree recursed until the engine's own limits
+     * killed the process, an opaque crash instead of the loud named
+     * refusal the no-symlinks doctrine requires. Driven on a scratch
+     * replica of the tree: the planted loop link answers the walk's
+     * named refusal and the SUITE SURVIVES — that survival is the
+     * pin. The loop-bearing scratch tree releases through the
+     * harness's own no-follow rrmdir (the t31-ocr1-11 shape: a linked
+     * child is unlinked as itself, never descended).
+     */
+    public function testASymlinkLoopUnderTheExceptionTreeAnswersTheLoudRefusalNotTheFatal(): void
+    {
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the planted-loop leg did not run (the cycle-guard seam it drives is unconstructible here).');
+        }
+
+        do {
+            $scratch = sys_get_temp_dir() . '/wpct-oauth-census-loop-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        } while (is_dir($scratch));
+
+        try {
+            $this->assertTrue(mkdir($scratch . '/Sub', 0755, true), 'staging: the scratch Exception tree must create — a staging failure fails as staging, never as the walk verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/One.php', "<?php\n"), 'staging: the scratch type file must write — a staging failure fails as staging, never as the walk verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/Sub/Two.php', "<?php\n"), 'staging: the scratch nested type file must write — a staging failure fails as staging, never as the walk verdict.');
+            // The plant: a directory link closing the loop — the link
+            // points back at the very tree being walked, so the walk
+            // re-enters its own root through the link's realpath.
+            $this->assertTrue(symlink($scratch, $scratch . '/x'), 'staging: the planted loop link must take — a staging failure fails as staging, never as the walk verdict.');
+
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage('Symlink loop');
+            $this->collectExceptionTreeClasses($scratch);
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
     }
 
     public function testBaseIsAbstractSoOnlySpecificTypesAreThrown(): void
