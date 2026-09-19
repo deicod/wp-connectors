@@ -430,44 +430,43 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
 
         /*
-         * OCR-round-52 legs (t31-ocr52-1, the radix table the r49-4
-         * predicate owed): the Standard's IPv4 number parser accepts
-         * THREE prefix spellings — 0x/0X radix 16, 0o/0O radix 8,
-         * 0b/0B radix 2, each with the same empty-after-prefix rule —
-         * while the r49 arm spelled the hex family alone, so a LAST
-         * label '0b1' or '0o7' named IPv4 0.0.0.1 / 0.0.0.7 for
-         * every WHATWG consumer while this parse kept the host an
-         * opaque domain (red at HEAD: constructed) — the same
-         * differential one radix over. The judged label is the LAST
-         * one (the predicate's own rule): a radix spelling beside a
-         * later domain label ('0b1.example') is a domain on BOTH
-         * sides and stays constructible, exactly like the interior
-         * digit leg above. A digit outside the radix is a domain on
-         * both sides too.
+         * OCR-round-53 legs (t31-ocr53-1 — the ledger's third driven
+         * refutation, and the first against OUR OWN fix): the r52-1
+         * "radix table completion" read '0o'/'0b' as URL-Standard
+         * prefixes, but the Standard's IPv4 number parser (§5.3,
+         * verified against the spec text this round) recognizes
+         * exactly TWO prefix spellings — 0x/0X radix 16 and the
+         * legacy single leading '0' radix 8; '0o'/'0b' are
+         * ECMAScript numeric-literal spellings. For a last label
+         * '0b1'/'0o7' the parser strips only the leading '0',
+         * leaving 'b1'/'o7', which fail the octal-digit check — the
+         * host stays an opaque DOMAIN for every WHATWG consumer, so
+         * the r52-1 refusal of 'https://0b1/' was over-refusal of a
+         * legal domain (the r52 legs' own '0o9'/'0b2' control lines
+         * below — domains a few lines earlier in this same battery —
+         * were the internal contradiction: the same prefix, judged
+         * by its digits on one line and by its prefix on the other).
+         * The predicate reverts to the Standard's two-arm shape; the
+         * r52-1 refusal legs flip to construction legs, and the
+         * still-refusing spellings ride the r49 hostile loop above
+         * (driven there: '010.1.1.1', '0x62.0x90.0.1',
+         * '2130706433' — those prefixes ARE Standard-true).
          */
-        foreach (array(
-            'the bare binary host' => 'https://0b1/',
-            'the bare octal host' => 'https://0o7/',
-            'the binary prefix as the last label' => 'https://example.0b1/',
-        ) as $label => $url) {
-            try {
-                Url::parse_validated($url);
-                $this->fail(sprintf('A radix-prefixed number host (%s) must be refused by the shared URL owner — red at HEAD it constructed, the predicate spelling the hex arm of the Standard\'s three-prefix table alone.', $label));
-            } catch (\InvalidArgumentException $e) {
-                $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), "The refusal stays the IPv4-ambiguity channel ({$label}).");
-            }
-
-            try {
-                new HttpRequest('GET', $url);
-                $this->fail(sprintf('A radix-prefixed number host (%s) must be refused by the request VO too.', $label));
-            } catch (\InvalidArgumentException $e) {
-                $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), "The request VO answers the same refusal ({$label}).");
-            }
-        }
+        $this->assertSame('0b1', Url::parse_validated('https://0b1/')['authority'], 'A bare 0b-prefixed host is a DOMAIN — 0b is an ECMAScript spelling the URL Standard never parses, both consumers keep the opaque host.');
+        $this->assertSame('0o7', Url::parse_validated('https://0o7/')['authority'], 'A bare 0o-prefixed host is a DOMAIN — the Standard strips only the leading 0 and the remaining o7 fails the octal-digit check.');
+        $this->assertSame('example.0b1', Url::parse_validated('https://example.0b1/')['authority'], 'A 0b-prefixed LAST label is a domain on both sides — red at the r52 shape it answered the refusal.');
+        $this->assertSame('https://0b1/', (new HttpRequest('GET', 'https://0b1/'))->redacted_url(), 'The request VO constructs the same opaque domain — both consumers agree on the non-number reading.');
         $this->assertSame('0xg', Url::parse_validated('https://0xg/')['authority'], 'A non-radix digit keeps the domain reading — the boundary is the radix\'s own digit class, exactly as at the hex arm.');
         $this->assertSame('0o9', Url::parse_validated('https://0o9/')['authority'], 'An octal prefix with a decimal digit stays a domain — both consumers read the same host.');
         $this->assertSame('0b2', Url::parse_validated('https://0b2/')['authority'], 'A binary prefix with a non-binary digit stays a domain — both consumers read the same host.');
-        $this->assertSame('0b1.example', Url::parse_validated('https://0b1.example/')['authority'], 'A radix label BESIDE a later domain label is a domain on both sides — the predicate judges the last label alone.');
+        $this->assertSame('0b1.example', Url::parse_validated('https://0b1.example/')['authority'], 'A 0b label BESIDE a later domain label is a domain on both sides — the predicate judges the last label alone.');
+        $this->assertSame('0o7.example', Url::parse_validated('https://0o7.example/')['authority'], 'A 0o label beside a later domain label is a domain on both sides — the last label \'example\' names no number.');
+        try {
+            Url::parse_validated('https://example.0x1/');
+            $this->fail('A hex-prefixed LAST label must still be refused — the two-arm correction must not overcorrect into refusing nothing the Standard parses.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), 'The hex arm keeps the IPv4-ambiguity refusal — 0x IS a URL-Standard prefix.');
+        }
     }
 
     /**
