@@ -179,7 +179,7 @@ interface TokenStorageInterface {
 	 * @param string      $provider_id         Provider label (must equal the grant's own; screened for control bytes and rejected — typed, nothing committed — BEFORE any other judgment).
 	 * @param StoredGrant $grant               The grant to persist (its generation must be at least $expected_generation).
 	 * @param int         $expected_generation The persisted generation this commit is fenced on (EXPECT_NO_GRANT when none; a value below the sentinel violates the expectation domain this contract states).
-	 * @return bool True when the grant was committed; false when the precondition failed (nothing committed).
+	 * @return bool True when the grant was committed; false ONLY on the genuine fence verdict — the persisted generation has moved past an expectation that was really observable (nothing committed; the caller reloads). The caller-bug precondition classes above THROW, never answer false (t31-ocr15-2's domain rule: false reserved for genuine fence verdicts).
 	 * @throws InvalidArgumentException When $provider_id does not equal the grant's provider_id(), when the grant's generation is below $expected_generation, or when $expected_generation is below EXPECT_NO_GRANT (nothing committed either way).
 	 * @throws OAuthStorageException When the grant cannot be persisted.
 	 */
