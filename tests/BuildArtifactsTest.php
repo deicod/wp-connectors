@@ -2831,9 +2831,14 @@ FIXTURE;
         mkdir($scratch . '/dist', 0755, true);
         $this->copyFixturePlugin($scratch . '/plugin/example-connector');
 
-        // The teardown-hostile tree at this run's own stage name: a
-        // subdirectory this process cannot open. The opendir probe is
-        // the capability signal (glm17-16: uid 0 reads through mode
+        // The teardown-hostile tree at a LIVE-pid stage spelling: a
+        // subdirectory this process cannot open. Since t31-ocr42-2 the
+        // run's own stage name is unpredictable (the random suffix), so
+        // a plant can no longer sit at THIS run's own name — the
+        // planted tree is a lookalike the sweep's liveness gate keeps
+        // (own pid, alive), and the teardown-masking drive itself rides
+        // the reflection seam below (the rd-1 close). The opendir probe
+        // is the capability signal (glm17-16: uid 0 reads through mode
         // 0000, the t31-ocr4-1 doctrine) — a host that opens it cannot
         // construct the hostile shape at all.
         $stage = $scratch . '/dist/.stage-example-connector-' . getmypid();
@@ -4471,9 +4476,11 @@ FIXTURE;
      * "cannot add … to" (build survival, not artifact correctness —
      * t31-r5-11 adjudicated the manifest race and named this fix: "then
      * the stage dir wants the PID too"). The stage is PID-named now
-     * (`.stage-<slug>-<pid>`), the finally releases exactly the run's
-     * own tree, and the startup sweep reclaims only DEAD-process
-     * orphans of the SAME plugin — a live run's tree is never touched.
+     * (`.stage-<slug>-<pid>`, and RANDOM-suffixed since t31-ocr42-2 —
+     * unpredictable, never pre-plantable), the finally releases exactly
+     * the run's own tree, and the startup sweep reclaims only
+     * DEAD-process orphans of the SAME plugin — a live run's tree is
+     * never touched.
      */
     public function testConcurrentSamePluginBuildsKeepTheirStageTreesAndDeadOnesAreSwept(): void
     {
@@ -4605,7 +4612,7 @@ FIXTURE;
             /*
              * The staging-temp CENSUS (OCR round 26, t31-ocr26-8):
              * every staging spelling the build lands carries the
-             * pid — `.stage-<slug>-<pid>` and `.<zip>.tmp-<pid>…`
+             * pid — `.stage-<slug>-<pid>-<rand>` and `.<zip>.tmp-<pid>…`
              * (the part-1/part-2 legs below), and the MANIFEST
              * staging temp, pid-less since its t31-r5-S birth while
              * the sweep's own doc note carved it out as
@@ -4631,6 +4638,16 @@ FIXTURE;
             mkdir($scratch . '/dist/.stage-stage-demo-' . $live_pid . '/stage-demo', 0755, true);
             file_put_contents($scratch . '/dist/.stage-stage-demo-' . $live_pid . '/stage-demo/inflight.txt', 'run A mid-flight');
             mkdir($scratch . '/dist/.stage-stage-demo-999999999', 0755, true);
+            /*
+             * The RANDOM-SUFFIXED dead-pid orphan (OCR round 42,
+             * t31-ocr42-2): the current stage spelling
+             * `.stage-<slug>-<pid>-<rand>` — the suffix rides the
+             * sweep's stale-detection pattern tail-optionally, so the
+             * crashed-run charter keeps owning it (red at HEAD: the
+             * pid-anchored `$` pattern never matched the tail and the
+             * orphan survived the sweep forever).
+             */
+            mkdir($scratch . '/dist/.stage-stage-demo-999999998-' . bin2hex(random_bytes(8)), 0755, true);
             mkdir($scratch . '/dist/.stage-stage-demo', 0755, true);
             mkdir($scratch . '/dist/.stage-other-demo-999999999', 0755, true);
             file_put_contents($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997', 'half a zip');
@@ -4648,9 +4665,23 @@ FIXTURE;
 
             $this->assertFileExists($scratch . '/dist/.stage-stage-demo-' . $live_pid . '/stage-demo/inflight.txt', 'A live run\'s stage tree is never touched by a sibling build.');
             $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-stage-demo-999999999', 'A dead-pid orphan of the plugin is swept by the next build — never orphaned forever.');
+            $this->assertSame(
+                array(),
+                glob($scratch . '/dist/.stage-stage-demo-999999998-*') ?: array(),
+                'A RANDOM-SUFFIXED dead-pid orphan is swept on the same charter — the unpredictability fix never weakens the crashed-run reclaim (t31-ocr42-2).'
+            );
             $this->assertDirectoryExists($scratch . '/dist/.stage-stage-demo', 'A pid-less foreign spelling is left alone (nothing running this code creates it).');
             $this->assertDirectoryExists($scratch . '/dist/.stage-other-demo-999999999', 'Another plugin\'s stage dirs are that plugin\'s sweep\'s to reclaim.');
-            $this->assertDirectoryDoesNotExist($scratch . '/dist/.stage-stage-demo-' . getmypid(), 'The run\'s own stage tree tears down on success.');
+            /*
+             * The run's OWN stage name is unpredictable since t31-ocr42-2
+             * (the random suffix), so the teardown pins by GLOB: nothing
+             * of this plugin survives beside the live sibling's tree.
+             */
+            $this->assertSame(
+                array( $scratch . '/dist/.stage-stage-demo-' . $live_pid ),
+                glob($scratch . '/dist/.stage-stage-demo-*') ?: array(),
+                'The run\'s own random-suffixed stage tree tears down on success — the live sibling\'s tree alone survives the pair.'
+            );
             $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997', 'A dead-pid zip temp is reclaimed — the crashed-run charter covers the temps too.');
             $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.sha256', 'A dead-pid sidecar temp is reclaimed.');
             $this->assertFileDoesNotExist($scratch . '/dist/.connectors-stage-demo-1.0.0.zip.tmp-999999997.acce0w.part', 'A dead-pid libzip .part temp is reclaimed.');
@@ -4681,8 +4712,11 @@ FIXTURE;
              * matching-named SYMLINK at a dead pid is never deleted
              * THROUGH (is_dir follows links; the sweep would have
              * emptied the target tree, reproduced end-to-end by the
-             * verifier), and a link at the run's OWN stage name refuses
-             * the build loudly. The legs ride the CAPABILITY probe
+             * verifier), and a link at a GUESSABLE stage spelling is
+             * neither the run's own name nor its business (the
+             * own-name refusal the leg once drove is unreachable by
+             * prediction since t31-ocr42-2 — see the own-name leg
+             * below). The legs ride the CAPABILITY probe
              * (t31-ocr11-8): a bare symlink() call errors the suite on
              * exactly the hosts without the privilege (failOnWarning),
              * and the skip is visible, naming what already passed.
@@ -4702,16 +4736,24 @@ FIXTURE;
             $this->assertFileExists($victim . '/keep2.txt', 'The sweep never deletes through a symlink — the target tree must survive intact.');
             $this->assertTrue(is_link($scratch . '/dist/.stage-stage-demo-999999998'), 'The sweep leaves a symlinked stage-shaped entry standing (it is never this code\'s product).');
 
-            // The own-name leg: a link at THIS run's stage name refuses.
+            /*
+             * The own-name leg since t31-ocr42-2: the run's stage name
+             * is UNPREDICTABLE (the random suffix), so a plant can no
+             * longer sit at it — the link-at-own-name refusal this leg
+             * once drove end-to-end is a belt no plant can reach BY
+             * CONSTRUCTION (the fix's own point), and the drivable fact
+             * INVERTS: a link at every GUESSABLE spelling (the pid-only
+             * one planted here) neither blocks the build nor is touched
+             * by it — the run stages under its own random name, and the
+             * link and its target stand byte-untouched at exit 0.
+             */
             symlink($victim, $scratch . '/dist/.stage-stage-demo-' . getmypid());
-            $refusal = $this->refusalOf(
-                fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist'),
-                'A symlink at the run\'s own stage name must refuse the build, never stage through the link.', \RuntimeException::class
-            );
-            $this->assertStringContainsString('symlink', $refusal->getMessage());
+            WpConnectorsBuild::buildPlugin($scratch . '/plugin/stage-demo', $scratch . '/dist');
+            $this->assertTrue(is_link($scratch . '/dist/.stage-stage-demo-' . getmypid()), 'A link at a GUESSABLE stage spelling stands untouched — the run\'s own unpredictable name never collides with a plant (t31-ocr42-2).');
+            $this->assertFileExists($victim . '/inner/keep.txt', 'The build never staged through the guessed link — its own random-named tree carried every byte.');
             unlink($scratch . '/dist/.stage-stage-demo-999999998');
             unlink($scratch . '/dist/.stage-stage-demo-' . getmypid());
-            $this->assertFileExists($victim . '/keep2.txt', 'The refused build never touched the link target either.');
+            $this->assertFileExists($victim . '/keep2.txt', 'The untouched link target survived both link legs.');
         } finally {
             if (null !== $live && is_resource($live)) {
                 proc_terminate($live);

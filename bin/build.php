@@ -2328,8 +2328,25 @@ final class WpConnectorsBuild
          * the finally below releases exactly this run's tree, and the
          * startup sweep beside it reclaims only dead-PID orphans of the
          * SAME plugin — a live run's tree is never touched.
+         *
+         * The pid alone is PREDICTABLE, and the pre-mkdir sequence here
+         * was check-then-act over that predictable spelling (OCR round
+         * 42, t31-ocr42-2): the pid is enumerable (the t31-ocr10-2
+         * note's own premise), the is_link probe and the sweep — a
+         * full dist/ iteration WIDENING the race window — both read the
+         * name before the recursive mkdir traversed it, so a planted
+         * tree at the predicted spelling rode between the checks and
+         * the mkdir (TOCTOU). The name owns an UNPREDICTABLE component
+         * now, the mkdtemp-style random suffix (the ocr10-2 model, the
+         * workDir sibling's own spelling): a planted intermediate
+         * cannot predict the target, and with it the same-name reclaim
+         * arm below is gone — a directory at this exact random spelling
+         * is never this run's leftover, so reclaiming it would delete
+         * foreign territory (the cross-run-destruction class, the
+         * ocr11-16 note's own), and the checked mkdir below already
+         * owns the collision with a loud refusal, nothing deleted.
          */
-        $stage = $distDir . '/.stage-' . $slug . '-' . getmypid();
+        $stage = $distDir . '/.stage-' . $slug . '-' . getmypid() . '-' . bin2hex(random_bytes(8));
         if (is_link($stage)) {
             // A LINK at this run's own stage name is never this code's
             // product (the build mkdirs real directories) — deleting
@@ -2337,11 +2354,6 @@ final class WpConnectorsBuild
             // t31-r10-10), and building through it would scatter the
             // stage into a tree the build does not own. Refuse loudly.
             throw new RuntimeException("build: {$stage} is a symlink — the staging tree must be a real directory this build owns; remove the link");
-        }
-        if (is_dir($stage)) {
-            // Own-name only (no other live process can hold this pid):
-            // a same-pid leftover from a recycled pid of a crashed run.
-            self::rrmdir($stage);
         }
         self::sweepStaleStageDirs($distDir, $slug);
         // @: the diagnostic is suppressed, the failed return owned below
@@ -2651,7 +2663,7 @@ final class WpConnectorsBuild
      *
      * The staging name carries the PID (OCR round 26, t31-ocr26-8):
      * every other staging temp the build lands rides the crashed-run
-     * charter (`.stage-<slug>-<pid>`, `.<zip>.tmp-<pid>…` — sweepStale
+     * charter (`.stage-<slug>-<pid>-<rand>`, `.<zip>.tmp-<pid>…` — sweepStale
      * -StageDirs reclaims a dead run's leftovers), while the pid-less
      * tempnam spelling this method used was the carve its own sweep
      * doc note named unattributable: a SIGKILL between staging and
@@ -3113,14 +3125,17 @@ final class WpConnectorsBuild
      * Reclaims this plugin's stale stage trees before a new build stages
      * its own (round t31-r10-4).
      *
-     * The PID-named stage (`.stage-<slug>-<pid>`) makes concurrent builds
-     * of the same plugin disjoint, at the cost of a crashed run leaving
-     * its scratch behind — the sweep closes that (verifier round
-     * t31-r10-13: the r10-4 sweep reclaimed only the STAGE tree while
-     * the same crash also left `.<zip>.tmp-<pid>` temps forever):
+     * The PID-named stage (`.stage-<slug>-<pid>-<rand>` — the random
+     * suffix t31-ocr42-2, unpredictable never pre-plantable; a legacy
+     * pid-only spelling from a pre-fix crashed run still matches the
+     * same tail-optional pattern) makes concurrent builds of the same
+     * plugin disjoint, at the cost of a crashed run leaving its scratch
+     * behind — the sweep closes that (verifier round t31-r10-13: the
+     * r10-4 sweep reclaimed only the STAGE tree while the same crash
+     * also left `.<zip>.tmp-<pid>` temps forever):
      *
-     * - every `.stage-<slug>-<pid>` DIRECTORY whose process is dead is
-     *   removed; a LIVE run's tree is never touched;
+     * - every `.stage-<slug>-<pid>[-<rand>]` DIRECTORY whose process
+     *   is dead is removed; a LIVE run's tree is never touched;
      * - every `.connectors-<slug>-….zip.tmp-<pid>…` FILE (the zip temp,
      *   its sidecar twin `.sha256`, and libzip's in-window `.<rand>.part`
      *   spelling a SIGKILL leaves behind) whose process is dead is
@@ -3156,7 +3171,11 @@ final class WpConnectorsBuild
         if (false === $dir) {
             return;
         }
-        $stage_pattern = '/^\.stage-' . preg_quote($slug, '/') . '-(\d+)$/';
+        // The random tail (t31-ocr42-2) rides the stale-detection
+        // pattern tail-optionally: the current `.stage-<slug>-<pid>-<rand>`
+        // spelling and the legacy pid-only one both reclaim by the
+        // dead-pid gate alone — the suffix never weakens it.
+        $stage_pattern = '/^\.stage-' . preg_quote($slug, '/') . '-(\d+)(?:-[0-9a-f]+)?$/';
         $temp_pattern = '/^\.connectors-' . preg_quote($slug, '/') . '-.*\.zip\.tmp-(\d+)(?:\..*)?$/';
         // The manifest staging temp (t31-ocr26-8): pid-prefixed, tempnam
         // tail behind it — a LEGACY pid-less spelling never matches
