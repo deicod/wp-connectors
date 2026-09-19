@@ -258,6 +258,75 @@ final class ToolchainSmokeTest extends TestCase
     }
 
     /**
+     * OCR-round-40 pin (t31-ocr40-7): the SCANNER half of the twin
+     * above. The t31-ocr31-5 dual-separator arithmetic
+     * (rtrim($root, '/\\') before the below-root offset) lives in TWO
+     * tools — the lint walk this file drives at the twin, and
+     * wp_connectors_scan_paths() — and the scanner's variant existed
+     * in PROSE only: the twin's docblock asserted "the sibling
+     * scanner's rtrim spelling keeps every relative path whole under
+     * any spelling" with no leg anywhere driving it. The scanner leg
+     * drives the walk DIRECTLY (in-process — the library is
+     * self-contained, t31-ocr3-5) with a trailing-separator root
+     * spelling, and the DRIVABLE class on this POSIX-gated runner is
+     * the rtrim's PRESENCE: a regressed bare strlen($root) + 1
+     * answers an offset one byte over for the '/'-suffixed root, so
+     * 'vendor/x.php' reads 'endor/x.php', the dev-entry prune misses
+     * it, and the canary under the pruned tree FINDS instead of
+     * pruning (the ocr14-4 shape, verified red at the patched seam).
+     * The narrowing half (dual vs a native-only rtrim) is
+     * POSIX-judgment-neutral by construction — the two spellings
+     * differ only over a trailing '\' byte, where the dual arm leaves
+     * an empty leading segment the prune ignores (the ocr29-3
+     * residue trade) — so no POSIX pin can split them; on a '\'
+     * host this leg's own platform gate skips it (the twin's
+     * t31-ocr29-7 premise).
+     */
+    public function testTheScannerBelowRootArithmeticToleratesATrailingSeparatorRootSpelling(): void
+    {
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('This host\'s platform separator is not the POSIX one — the trailing-separator patch spells \'/\' while a regressed arithmetic strips DIRECTORY_SEPARATOR only, so the leg would judge the first-byte shift it exists to pin as the platform\'s own vocabulary (the t31-ocr29-7 premise, the twin above\'s gate).');
+        }
+        require_once __DIR__ . '/../bin/lib/secret-scanner.php';
+
+        // Built at runtime (never a literal in source), the
+        // SecureFixturesTest shape: a realistic z.ai-shaped key with
+        // no fixture markers around it.
+        $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+
+        $scratch = sys_get_temp_dir() . '/wpct-scan-trailroot-' . uniqid('', true);
+
+        try {
+            // Staging success is asserted at each site (the
+            // t31-ocr27-9 doctrine): a failed mkdir/write fails as
+            // staging, never as the prune verdict.
+            $this->assertTrue(mkdir($scratch . '/vendor', 0755, true), 'staging: the pruned first-segment tree must create — a staging failure fails as staging, never as the prune verdict.');
+            $this->assertTrue(mkdir($scratch . '/covered', 0755, true), 'staging: the covered tree must create — a staging failure fails as staging, never as the prune verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/vendor/leak.conf', "api_key = {$zaiKey}\n"), 'staging: the pruned canary must write — a staging failure fails as staging, never as the prune verdict.');
+            $this->assertNotFalse(file_put_contents($scratch . '/covered/leak.conf', "api_key = {$zaiKey}\n"), 'staging: the covered canary must write — a staging failure fails as staging, never as the prune verdict.');
+
+            // The root spelled WITH its trailing separator — the
+            // spelling whose relative arithmetic this pin owns.
+            $report = implode("\n", wp_connectors_scan_paths(array( $scratch . '/' )));
+
+            // The PRUNE holds under the trailing-separator spelling:
+            // the first below-root segment stays WHOLE (red at a
+            // regressed native-only rtrim: 'vendor' read 'endor',
+            // the prune missed, and this canary FOUND).
+            $this->assertStringNotContainsString('vendor' . DIRECTORY_SEPARATOR . 'leak.conf', $report, 'The pruned tree stays pruned under the trailing-separator root — the below-root relatives stay whole, their first byte never eaten.');
+            // The scan itself RAN under the shifted spelling — never
+            // a vacuous pass over a root nothing walked (the
+            // ocr1-12 ancestor doctrine's own non-vacuity shape).
+            $this->assertStringContainsString('covered' . DIRECTORY_SEPARATOR . 'leak.conf', $report, 'The covered tree stays scanned under the trailing-separator root spelling — the walk reached it and found the canary.');
+            $this->assertStringContainsString('zai-key', $report, 'The finding names the pattern class the canary spells.');
+            // Findings still never echo the secret itself.
+            $this->assertStringNotContainsString($zaiKey, $report);
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * Review-round pin (t31-r12-9, narrowed in OCR round 8 t31-ocr8-7):
      * the lint gate's exclusion is the gate's OWN NAMED SUBSET of the
      * development-entry vocabulary — generated and third-party trees
