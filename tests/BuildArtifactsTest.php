@@ -1346,6 +1346,27 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertSame(1, substr_count($flat, 'more than once'), 'A triple copy answers exactly ONE byte-duplicate line — the name\'s verdict is deduped per NAME, never one line per extra copy.');
         $this->assertStringNotContainsString('case-fold duplicate', $flat);
 
+        /*
+         * (a-devdup) A byte-duplicated DEV-SEGMENT name: exactly ONE
+         * dev-entry line (OCR round 42, t31-ocr42-4 — the t31-ocr27-4
+         * doctrine swept to the dev-entry collector): the duplicate
+         * fence does not `continue`, so at HEAD every copy of the name
+         * pushed its own identical 'development entry' line beside the
+         * fence's ONE duplicate line — one offense, one line.
+         */
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.7.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/vendor/x.php", "<?php\n"),
+            array("{$slug}/vendor/x.php", "<?php\n"),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
+        $flat = implode("\n", $violations);
+        $this->assertSame(1, substr_count($flat, 'development entry'), 'A byte-duplicated dev-segment entry answers exactly ONE dev-entry line — the name\'s verdict is deduped per NAME (red at HEAD: one line per copy), never one per extra copy.');
+        $this->assertStringContainsString("development entry \"{$slug}/vendor/x.php\"", $flat, 'The dev-entry line names the offending entry through the printable seam.');
+        $this->assertSame(1, substr_count($flat, 'more than once'), 'The duplicate fence answers its own ONE line beside it — two fences, two verdicts, no multiplication.');
+
         // (b) Case-fold duplicate: on a case-insensitive extraction
         // target one silently overwrites the other (the r6 deferred
         // collision class's inspector half).

@@ -62,6 +62,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     $seenEntryNames = array();
     $seenFoldedNames = array();
     $reportedDuplicateEntries = array();
+    $reportedDevEntries = array();
     for ($i = 0; $i < $zip->numFiles; ++$i) {
         $name = (string) $zip->getNameIndex($i);
         $parts = explode('/', $name);
@@ -323,7 +324,20 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
              * bytes and all ride the seam now; the printable body
              * still names the offending entry.
              */
-            $violations[] = sprintf('inspect: zip contains development entry "%s".', wp_connectors_printable($name));
+            /*
+             * The EMISSION is deduped per name (OCR round 42,
+             * t31-ocr42-4 — the t31-ocr27-4 doctrine, this collector):
+             * the byte-duplicate fence above does not `continue`, so
+             * every COPY of a dev-segment name once pushed its own
+             * identical line and a name carried N times answered N
+             * dev-entry lines beside its ONE duplicate line — one
+             * offense, one line, the keyed collectors' census
+             * (t31-ocr32-5) swept to the last per-occurrence pusher.
+             */
+            if (! isset($reportedDevEntries[$name])) {
+                $reportedDevEntries[$name] = true;
+                $violations[] = sprintf('inspect: zip contains development entry "%s".', wp_connectors_printable($name));
+            }
         }
     }
     $zip->close();
