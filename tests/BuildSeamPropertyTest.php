@@ -712,7 +712,20 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             } catch (\Throwable $seed_census_throw) {
                 return array('class' => 'FAIL', 'why' => 'the seeded control build\'s entry census threw (' . get_class($seed_census_throw) . '): ' . $seed_census_throw->getMessage());
             }
-            $seedManifest = (string) file_get_contents($scratch['dist'] . '/checksums.txt');
+            /*
+             * The seed manifest read rides the MARKER owner (OCR round
+             * 50, t31-ocr50-8): the (string) cast laundered a failed
+             * read into '' and the CLEAN row's byte-identity compare
+             * answered 'rebuilt manifest diverged' over a staging
+             * failure — the misattribution class the marker exists to
+             * close. An absent-or-unreadable seed manifest is the
+             * row's own FAIL, naming the staging channel, never the
+             * verdict the bytes never answered.
+             */
+            $seedManifest = $this->readMemberOrMarker($scratch['dist'] . '/checksums.txt');
+            if (null === $seedManifest || '__UNREADABLE__' === $seedManifest) {
+                return array('class' => 'FAIL', 'why' => 'the seeded control manifest ' . (null === $seedManifest ? 'is absent' : 'cannot be read') . ' — a staging failure of the seed channel, never the row\'s own verdict');
+            }
 
             // Apply the adversarial state, then snapshot what the run must
             // leave byte-untouched (the mutation itself may remove a member
@@ -1064,9 +1077,19 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $scratch = $this->makeScratchRepo('forced-archive-failures');
         try {
             $seedZip = WpConnectorsBuild::buildPlugin($scratch['plugin'], $scratch['dist']);
-            $zipBefore = (string) file_get_contents($scratch['zip']);
-            $sidecarBefore = (string) file_get_contents($scratch['zip'] . '.sha256');
-            $manifestBefore = (string) file_get_contents($scratch['dist'] . '/checksums.txt');
+            /*
+             * The byte-untouched snapshot rides the MARKER owner (OCR
+             * round 50, t31-ocr50-8 — the ocr26-12/ocr29-8 doctrine,
+             * both sides of the pair): the (string) casts laundered a
+             * failed read into '', and the compare below degraded to
+             * '' === '' — a VACUOUS pass over a staging failure. The
+             * marker reads compare like-for-like, an unreadable member
+             * answering its own marker on both sides, never a laundered
+             * empty string.
+             */
+            $zipBefore = $this->readMemberOrMarker($scratch['zip']);
+            $sidecarBefore = $this->readMemberOrMarker($scratch['zip'] . '.sha256');
+            $manifestBefore = $this->readMemberOrMarker($scratch['dist'] . '/checksums.txt');
             $this->assertFileExists($seedZip);
 
             // (a) zip-ADD failure: a staged source that vanishes before
@@ -1217,10 +1240,12 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             @unlink($closeTemp);
 
             // The forced failures happened at staging paths: the seeded
-            // artifact set is byte-untouched and nothing landed.
-            $this->assertSame($zipBefore, (string) file_get_contents($scratch['zip']));
-            $this->assertSame($sidecarBefore, (string) file_get_contents($scratch['zip'] . '.sha256'));
-            $this->assertSame($manifestBefore, (string) file_get_contents($scratch['dist'] . '/checksums.txt'));
+            // artifact set is byte-untouched and nothing landed — the
+            // compare rides the marker owner on BOTH sides (t31-ocr50-8),
+            // never a laundered empty read against its own twin.
+            $this->assertSame($zipBefore, $this->readMemberOrMarker($scratch['zip']));
+            $this->assertSame($sidecarBefore, $this->readMemberOrMarker($scratch['zip'] . '.sha256'));
+            $this->assertSame($manifestBefore, $this->readMemberOrMarker($scratch['dist'] . '/checksums.txt'));
         } finally {
             @chmod($scratch['root'] . '/staged-source.php', 0644);
             WpHarness::releaseScratch($scratch['root']);
