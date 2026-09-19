@@ -6408,6 +6408,44 @@ FIXTURE;
         $this->assertStringContainsString('DigitNamespaceStore.php', $namespace_refusal->getMessage(), 'The refusal names the file.');
 
         /*
+         * OCR round 47 (t31-ocr47-2 — the reserved-SEGMENT generation,
+         * the TAIL seam): the sub-segment tail is label-shaped per the
+         * r46 anchor and every SPECIAL-CLASS spelling is legal label
+         * bytes, so `use …\Shared\true;` matched, group 2 re-emitted
+         * `\true` VERBATIM beside the rewritten family, and the zip
+         * shipped a statement the engine FATALS on at compile
+         * ("Cannot use … as true because 'true' is a special class
+         * name") at exit 0 with every gate green (red at HEAD: every
+         * row below returned normally). The finding's own `list`
+         * example is the census's honest counter-proof — a hard
+         * KEYWORD tail lints clean (`use …\Shared\list;` parses; the
+         * lexer glues the keyword into the name token — probed on
+         * this engine), so the tail's refused class is the
+         * special-class LEAF alone, and the dissolvers stay legal and
+         * keep rewriting: an alias (`…\true as X`), a function/const
+         * kind (`use function …\true;`), and the hard-keyword tail
+         * itself.
+         */
+        foreach (array(
+            'special-class tail leaf: true' => 'use Deicod\\WpConnectors\\Shared\\true;',
+            'special-class tail leaf, deeper tail: never' => 'use Deicod\\WpConnectors\\Shared\\Storage\\never;',
+            'special-class tail leaf: static' => 'use Deicod\\WpConnectors\\Shared\\static;',
+        ) as $label => $statement) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass SpecialLeafStore\n{\n}\n", 'OpenAiOauth', 'shared/src/SpecialLeafStore.php'),
+                "A special-class tail leaf must refuse the rewrite ({$label}) — red at HEAD: the tail re-emitted verbatim beside the rewritten family, fatal bytes in the zip at exit 0.", \RuntimeException::class
+            );
+            $this->assertStringContainsString('sub-segment tail whose leaf', $refusal->getMessage(), "The refusal names the tail seam's own vocabulary ({$label}).");
+        }
+        // The tail dissolvers stay legal and keep rewriting (driven on
+        // this engine: every spelling below lints clean).
+        $tail_dissolvers = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\list;\nuse Deicod\\WpConnectors\\Shared\\true as X;\nuse function Deicod\\WpConnectors\\Shared\\true;\nclass TailDissolverStore\n{\n}\n";
+        $tail_dissolver_battery = WpConnectorsBuild::rewriteSharedNamespace($tail_dissolvers, 'OpenAiOauth', 'shared/src/TailDissolverStore.php');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\list;', $tail_dissolver_battery, 'A hard-keyword tail is legal (the lexer glues it into the name token) and rewrites.');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\true as X;', $tail_dissolver_battery, 'An aliased special-class leaf binds the alias and rewrites legally.');
+        $this->assertStringContainsString('use function Deicod\\WpConnectors\\OpenAiOauth\\Shared\\true;', $tail_dissolver_battery, 'A function-kind special-class leaf is exempt (the fatal is a class-name check) and rewrites.');
+
+        /*
          * Fix-round pin (t31-r4 K1 / t31-r4-4), restructured by t31-r7:
          * group-use MEMBER spellings — the prefix before '{' is
          * Deicod\WpConnectors itself and the members carry the Shared
@@ -8357,6 +8395,30 @@ FIXTURE;
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\WpConnectors {Shared\\Clock};\ninterface TailRiderFixture\n{\n}\n",
                 'parse-error bytes ride the relative use import',
             ),
+            /*
+             * OCR round 47 (t31-ocr47-2 — the reserved-SEGMENT
+             * generation, the LIST seam): the walk's member grammar
+             * is token-SHAPE only, and a T_NAME_QUALIFIED piece whose
+             * leaf is a special class name is a name token like any
+             * other — the splice and the verbatim re-emit shipped an
+             * import the engine FATALS on at compile at exit 0,
+             * judged by nobody (red at HEAD: both rows returned
+             * normally — the list member `Shared\Storage\true` beside
+             * the rewritten relative, and the relative run's OWN leaf
+             * `use namespace\true;`). Each member's leaf rides the
+             * SPECIAL_CLASS_NAMES census at its completion; the
+             * dissolvers (alias, function/const kind, a hard-keyword
+             * leaf — `…, Shared\Storage\list;` lints clean) stay
+             * legal and rewrite, pinned in the round's battery below.
+             */
+            'relative list member binding a special class name' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock, Shared\\Storage\\true;\ninterface TailRiderFixture\n{\n}\n",
+                'binds the special class name',
+            ),
+            'relative run own leaf binding a special class name' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\true;\ninterface TailRiderFixture\n{\n}\n",
+                'binds the special class name',
+            ),
         );
         foreach ($refusals as $label => $case) {
             $refusal = $this->refusalOf(
@@ -8365,6 +8427,18 @@ FIXTURE;
             );
             $this->assertStringContainsString($case[1], $refusal->getMessage(), "The refusal names the shape ({$label}).");
         }
+
+        /*
+         * OCR round 47 (t31-ocr47-2): the relative seam's DISSOLVERS
+         * stay legal and keep rewriting — the census owns the
+         * un-aliased class-kind binding only (driven on this engine:
+         * every spelling below lints clean and rewrote at HEAD).
+         */
+        $relative_dissolvers = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse namespace\\Clock, Shared\\Storage\\list;\nuse namespace\\true as X;\nuse function namespace\\true;\ninterface RelativeDissolverFixture\n{\n}\n";
+        $relative_dissolver_battery = WpConnectorsBuild::rewriteSharedNamespace($relative_dissolvers, 'OpenAiOauth', 'shared/src/RelativeDissolverFixture.php');
+        $this->assertStringContainsString('use \Deicod\WpConnectors\OpenAiOauth\Shared\Clock, Shared\Storage\list;', $relative_dissolver_battery, 'A hard-keyword leaf member of a relative list lints clean (the lexer glues it) and rides verbatim beside the rewrite.');
+        $this->assertStringContainsString('use \Deicod\WpConnectors\OpenAiOauth\Shared\true as X;', $relative_dissolver_battery, 'An aliased special-class relative leaf binds the alias and rewrites legally.');
+        $this->assertStringContainsString('use function \Deicod\WpConnectors\OpenAiOauth\Shared\true;', $relative_dissolver_battery, 'A function-kind special-class relative leaf is exempt (the fatal is a class-name check) and rewrites.');
     }
 
     /**

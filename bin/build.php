@@ -317,6 +317,44 @@ final class WpConnectorsBuild
                             throw new RuntimeException("build: the alias of a use statement importing the shared namespace in {$sourceVersion} must be one plain identifier — '{$alias_id[0]}' is a reserved spelling the engine forbids in the slot, case-insensitively (every keyword the lexer does not spell a name), and the rewrite re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write a plain identifier the engine accepts");
                         }
                     }
+                    /*
+                     * The reserved-SEGMENT census at the TAIL seam
+                     * (OCR round 47, t31-ocr47-2 — the sweep with the
+                     * member seam one commit over): the sub-segment
+                     * tail is label-shaped per the r46 anchor, and
+                     * every SPECIAL-CLASS spelling is legal label
+                     * bytes — `use …\Shared\true;` matched, group 2
+                     * (`\true`) re-emitted VERBATIM beside the
+                     * rewritten family, and the zip shipped a
+                     * statement the engine FATALS on at compile
+                     * ("Cannot use … as true because 'true' is a
+                     * special class name") with every gate green
+                     * (driven at HEAD: returned normally). The tail's
+                     * leaf rides the same census as the member seam —
+                     * the tail's segments always FOLLOW the family
+                     * leaf, so the engine owns no bare-keyword class
+                     * here at all (a hard-keyword tail lints clean:
+                     * `use …\Shared\list;` parses, the lexer gluing
+                     * the keyword into the name token — probed on this
+                     * engine; the finding's own `list` example is that
+                     * legal spelling, the special-class leaf is the
+                     * tail's true refused class), and the census owns
+                     * the un-aliased class-kind binding only: an
+                     * alias dissolves the fatal (`…\true as X` binds
+                     * X and lints clean), the function/const kinds
+                     * dissolve it (the check is a CLASS-name check),
+                     * and a brace tail turns the tail into a mid-name
+                     * prefix the members' own grammar judges.
+                     */
+                    $sub_segment_tail = (string) ($matches[2] ?? '');
+                    if ('' !== $sub_segment_tail
+                        && '' === $alias_group
+                        && '' === (string) ($matches[4] ?? '')
+                        && 1 !== preg_match('/(?i:function|const)\s+\z/', $matches[1])
+                        && self::nameLeafIsSpecialClass($sub_segment_tail)) {
+                        $tail_leaf = (string) substr((string) strrchr($sub_segment_tail, '\\'), 1);
+                        throw new RuntimeException("build: the use statement importing the shared namespace in {$sourceVersion} carries a sub-segment tail whose leaf ('{$tail_leaf}') is a special class name — the un-aliased class import binds it and the engine fatals at compile (\"Cannot use … as {$tail_leaf} because '{$tail_leaf}' is a special class name\"), case-insensitively, while the rewrite re-emits the tail verbatim beside the rewritten family, so the zip would ship the fatal bytes at exit 0; write a leaf the engine accepts as a class name, or dissolve the fatal with an alias or a function/const kind");
+                    }
 
                     /*
                      * The FAMILY-PREFIX brace tail rides the SAME
@@ -1139,6 +1177,27 @@ final class WpConnectorsBuild
             $member_named = true;
             $member_await_separator = true;
             $member_separator_open = false;
+            /*
+             * The reserved-SEGMENT census at the LIST seam (OCR round
+             * 47, t31-ocr47-2 — the sweep with the member and tail
+             * seams): the walk's member grammar is token-SHAPE only,
+             * and a T_NAME_QUALIFIED piece whose leaf is a special
+             * class name (`use namespace\Clock, Shared\Storage\true;`
+             * — and the relative run's OWN leaf, `use namespace\true;`)
+             * is a name token like any other, so the splice and the
+             * verbatim re-emit shipped an import the engine FATALS on
+             * at compile, at exit 0, judged by nobody (driven at HEAD:
+             * both shapes returned normally). Each member's leaf rides
+             * the SPECIAL_CLASS_NAMES census at its completion —
+             * bound, kind-led, and un-aliased — with the same
+             * dissolvers the member grammar owns: an alias binds X,
+             * the function/const kinds exempt the leaf, and a hard
+             * KEYWORD leaf (`…, Shared\Storage\list;`) lints clean
+             * (the lexer glues it into the name token) and rides.
+             */
+            $member_kind_led = T_FUNCTION === $previous_id || T_CONST === $previous_id;
+            $member_aliased = false;
+            $member_leaf_text = $tail_display;
             while (null !== $tail_index) {
                 $tail_token = $tokens[ $tail_index ];
                 $tail_id = is_array($tail_token) ? $tail_token[0] : null;
@@ -1191,6 +1250,9 @@ final class WpConnectorsBuild
                     if (wp_connectors_is_name_token_id($tail_id) && (! $member_await_separator || ! $member_named)) {
                         $member_named = true;
                         $member_await_separator = true;
+                        // The member's leaf-bearing piece (the census
+                        // above judges its last segment at completion).
+                        $member_leaf_text = is_array($tail_token) ? $tail_token[1] : (string) $tail_token;
                         $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
 
                         continue;
@@ -1230,7 +1292,10 @@ final class WpConnectorsBuild
                         continue;
                     }
                     if (! $member_named && (T_FUNCTION === $tail_id || T_CONST === $tail_id)) {
-                        // The kind keywords lead a member (`use A, function B;`).
+                        // The kind keywords lead a member (`use A, function B;`)
+                        // — kind-led members are leaf-exempt (the census
+                        // above: the fatal is a CLASS-name check).
+                        $member_kind_led = true;
                         $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
 
                         continue;
@@ -1247,21 +1312,35 @@ final class WpConnectorsBuild
                 }
                 if ('rider-or-terminator' === $tail_expect) {
                     if (wp_connectors_is_use_statement_boundary($tail_token, $tail_id)) {
+                        if (! $member_kind_led && ! $member_aliased && null !== $member_leaf_text
+                            && self::nameLeafIsSpecialClass($member_leaf_text)) {
+                            $leaf_display = (string) substr((string) strrchr('\\' . $member_leaf_text, '\\'), 1);
+                            throw new RuntimeException("build: a member of the relative use import ({$spelling_display}) binds the special class name '{$leaf_display}' in {$sourceVersion} — the un-aliased class import fatals at compile (\"Cannot use … as {$leaf_display} because '{$leaf_display}' is a special class name\"), case-insensitively, and the rewrite ships the member verbatim beside the rewritten name at exit 0; write a leaf the engine accepts as a class name, or dissolve the fatal with an alias or a function/const kind");
+                        }
                         $tail_expect = 'terminated';
 
                         break;
                     }
                     if (',' === $tail_token) {
+                        if (! $member_kind_led && ! $member_aliased && null !== $member_leaf_text
+                            && self::nameLeafIsSpecialClass($member_leaf_text)) {
+                            $leaf_display = (string) substr((string) strrchr('\\' . $member_leaf_text, '\\'), 1);
+                            throw new RuntimeException("build: a member of the relative use import ({$spelling_display}) binds the special class name '{$leaf_display}' in {$sourceVersion} — the un-aliased class import fatals at compile (\"Cannot use … as {$leaf_display} because '{$leaf_display}' is a special class name\"), case-insensitively, and the rewrite ships the member verbatim beside the rewritten name at exit 0; write a leaf the engine accepts as a class name, or dissolve the fatal with an alias or a function/const kind");
+                        }
                         $tail_expect = 'member-start';
                         $member_named = false;
                         $member_await_separator = false;
                         $member_separator_open = false;
+                        $member_kind_led = false;
+                        $member_aliased = false;
+                        $member_leaf_text = null;
 
                         $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
 
                         continue;
                     }
                     if (T_AS === $tail_id) {
+                        $member_aliased = true;
                         $tail_expect = 'alias-identifier';
 
                         $tail_index = wp_connectors_next_code_token_index($tokens, $tail_index + 1);
@@ -1300,6 +1379,9 @@ final class WpConnectorsBuild
                     $member_named = false;
                     $member_await_separator = false;
                     $member_separator_open = false;
+                    $member_kind_led = false;
+                    $member_aliased = false;
+                    $member_leaf_text = null;
                 } elseif (! wp_connectors_is_use_statement_boundary($tail_token, $tail_id)) {
                     $rider_display = is_array($tail_token) ? $tail_token[1] : $tail_token;
 
