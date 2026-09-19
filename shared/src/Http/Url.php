@@ -465,8 +465,18 @@ final class Url {
 		 * consumer's reading resolves it into a host), and the bracket
 		 * literals ride their own screen above — an IPv6 address is
 		 * pure ASCII by grammar.
+		 *
+		 * The probe itself reads abort-as-reject (glm36-8,
+		 * t31-ocr53-2): `0 !==` — a bare byte-class scan carries no
+		 * backtracking to exhaust, so PCRE answering false is
+		 * unreachable in practice, but the spelling refuses one
+		 * anyway, never passes it — the same rule the port digit
+		 * screen, the glued-bracket allow form, and both //u probes
+		 * spell (this was the one ban probe in the file still spelled
+		 * `1 ===`, the r53-2 fail-open shape: an abort turned into a
+		 * silent pass of a non-ASCII host).
 		 */
-		if ( false === $bracket_end && 1 === preg_match( '/[\x80-\xFF]/', $raw_host ) ) {
+		if ( false === $bracket_end && 0 !== preg_match( '/[\x80-\xFF]/', $raw_host ) ) {
 			throw new InvalidArgumentException( 'The URL host must be ASCII — the URL Standard runs domain-to-ASCII over a special-scheme host before resolving it ("https://bücher.example/" contacts xn--bcher-kva.example in a browser) while this parse and every redacted form keep the raw UTF-8 spelling, and the two must agree: write the host in its punycode (xn--) spelling, never raw UTF-8.' );
 		}
 
@@ -586,6 +596,21 @@ final class Url {
 		}
 		$last = (string) $parts[ count( $parts ) - 1 ];
 
-		return 1 === preg_match( '/\A(?:[0-9]+|0[xX][0-9A-Fa-f]*)\z/', $last );
+		$probe = preg_match( '/\A(?:[0-9]+|0[xX][0-9A-Fa-f]*)\z/', $last );
+
+		/*
+		 * Abort-as-reject (glm36-8, t31-ocr53-2): a PCRE abort
+		 * cannot prove the label is not a number, so it answers the
+		 * refusing arm — the sole caller's screen refuses the URL,
+		 * never passes it, the rule every probe in this file already
+		 * spells. The r53-2 shape read `1 === false` as "not a
+		 * number" and an IPv4-ambiguous spelling constructed as an
+		 * opaque domain behind the abort.
+		 */
+		if ( false === $probe ) {
+			return true;
+		}
+
+		return 1 === $probe;
 	}
 }

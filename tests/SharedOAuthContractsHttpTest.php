@@ -470,6 +470,46 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-53 pin (t31-ocr53-2, the fail-open PCRE screens): the
+     * ends-in-a-number predicate's probe read `1 === preg_match(...)`
+     * — a PCRE abort answered false, `1 === false` was false, and an
+     * IPv4-ambiguous spelling constructed as an opaque domain behind
+     * the abort, the fail-open direction on exactly the
+     * WHATWG-differential screen. The abort is DETERMINISTIC by the
+     * same pinned-limit idiom the architecture gate's abort pin rides
+     * (t31-ocr2-10): a long hex label exhausts a pinned
+     * pcre.backtrack_limit inside the hex-star's backtrack, the limit
+     * restored on every exit path. The non-ASCII twin (the byte-class
+     * probe the same round re-spelled `0 !==`) is CONSTRUCTION-EVIDENT
+     * and driven nowhere: a one-byte class scan carries no
+     * backtracking to exhaust and no /u error channel, so PCRE
+     * answering false over it is not an injectable state — the
+     * spelling is the pin, per the finding's own census rule.
+     */
+    public function testAPcreAbortRefusesTheIpv4ScreenNeverPassesIt(): void
+    {
+        $label = '0x' . str_repeat('a', 3000) . 'g';
+        $url = "https://{$label}/";
+        $host_limit = (string) ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', '1024');
+        try {
+            try {
+                Url::parse_validated($url);
+                $this->fail('A PCRE abort inside the ends-in-a-number probe must REFUSE the URL — red at HEAD it constructed, the spelling an opaque domain behind the fail-open probe.');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not use an IPv4-ambiguous spelling', $e->getMessage(), 'The abort rides the screen\'s own refusal sentence — the abort-as-reject idiom (glm36-8).');
+            }
+        } finally {
+            ini_set('pcre.backtrack_limit', $host_limit);
+        }
+
+        // The clean direction at the restored default: the same
+        // spelling is a DOMAIN, not an abort — the refusal above is
+        // the abort, never the size.
+        $this->assertSame($label, Url::parse_validated($url)['authority'], 'At the host default limit the same label answers its true reading — a non-radix-digit domain, not a number.');
+    }
+
+    /**
      * OCR-round-50 pin (t31-ocr50-4, the WHATWG-differential class
      * the r28-6 backslash, r44-1 strip-set, r45-1 percent, and r49-4
      * IPv4 screens close for their own bytes): the URL Standard runs
