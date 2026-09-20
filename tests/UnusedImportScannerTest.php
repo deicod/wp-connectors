@@ -1096,7 +1096,22 @@ FIXTURE
             $this->assertSame(1, preg_match('/aborted counted=(\d+)/', $message, $m) ? 1 : 0, 'The abort line carries its count.');
             $this->assertSame($fail_lines, (int) $m[1], "The by-ref count answers EXACTLY the violations whose FAIL lines already printed — the abort never drops a counted offense (red at HEAD: the FAILs printed while the count stayed 0): {$message}");
         } finally {
-            chmod($this->root . '/locked', 0755);
+            /*
+             * The restore is @chmod (OCR round 64, t31-ocr64-4, the
+             * t31-ocr42-8 class): a bare chmod() here converts a
+             * failed restore (NFS/quota/AV lock, vanished tree) to a
+             * Warning exception under the suite's
+             * convertWarningsToExceptions and REPLACES the in-flight
+             * verdict — the suppress the sibling batteries ride at
+             * this identical seam (BuildSeamPropertyTest::runState,
+             * ToolchainSmokeTest's locked leg). A file-wide sweep
+             * found no other bare chmod-in-finally straggler: the
+             * probe-skip restores (both legs' skip branches) ride
+             * their own skip channel, pre-verdict, where a loud
+             * failure is the staging verdict the skip doctrine
+             * already owns.
+             */
+            @chmod($this->root . '/locked', 0755);
         }
     }
 
@@ -1151,7 +1166,10 @@ FIXTURE
             }
             $this->assertSame(0, $counted, 'The by-ref count answers 0 under the constructor\'s own refusal — the finally owns the sync for every abort shape (red at HEAD: the count stayed null, the construction sitting outside the guarded region).');
         } finally {
-            chmod($locked, 0755);
+            // The same @chmod restore (t31-ocr64-4): the constructor
+            // refusal this leg drives is the in-flight verdict a bare
+            // restore's Warning would replace.
+            @chmod($locked, 0755);
         }
     }
 
