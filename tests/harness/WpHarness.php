@@ -1585,9 +1585,26 @@ final class WpHarness
              * POSIX host the arm stays exact: there the spelling IS
              * relative (a legal, if odd, directory name), and the
              * prepend is the correct judgment.
+             *
+             * The THIRD spelling (OCR round 68, t31-ocr68-3): a
+             * ROOT-RELATIVE single leading backslash ('\Temp\dst') is
+             * absolute on the host it names — Windows resolves it
+             * against the current drive's root — and it matched
+             * neither the drive-letter shape nor the UNC
+             * double-backslash above, so the cwd-prepend arm judged
+             * '<cwd>/Temp/dst' (the comparison vocabulary folds the
+             * backslashes) while the landing loop resolves at the
+             * drive root: judged-tree ≠ landed-tree, the very
+             * misjudgment class this gate exists to close. A leading
+             * backslash of ANY count names the platform's absolute
+             * vocabulary now — the UNC double-backslash is this
+             * class's own two-backslash member — and the POSIX host
+             * keeps the spelling relative: a backslash is a legal
+             * name byte there, and the prepend stays the correct
+             * judgment.
              */
-            if (! self::isPosixHost() && (1 === preg_match('/\A[A-Za-z]:/', $to_walk) || 0 === strpos($to_walk, '\\\\'))) {
-                throw new RuntimeException('WpHarness::copyTree() refuses a Windows-absolute target on a non-POSIX host — the containment walk premises POSIX spelling and would cwd-prepend an absolute drive/UNC spelling into a path no host resolves: ' . $to);
+            if (! self::isPosixHost() && (1 === preg_match('/\A[A-Za-z]:/', $to_walk) || 0 === strpos($to_walk, '\\'))) {
+                throw new RuntimeException('WpHarness::copyTree() refuses a Windows-absolute target on a non-POSIX host — the containment walk premises POSIX spelling and would cwd-prepend an absolute drive/UNC/root-relative spelling into a path no host resolves: ' . $to);
             }
             $cwd = getcwd();
             if (false === $cwd) {

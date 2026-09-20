@@ -2417,6 +2417,26 @@ final class HarnessCopyTreeTest extends TestCase
              */
             WpHarness::copyTree($from, 'C:\\Temp\\dst');
             $this->assertFileExists($base . '/C:\\Temp\\dst/sub/file.php', 'A drive-letter spelling is a LEGAL relative target on the POSIX host — cwd-prepended and landed, never a false platform refusal.');
+            /*
+             * OCR round 68 (t31-ocr68-3): the platform gate's THIRD
+             * spelling, the POSIX-exactness half driven (the refusal
+             * half is construction-evident, the r28-8 doctrine —
+             * DIRECTORY_SEPARATOR is a platform constant no test sim
+             * flips). A ROOT-RELATIVE single leading backslash
+             * ('\Temp\dst') is absolute on the host it names
+             * (resolved against the current drive's root) and once
+             * matched neither the drive-letter shape nor the UNC
+             * double-backslash, so the non-POSIX walk judged
+             * '<cwd>/Temp/dst' while the landing resolved at the
+             * drive root — judged-tree ≠ landed-tree, the
+             * misjudgment class the gate's own premise claims closed.
+             * The gate owns the leading-backslash class of any count
+             * now; here the leg pins it does NOT over-refuse — the
+             * spelling is a legal (if odd) relative name on POSIX,
+             * judged through its true tree and landed under the cwd.
+             */
+            WpHarness::copyTree($from, '\\Temp\\dst');
+            $this->assertFileExists($base . '/\\Temp\\dst/sub/file.php', 'A root-relative single-backslash spelling is a LEGAL relative target on the POSIX host — cwd-prepended and landed, never a false platform refusal (its Windows-absoluteness answers the non-POSIX gate).');
         } finally {
             chdir($previous_cwd);
             WpHarness::releaseScratch($base);
