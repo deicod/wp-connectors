@@ -699,6 +699,45 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-69 pin (t31-ocr69-1): the '..' collapse clamps AT the
+     * drive anchor. The pop once rode the anchor's own drive segment
+     * like any poppable component, so a relative target whose '..'
+     * count exceeded the cwd's depth beneath the drive root
+     * ('a/../../..' with cwd 'C:/repo') popped 'a', 'repo', AND the
+     * 'C:' anchor, and the composition answered '' (the ocr38-3 drive
+     * prefix being '') — a spelling that passes every downstream guard
+     * VACUOUSLY (strpos('', …) false, the containment compares
+     * degenerate) while the caller's landing resolves at the drive
+     * root: judged-tree ≠ landed-tree, the misjudgment class the
+     * collapse exists to prevent. The clamp composes the drive
+     * anchor's own root spelling instead — 'C:', the universal-
+     * container predicate's own class, read with or without the
+     * trailing separator, so the loop's stability break hands the
+     * clamped resolution the loud container refusal (the POSIX '/'
+     * twin's exact doctrine). Driven through the collapse's own seam,
+     * the reflection the ocr38-2 pin rode: the real loop derives its
+     * anchor from realpath(), which on this POSIX host always answers
+     * '/'-rooted, so the drive vocabulary reaches the collapse only
+     * through its spelling — red at the pre-clamp shape: the same
+     * invocation answered '', the vacuous pass itself.
+     */
+    public function testTheDotDotCollapseClampsAtTheDriveAnchor(): void
+    {
+        $collapse = new \ReflectionMethod(WpHarness::class, 'collapseRelativeTarget');
+
+        // The drive-anchor legs: a pop that would consume the anchor
+        // stops there — never the vacuous ''.
+        $this->assertSame('C:', $collapse->invoke(null, 'C:/repo', '/a/../../..'), 'The over-populated drive collapse composes the DRIVE ANCHOR\'s own root spelling — the class the container refusal below judges (red at the pre-clamp shape: this very invocation answered \'\', the vacuous spelling that passed every guard).');
+        $this->assertSame('C:', $collapse->invoke(null, 'C:/repo', '/..'), 'A collapse that bottoms out exactly at the drive root composes the anchor alone, the same clamped spelling the over-populated leg answers.');
+        // Normal collapse unchanged on BOTH vocabularies.
+        $this->assertSame('C:/repo/dst', $collapse->invoke(null, 'C:/repo', '/sub/../dst'), 'A legal drive-side \'..\' collapse rides byte-unchanged — the clamp owns only the pop past the anchor.');
+        $this->assertSame('/repo/dst', $collapse->invoke(null, '/repo', '/sub/../dst'), 'A legal POSIX \'..\' collapse rides byte-unchanged (the harness\'s own live vocabulary on this host).');
+        // The POSIX root clamp unchanged: the pop past the stack's
+        // bottom is the no-op, the '/' prefix the floor.
+        $this->assertSame('/', $collapse->invoke(null, '/repo', '/a/../../..'), 'The POSIX over-populated collapse still composes \'/\' — the root clamp the drive clamp twins, byte-unchanged by this round.');
+    }
+
+    /**
      * OCR-round-55 pin (t31-ocr55-2): the representative fence reads
      * realpath()'s FALSE as false, never as ''. The fence once cast
      * (string) realpath(sys_get_temp_dir()), and a temp root that

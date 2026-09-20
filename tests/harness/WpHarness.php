@@ -1127,6 +1127,69 @@ final class WpHarness
     }
 
     /**
+     * The lexical '.'/'..' collapse over the resolved anchor plus the
+     * not-yet-existing remainder — the ocr8-3 walk's second half, pure
+     * string work (the real loop derives its anchor from realpath(),
+     * which on a POSIX host always answers '/'-rooted, so the drive
+     * vocabulary below reaches this seam only through the collapse's
+     * own spelling — pinned through the reflection the ocr38-2 pin
+     * rode, the one test-visible drive over it).
+     *
+     * The collapse speaks the ANCHOR's own shape (OCR round 38,
+     * t31-ocr38-3): the unconditional '/' prepend composed only on
+     * POSIX, where every realpath() answer carries a leading separator
+     * — on a separator host the folded anchor is a realpath() output
+     * with NONE ('C:/repo'), and the prepend folded the resolution
+     * into '/C:/repo/sub/dst', a spelling no host resolves, the loop's
+     * equality and containment verdicts then answering over vocabulary
+     * noise. The prefix derives from the anchor: '/' where the anchor
+     * carries one, '' where it does not (the drive anchor joins
+     * through its segments alone). POSIX byte-unchanged (the anchor
+     * always '/' there).
+     *
+     * The DRIVE-ANCHOR CLAMP (OCR round 69, t31-ocr69-1): the pop once
+     * rode the anchor's own drive segment like any poppable component,
+     * so a relative target whose '..' count exceeded the cwd's depth
+     * beneath the drive root ('a/../../..' with cwd 'C:/repo') popped
+     * 'a', 'repo', AND the 'C:' anchor, and the composition answered
+     * '' — the ocr38-3 prefix being '' — a spelling that passes every
+     * downstream guard VACUOUSLY (strpos('', …) false, the containment
+     * compares degenerate) while the caller's landing resolves at the
+     * drive root: judged-tree ≠ landed-tree, the misjudgment class
+     * the collapse exists to prevent. A pop that would consume the
+     * ANCHOR segment stops there now — the resolution composes to the
+     * drive anchor's own root spelling ('C:', the container class the
+     * universal-container predicate reads with or without its trailing
+     * separator) and the loop's stability break hands it the
+     * universal-container refusal, the POSIX '/' twin's exact
+     * doctrine. On POSIX the pop keeps riding unconditionally (the
+     * pop on the empty stack is the no-op, the '/' prefix the floor —
+     * the root clamp unchanged).
+     *
+     * @param string $ancestor_real The resolved anchor, already folded through posix_comparison_vocabulary().
+     * @param string $remainder     The not-yet-existing tail below the anchor (''-prefixed).
+     * @return string The collapsed resolution, in the anchor's own shape vocabulary.
+     */
+    private static function collapseRelativeTarget(string $ancestor_real, string $remainder): string
+    {
+        $collapsed = array();
+        foreach (explode('/', $ancestor_real . $remainder) as $segment) {
+            if ('' === $segment || '.' === $segment) {
+                continue;
+            }
+            if ('..' === $segment) {
+                if ('/' === $ancestor_real[0] || 1 < count($collapsed)) {
+                    array_pop($collapsed);
+                }
+                continue;
+            }
+            $collapsed[] = $segment;
+        }
+
+        return ('/' === $ancestor_real[0] ? '/' : '') . implode('/', $collapsed);
+    }
+
+    /**
      * Recursively removes a directory (test helper — the ONE scratch-tree
      * removal owner, t31-ocr1-9: the former per-test twins diverged in
      * error policy; the harness policy is the loud one, and every test
@@ -1657,9 +1720,11 @@ final class WpHarness
          * judgment the spelling walked — sentinel, file crossing,
          * dangling link, anchor realpath, collapse — and the loop
          * repeats until the judgment spelling IS its own resolution
-         * (a resolution of '/' is stable too: the root is the
-         * mirror clause's own universal-container verdict, not the
-         * sentinel's nonexistent-chain one). Termination is
+         * (a resolution of the universal container is stable too —
+         * '/' on POSIX, the clamped drive anchor on a separator host,
+         * t31-ocr69-1: the container is the mirror clause's own
+         * verdict, not the sentinel's nonexistent-chain one).
+         * Termination is
          * construction-evident: the first collapse is dot-free, so
          * the second pass's remainder is a nonexistent tail whose
          * anchor resolves every link it stops at, and the third pass
@@ -1769,37 +1834,23 @@ final class WpHarness
                 // anchor would fold into one giant segment.
                 $ancestor_real = self::posix_comparison_vocabulary($ancestor_real);
                 $remainder = substr(rtrim($to_walk, '/'), strlen($ancestor));
-                $collapsed = array();
-                foreach (explode('/', $ancestor_real . $remainder) as $segment) {
-                    if ('' === $segment || '.' === $segment) {
-                        continue;
-                    }
-                    if ('..' === $segment) {
-                        array_pop($collapsed);
-                        continue;
-                    }
-                    $collapsed[] = $segment;
-                }
-                /*
-                 * The collapse speaks the ANCHOR's own shape (OCR
-                 * round 38, t31-ocr38-3): the unconditional '/'
-                 * prepend composed only on POSIX, where every
-                 * realpath() answer carries a leading separator — on
-                 * a separator host the folded anchor is a realpath()
-                 * output with NONE ('C:/repo'), and the prepend
-                 * folded the resolution into '/C:/repo/sub/dst', a
-                 * spelling no host resolves, the loop's equality and
-                 * containment verdicts then answering over vocabulary
-                 * noise. The prefix derives from the anchor: '/' where
-                 * the anchor carries one, '' where it does not (the
-                 * drive anchor joins through its segments alone).
-                 * POSIX byte-unchanged (the anchor always '/' there).
-                 */
-                $resolved = ('/' === $ancestor_real[0] ? '/' : '') . implode('/', $collapsed);
+                $resolved = self::collapseRelativeTarget($ancestor_real, $remainder);
             } else {
                 $resolved = rtrim($to_walk, '/');
             }
-            if ($resolved === $to_walk || '/' === $resolved) {
+            /*
+             * The stability break reads the CONTAINER CLASS (OCR round
+             * 69, t31-ocr69-1): '/' stays the POSIX fixed point
+             * (byte-unchanged — on POSIX only '/' and the inert
+             * super-root twin ever match the class predicate, and the
+             * '/' literal caught the first already), and the CLAMPED
+             * drive anchor joins it: 'C:'/'C:/' is the drive host's
+             * root, the mirror clause's own universal-container verdict
+             * below, never the sentinel's nonexistent-chain one — the
+             * exact doctrine the '/' twin rode, now spoken in the
+             * anchor's own vocabulary.
+             */
+            if ($resolved === $to_walk || self::resolvesToUniversalContainer($resolved)) {
                 $target_real = $resolved;
                 break;
             }
