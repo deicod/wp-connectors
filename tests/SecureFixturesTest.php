@@ -194,7 +194,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
      * @param string $stem The site's scratch stem (e.g. 'wp-connectors-scan-prune').
      * @return string A scratch root no existing tree occupies.
      */
-    private function scanScratchRoot($stem)
+    private function scanScratchRoot(string $stem): string
     {
         foreach (glob(sys_get_temp_dir() . '/' . $stem . '-' . getmypid() . '-*') ?: array() as $stale) {
             WpHarness::releaseScratch($stale);
