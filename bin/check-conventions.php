@@ -135,7 +135,7 @@ if (wp_connectors_cli_entry(__FILE__)) {
 /**
  * Flags `use` imports whose short name appears nowhere else in the file
  * (glm16-10). Imports are located on a token-masked view of the source
- * (glm17-8): a column-0 `use ...;` line inside a nowdoc/heredoc body
+ * (glm17-8): a `use ...;` statement line inside a nowdoc/heredoc body
  * or a block comment is data, not an import, and never counts.
  *
  * Dead imports imply call paths that do not exist (an import of
@@ -301,9 +301,42 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              * plugin-tools.php, the census comment there listing every
              * seam aligned).
              */
+            /*
+             * The statement anchors own the INDENTED, the LIST, and
+             * the CLOSE-TAG spellings (OCR round 62, t31-ocr62-1):
+             * the anchors were ^ alone under /m — column-0
+             * statements only — and the plain tail required ';',
+             * while PHP admits an import INDENTED inside a braced
+             * namespace block ('namespace X {\n    use Foo\Bar;'),
+             * the COMMA-SEPARATED list ('use A\B, C\D;'), and the
+             * close-tag terminator the engine implies a ';' for
+             * ('use A\B ?>') — so a dead import in any of the three
+             * spellings was INVISIBLE to the gate (the exact
+             * silent-false-negative class the r46-9 keyword census
+             * closed, one grammar member over) while its ASCII twin
+             * was caught. The three list spellings are the ones bin/
+             * build.php's own unownedUseImportSpellingClass() names
+             * as legal inputs (the comma list and the close tag with
+             * their own refusal errands there — the REWRITER refuses
+             * what this gate must still SEE), so the codebase
+             * already treats them as real inputs, never typos. The
+             * [ \t]* anchor class rides BOTH statement patterns and
+             * the two keyword-prefix strips below (the derivation
+             * must strip what the widened patterns now match — the
+             * r46-9 rule), the terminator alternation rides the
+             * plain pattern and the group's trailing check, and the
+             * comma arm unrolls below through the group unroller.
+             * The indentation the anchor now accepts is exactly the
+             * exposure that needs the TRAIT fence
+             * (wp_connectors_use_statement_in_import_position(), its
+             * own census below): a class-body 'use SomeTrait;' is
+             * indented too, and the mention verdict would flag every
+             * legitimately-used trait in the tree — the fence keeps
+             * the errand on imports.
+             */
             $matches = array();
             preg_match_all(
-                '/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+([' . WP_CONNECTORS_LABEL_BYTES . ']+))?\s*;/m',
+                '/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+([' . WP_CONNECTORS_LABEL_BYTES . ']+))?\s*(?:;|\?>)/m',
                 $code_view,
                 $matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -325,17 +358,41 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              */
             $group_matches = array();
             preg_match_all(
-                '/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+\s*\{/m',
+                '/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+\s*\{/m',
                 $code_view,
                 $group_matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
             );
 
-            if ($matches === array() && $group_matches === array()) {
+            /*
+             * The comma-list arm (t31-ocr62-1, the same census): the
+             * opening proves the shape — the FIRST member's name run
+             * (alias included) followed by a comma; the plain tail
+             * pattern and the group's '{' requirement both refused
+             * the comma, so a dead member rode unflagged. A list is
+             * grammar-wise a group without braces: the handler below
+             * unrolls its members through the SAME group unroller
+             * under an empty prefix.
+             */
+            $comma_matches = array();
+            preg_match_all(
+                '/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_BYTES . ']+)?\s*,/m',
+                $code_view,
+                $comma_matches,
+                PREG_SET_ORDER | PREG_OFFSET_CAPTURE
+            );
+
+            if ($matches === array() && $group_matches === array() && $comma_matches === array()) {
                 continue;
             }
 
             foreach ($matches as $match) {
+                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1])) {
+                    // A trait clause list, never an import — the
+                    // fence helper's own census.
+                    continue;
+                }
+
                 /*
                  * glm17-11: the offset capture IS the statement's position.
                  * The old code re-derived it with an unanchored strpos over
@@ -373,8 +430,12 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                  */
                 // The short name is the alias when one is given, else the
                 // last segment of the qualified name (the whole name for a
-                // global class import with no backslash).
-                $qualified = trim(preg_replace('/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?/', '', substr($match[0][0], 0, -1)));
+                // global class import with no backslash). The tail slice
+                // drops the TERMINATOR by its own length — ';' or the
+                // two-byte close tag the widened pattern now matches
+                // (t31-ocr62-1).
+                $terminator_length = '?>' === substr($match[0][0], -2) ? 2 : 1;
+                $qualified = trim(preg_replace('/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?/', '', substr($match[0][0], 0, -$terminator_length)));
                 $lastBackslash = strrpos($qualified, '\\');
                 $alias = isset($match[1][0]) && \is_string($match[1][0]) ? $match[1][0] : '';
                 $short = '' !== $alias
@@ -423,24 +484,93 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 ++$violations;
             }
 
+            /*
+             * The comma-list handler (t31-ocr62-1): the statement
+             * extent runs to the first ';' or close tag on the
+             * MASKED view past the opening's comma — comments blank
+             * to spaces and string contents are masked (glm17-15's
+             * length-not-text invariant), so neither can hide the
+             * terminator. An unterminated list is not a well-formed
+             * declaration — @lint owns unparseable files (the glm17
+             * boundary, the group seam's own rule). The RAW bytes at
+             * the captured offset are removed once for every
+             * member's mention check (the group form's own shape),
+             * and each member rides the same mention contract: one
+             * label-boundary mention anywhere (code, comments,
+             * docblocks), case-insensitive.
+             */
+            foreach ($comma_matches as $match) {
+                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1])) {
+                    // A trait clause list ('use TraitA, TraitB;') —
+                    // the fence helper's own census.
+                    continue;
+                }
+
+                $search_from = $match[0][1] + strlen($match[0][0]);
+                $semi = strpos($code_view, ';', $search_from);
+                $close_tag = strpos($code_view, '?>', $search_from);
+                if (false === $semi && false === $close_tag) {
+                    continue;
+                }
+                if (false !== $close_tag && (false === $semi || $close_tag < $semi)) {
+                    $terminator_length = 2;
+                    $statement_end = $close_tag + 2;
+                } else {
+                    $terminator_length = 1;
+                    $statement_end = $semi + 1;
+                }
+
+                $body = (string) preg_replace(
+                    '/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?/',
+                    '',
+                    substr($code_view, $match[0][1], $statement_end - $terminator_length - $match[0][1])
+                );
+                $member_imports = wp_connectors_group_use_imports('', $body);
+
+                $statement = substr($source, $match[0][1], $statement_end - $match[0][1]);
+                $withoutUse = substr_replace($source, '', $match[0][1], strlen($statement));
+
+                foreach ($member_imports as $member_import) {
+                    if (preg_match('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . preg_quote($member_import['short'], '/') . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])/i', $withoutUse) === 1) {
+                        continue;
+                    }
+
+                    fwrite(STDERR, sprintf(
+                        "conventions: FAIL %s: unused import '%s' (comma-list member) — the short name appears nowhere else in the file.\n",
+                        substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
+                        ltrim($member_import['qualified'], '\\')
+                    ));
+                    ++$violations;
+                }
+            }
+
             foreach ($group_matches as $match) {
+                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1])) {
+                    // A trait adaptation ('use T { … }'), never a
+                    // group import — the fence helper's own census.
+                    continue;
+                }
+
                 $open = $match[0][1] + strlen($match[0][0]) - 1;
                 $close = wp_connectors_matching_brace_end($code_view, $open);
 
                 /*
-                 * The declaration must close with ';' right after the
-                 * matching brace on the masked view; anything else (an
-                 * unbalanced body the walk ran to EOF on, a missing
-                 * terminator) is not a well-formed declaration — @lint owns
-                 * unparseable files (the glm17 boundary), so the scanner
-                 * stays neutral on that class.
+                 * The declaration must close with ';' — or the close
+                 * tag the engine implies one for (t31-ocr62-1, the
+                 * statement-boundary owner's own vocabulary) — right
+                 * after the matching brace on the masked view;
+                 * anything else (an unbalanced body the walk ran to
+                 * EOF on, a missing terminator) is not a well-formed
+                 * declaration — @lint owns unparseable files (the
+                 * glm17 boundary), so the scanner stays neutral on
+                 * that class.
                  */
-                if (1 !== preg_match('/^[ \t\r\n]*;/', (string) substr($code_view, $close + 1), $semi)) {
+                if (1 !== preg_match('/^[ \t\r\n]*(?:;|\?>)/', (string) substr($code_view, $close + 1), $semi)) {
                     continue;
                 }
                 $statement_end = $close + 1 + strlen($semi[0]);
 
-                $prefix = preg_replace('/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?|[\s{]+$/', '', $match[0][0]);
+                $prefix = preg_replace('/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?|[\s{]+$/', '', $match[0][0]);
                 $member_imports = wp_connectors_group_use_imports(
                     (string) $prefix,
                     (string) substr($code_view, $open + 1, $close - $open - 1)
@@ -483,6 +613,96 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
     }
 
     return $violations;
+}
+
+/**
+ * Whether a use statement at an offset sits in IMPORT position — the
+ * trait fence the indented anchor needs (OCR round 62, t31-ocr62-1).
+ *
+ * The column-0 anchor once made the question moot: imports sit at
+ * column 0 (the top level, or an unbraced namespace declaration),
+ * and a TRAIT clause list — `use SomeTrait;` inside a class body —
+ * is always indented, so no trait use ever matched a pattern. The
+ * widened [ \t]* anchor sees both, and the gate must not send a
+ * trait clause down the import errand: the trait's name is its own
+ * only mention in the typical tree, so the mention verdict would
+ * flag every legitimately-used trait (the false-positive class the
+ * widening would otherwise answer on the real scan roots). The
+ * judgment is build.php's brace-kind doctrine over the masked view:
+ * a '{' opens a NAMESPACE block — the one block kind inside which a
+ * use statement is still an import — exactly when the declaration
+ * run before it is the `namespace` keyword's own (a name run, or
+ * nothing at all for the global block); every other brace (a class,
+ * a function, a control block, an anonymous class) is 'other'. The
+ * statement is an import when NO 'other' frame encloses it. The
+ * walk rides the MASKED view: string contents and comments are
+ * blanked (same length, the glm17-15 invariant), so every brace it
+ * counts is code — an interpolation's braces cannot unbalance the
+ * count the way they once build.php's token walk (the t31-ocr16-10
+ * class), and a brace inside a heredoc body is data (glm17-8).
+ * Inline HTML between close and open tags keeps its bytes on that
+ * view — the glm17-8 boundary the statement patterns themselves
+ * already carry: this gate owns PHP-source trees, never templating
+ * mixtures, and @lint owns what does not parse.
+ *
+ * @param string $code_view The masked view the statement offsets came from.
+ * @param int    $offset    The statement's byte offset (the pattern match).
+ * @return bool True when no non-namespace block encloses the statement.
+ */
+function wp_connectors_use_statement_in_import_position(string $code_view, int $offset): bool
+{
+    $frames = array();
+    $run_start = 0;
+    $length = min($offset, strlen($code_view));
+    for ($i = 0; $i < $length; ++$i) {
+        $byte = $code_view[$i];
+        if ('{' === $byte) {
+            // The declaration run before the brace — everything since
+            // the last structural boundary — is the `namespace`
+            // keyword's own (its name run and whitespace, or nothing
+            // for 'namespace {') exactly when it matches this shape;
+            // any other opener (a class, 'if (…)', 'function f(…)')
+            // carries a byte the run class refuses. The mode tags are
+            // boundaries themselves (below): the OPEN tag's bytes
+            // must not ride into the run of the first declaration
+            // after it — '<?php namespace X {' is the canonical file
+            // head, and the tag's '<' would otherwise classify the
+            // brace 'other'.
+            $frames[] = 1 === preg_match(
+                '/\A[ \t\r\n\x0B\x0C]*(?i:namespace)\b[' . WP_CONNECTORS_LABEL_BYTES . '\\\\\s]*\z/',
+                substr($code_view, $run_start, $i - $run_start)
+            ) ? 'namespace' : 'other';
+            $run_start = $i + 1;
+        } elseif ('}' === $byte || ';' === $byte) {
+            if ('}' === $byte && $frames !== array()) {
+                array_pop($frames);
+            }
+            $run_start = $i + 1;
+        } elseif ('?' === $byte) {
+            // A mode tag is a structural boundary (the statement-
+            // boundary owner's own vocabulary): the close tag implies
+            // the ';' and the open tag's own bytes never belong to
+            // the declaration run that follows them.
+            if (0 < $i && '<' === $code_view[$i - 1]) {
+                // Open tag ('<?php', '<?='): the run resumes past the
+                // tag's keyword bytes (its trailing whitespace is the
+                // run class's own leading side).
+                $after = $i + 1;
+                if ('=' === ($code_view[$after] ?? '')) {
+                    ++$after;
+                } elseif ('php' === strtolower((string) substr($code_view, $after, 3))) {
+                    $after += 3;
+                }
+                $run_start = $after;
+            } elseif ('>' === ($code_view[$i + 1] ?? '')) {
+                // Close tag: the implied ';' (run boundary; the HTML
+                // past it is the glm17-8 boundary the census names).
+                $run_start = $i;
+            }
+        }
+    }
+
+    return ! in_array('other', $frames, true);
 }
 
 /**

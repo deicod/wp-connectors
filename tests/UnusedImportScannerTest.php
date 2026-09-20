@@ -548,6 +548,58 @@ FIXTURE
                 "<?php\nuse Vendor\\Pkg\\{Gr\xc3\xbc\xc3\x9f};\n\$x = new Gr\xc3\xbc\xc3\x9fx();\n",
                 1,
             ),
+            /*
+             * OCR round 62 (t31-ocr62-1): the ^-under-/m anchors saw
+             * only column-0 statements and the plain tail required
+             * ';', so three LEGAL spellings were invisible to the
+             * gate — the import INDENTED inside a braced namespace
+             * block, the COMMA-SEPARATED list, and the close-tag
+             * terminator (every one a spelling bin/build.php's own
+             * unownedUseImportSpellingClass() names as a legal input
+             * the rewriter must refuse, so the codebase already
+             * treats them as real). A dead import in any of the
+             * three rode unflagged while its ASCII twin was caught
+             * (red at HEAD: the unused rows answered 0). The anchors
+             * own the leading-whitespace class and the terminator
+             * alternation, the list decomposes to its members, and
+             * the TRAIT fence keeps an indented class-body 'use' off
+             * the import errand — the trait's name is its own only
+             * mention, so the widening would otherwise flag every
+             * legitimately-used trait in the tree (the fence row
+             * stays 0 by judgment now, not by anchor blindness).
+             */
+            'unused import indented in a braced namespace block flags (t31-ocr62-1)' => array(
+                "<?php\nnamespace Vendor\\Package {\n    use Vendor\\Other\\Widget;\n}\n",
+                1,
+            ),
+            'used import indented in a braced namespace block does not flag (t31-ocr62-1)' => array(
+                "<?php\nnamespace Vendor\\Package {\n    use Vendor\\Other\\Widget;\n    \$x = new Widget();\n}\n",
+                0,
+            ),
+            'dead comma-list member flags beside a used one (t31-ocr62-1)' => array(
+                "<?php\nuse Vendor\\Alpha, Vendor\\Package\\Widget;\n\$x = new Alpha();\n",
+                1,
+            ),
+            'comma list with every member used does not flag (t31-ocr62-1)' => array(
+                "<?php\nuse Vendor\\Alpha, Vendor\\Package\\Widget as W;\n\$x = new Alpha();\n\$y = new W();\n",
+                0,
+            ),
+            'dead comma-list member with a per-member alias flags (t31-ocr62-1)' => array(
+                "<?php\nuse Vendor\\Alpha as A, Vendor\\Package\\Widget as Dead;\n\$x = new A();\n",
+                1,
+            ),
+            'close-tag-terminated dead import flags (t31-ocr62-1)' => array(
+                "<?php\nuse Vendor\\Package\\DeadTag ?>\n<html></html>\n",
+                1,
+            ),
+            'indented trait use inside a class does not flag (t31-ocr62-1)' => array(
+                "<?php\nclass Host {\n    use SomeTrait;\n}\n",
+                0,
+            ),
+            'indented trait comma list inside a trait does not flag (t31-ocr62-1)' => array(
+                "<?php\ntrait Host {\n    use TraitA, TraitB;\n}\n",
+                0,
+            ),
         );
     }
 
