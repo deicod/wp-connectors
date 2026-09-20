@@ -6,6 +6,88 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 62)
+
+Sixty-second OCR round (61/61 fully complete): 6 findings, driver
+accepts all — FOUR numbered commits t31-ocr62-1, -2, -4, -5 (the
+NBSP-duplicate finding REFUTED byte-exact at execution, no commit;
+the inverted-narrative pair's premise REFUTED by its own probe, its
+true residual — the 8.3/8.2.0 version anchor — the -5 commit),
+plus this docs record, the full offline check green after every
+commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10→3→6.
+Round 62 answered NEW findings (four fixed, two refuted on
+evidence), so the OCR phase continues per plan. Suite 1742 → 1751
+tests, 47016 → 47034 assertions, 3 skipped unchanged (deltas
++8/+8, +1/+10, +0/+0, +0/+0, measured from output). The round's
+shape: the braced-namespace-indent and comma-list spellings join
+the mention gate (the trait fence keeping the widened anchor on
+imports); the NTFS stream-separator class at every fold/lens seam;
+the child-ownership finally; the round-43 getLastErrors direction
+vindicated, its version anchor corrected to 8.2.0.
+
+- **The unused-import gate's column-0 blindness over three legal
+  spellings (t31-ocr62-1, bug:medium; bin/check-conventions.php)**
+  — the statement patterns were ^-anchored under /m and the plain
+  tail required ';' exactly, so the import INDENTED inside a braced
+  namespace block, the COMMA-SEPARATED list, and the CLOSE-TAG
+  terminator were invisible (every one a spelling bin/build.php's
+  own classifier names as legal input): a dead import in any of the
+  three rode unflagged while its ASCII twin was caught. The anchors
+  own the leading-whitespace class (both patterns and both
+  keyword-prefix strips), the terminator alternation rides the
+  plain tail and the group's trailing check, and the comma arm
+  unrolls through the same group unroller under an empty prefix —
+  with the TRAIT FENCE the widening itself forced
+  (wp_connectors_use_statement_in_import_position(): build.php's
+  brace-kind doctrine over the masked view, mode tags as run
+  boundaries), or every legitimately-used trait in the tree would
+  flag. Driven: the three spellings flag dead and stay green used
+  (red at HEAD: invisible); indented trait uses stay green by
+  judgment, never by anchor blindness.
+- **The pre-extraction fences' missing NTFS stream separator
+  (t31-ocr62-2, security:medium; bin/inspect-artifact.php)** —
+  ':' is neither edge junk nor slug grammar (beyond the top-level
+  screen), so 'shell.php:$DATA' and 'x.php:hidden' passed the raw
+  lens, the junk fold, the duplicate fold, and the dots-only
+  traversal fold: on a Windows/NTFS target the bytes land in an
+  alternate data stream of the colon-free file — for ':$DATA' the
+  MAIN stream of shell.php — plugin-reachable, judged by nobody
+  under its own spelling. One arm at the entry name, upstream of
+  all four seams: ':' in any non-drive-letter position of a
+  relative entry name refuses loudly (the drive-letter spelling is
+  absolute-path grammar — the r39-2 fence's vocabulary — and its
+  verdict unchanged, the census naming both). Driven: the
+  spellings refuse naming the stream separator (red at HEAD:
+  pass); 'C:/repo'-shaped absolute refusals and colon-free trees
+  unchanged; the three printable-seam pins whose forged ENTRY-name
+  payloads incidentally spelled 'inspect:' now spell 'inspect;'
+  (the fence working — their newline/ANSI subject unchanged).
+- **The live-direction sleeping child outside any finally
+  (t31-ocr62-4, test:low; tests/HarnessCopyTreeTest.php)** — the
+  crash-sim reap pin's sleep(30) child was spawned bare, so a
+  failed assertion between spawn and killChildIfAlive() orphaned
+  it for up to its full nap — the never-left-looping contract the
+  assertion's own message names the finally keeping. The leg rides
+  the file's try/finally idiom (the freeze-loop leg's frame):
+  spawn inside try, the kill behind the $livePid > 0 guard.
+  Construction-evident; verdicts and bounded waits unchanged.
+- **The getLastErrors narratives' version anchor
+  (t31-ocr62-5, documentation:low ×2; shared/src/Token/
+  AccessTokenSet.php, tests/SharedOAuthContractsTokenSetAndClockTest.php)**
+  — the round's finding claimed the comments' history INVERTED
+  (pre-8.3 false, 8.3+ always-array); the probe it prescribes
+  refutes the premise — this 8.5.10 runner answers bool(false) on
+  a clean createFromFormat() parse, and the manual's changelog
+  dates the rewrite at 8.2.0 in the direction the comments tell.
+  Round 43's direction stands vindicated; the true residual (the
+  8.3 anchor) is corrected in both sites with the probe and the
+  changelog entry recorded as evidence. The guard stays
+  shape-agnostic; no runtime branch. Doc-only, assertions
+  byte-unchanged.
+
+### Fixed (shared — M3 Task 3.1, OCR round 61)
+
 ### Fixed (shared — M3 Task 3.1, OCR round 61)
 
 Sixty-first OCR round (61/61 fully complete): 3 findings, driver
