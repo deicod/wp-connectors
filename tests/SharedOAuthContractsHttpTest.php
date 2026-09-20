@@ -660,6 +660,52 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-60 pin (t31-ocr60-6 — the §4.1 order made real): the
+     * entry control-byte screen ran BEFORE the §4.1 step-1 edge strip,
+     * and it bans every C0 byte except tab at ANY position — so an
+     * edge \r, \x0B, \x0C, or NUL refused before the strip could
+     * remove it, the strip degrading to trim(" \t") against the
+     * docblock's own promise ("an edge byte names nothing … both
+     * readings agree on one URL", "Both steps ride the Standard's
+     * order") and the two URL consumers rendering OPPOSITE verdicts
+     * for byte-identical input. The strip runs BEFORE the screen now
+     * (verified against the Standard first: §4.1 step 1 strips
+     * C0-control-or-space at the edges — all of it): the edge C0
+     * bytes parse to the stripped URL (red at HEAD: refused), the
+     * interior control bytes still refusing beside them.
+     */
+    public function testTheSection41EdgeStripRunsBeforeTheControlByteScreen(): void
+    {
+        $edge_control_spellings = array(
+            'leading CR, trailing VT' => "\r https://device.example/verify \x0B",
+            'leading NUL and US' => "\x00\x1Fhttps://device.example/verify",
+            'trailing form feed' => "https://device.example/verify\x0C",
+        );
+
+        foreach ($edge_control_spellings as $label => $url) {
+            $this->assertSame('/verify', Url::parse_validated($url)['path'], "The edge strip is the Standard's own first verdict — an edge C0 byte names nothing, and the parse names the stripped path every WHATWG consumer requests ({$label}; red at HEAD: the control screen refused the byte before the strip could remove it).");
+            $this->assertSame('https://device.example/verify', (new HttpRequest('GET', $url))->redacted_url(), "The redacted form derives from the stripped parse ({$label}).");
+        }
+
+        // The interior keeps its verdicts: the screen refuses every
+        // interior C0 byte (tab excepted — the strip-set screen one
+        // step below owns it), exactly as before the reorder.
+        foreach (array(
+            'interior CR' => "https://host.example/a\r b",
+            'interior vertical tab' => "https://host.example/a\x0Bb",
+            'interior form feed' => "https://host.example/a\x0Cb",
+            'interior NEL (the C1 spelling)' => "https://host.example/cb\xC2\x85nel",
+        ) as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail("An interior control byte ({$label}) must still refuse — the edge strip never widens into the interior.");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('control characters', $e->getMessage(), "The interior refusal keeps the control-screen class ({$label}).");
+            }
+        }
+    }
+
+    /**
      * OCR-round-57 pin (t31-ocr57-1 — the DOT-SEGMENT member the
      * WHATWG-differential screen family never owned): the Standard's
      * path state resolves '.' and '..' segments in every WHATWG

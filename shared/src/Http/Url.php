@@ -41,7 +41,9 @@ final class Url {
 	 * can ride is banned by the shared pattern.
 	 *
 	 * The whole URL surface is screened against the shared control-byte
-	 * vocabulary SECOND (review round t31-r2-1): parse_url accepts
+	 * vocabulary THIRD — past the §4.1 step-1 edge strip, the
+	 * Standard's own first verdict over the input (review round
+	 * t31-r2-1; the order made real at t31-ocr60-6): parse_url accepts
 	 * U+2028/U+2029, the C1 controls riding as valid UTF-8, and the C0
 	 * range verbatim, and those bytes reached redacted_url()/__toString()
 	 * unfiltered — reopening in the URL position exactly the forged
@@ -77,12 +79,41 @@ final class Url {
 		}
 
 		/*
+		 * §4.1 STEP 1 FIRST (OCR round 56, t31-ocr56-2; riding BEFORE
+		 * every refusal screen since OCR round 60, t31-ocr60-6): the
+		 * Standard strips leading/trailing C0-control-or-space from
+		 * the WHOLE input before anything else it does to it, so the
+		 * strip runs before the control-byte screen below — an edge
+		 * \r, \x0B, \x0C, or NUL once refused there before the strip
+		 * could remove it, the strip degrading to trim(" \t") against
+		 * the docblock's own promise ("an edge byte names nothing …
+		 * both readings agree on one URL", "Both steps ride the
+		 * Standard's order") and the two URL consumers rendering
+		 * OPPOSITE verdicts for byte-identical input. The edge STRIPS
+		 * where the interior REFUSES: an edge byte names nothing (no
+		 * client means to send it — the browser's own verdict strips
+		 * it), and every interior byte keeps its verdict at the
+		 * screens below. The strip set derives the class exactly —
+		 * U+0000–U+001F + U+0020, the contiguous byte run trim()'s
+		 * list enumerates — byte-wise and locale-free, no PCRE abort
+		 * to guard. The strip rides its ONE owner since OCR round 57
+		 * (t31-ocr57-4): strip_edge_control_or_space() below, so
+		 * HttpRequest stores the SAME validated spelling the parse
+		 * judges — the stored bytes and every derived surface answer
+		 * one verdict.
+		 */
+		$url = self::strip_edge_control_or_space( $url );
+
+		/*
 		 * The screen rides HeaderMap's own callable (t31-ocr18-4): the
 		 * predicate and its rejection sentence had grown here as a
 		 * verbatim twin of assert_no_control_bytes() — the drift seam
 		 * the one-owner doctrine exists to close. The URL surface
 		 * passes its field label; the abort-as-reject rule (glm36-8)
-		 * lives in the owner.
+		 * lives in the owner. Judged over the STRIPPED spelling (the
+		 * §4.1 order, t31-ocr60-6): the edge C0 bytes the Standard
+		 * strips are gone before this screen runs, and every interior
+		 * control byte still refuses.
 		 */
 		HeaderMap::assert_no_control_bytes( $url, 'The URL' );
 
@@ -108,44 +139,17 @@ final class Url {
 		 * bytes are REFUSED from derivation, never naively stripped
 		 * (the strip would hide a shape no client means to send).
 		 * The newline half of the set (LF/CR) is already refused at
-		 * the entry screen above (the control vocabulary); the tab is
-		 * the byte that reached every surface past it. This SUPERSEDES
-		 * the round-1 adjudication's tab half ("they render oddly but
-		 * forge nothing") — the tab forges; the SPACE keeps its
-		 * verdict (a WHATWG consumer does not strip a space: a
-		 * space-bearing host FAILS validation there rather than
-		 * contacting another host, so the two consumers never name
-		 * DIFFERENT hosts over it).
-		 *
-		 * §4.1 STEP 1 (OCR round 56, t31-ocr56-2 — the step the
-		 * tab pass below rode without): the Standard strips
-		 * leading/trailing C0-control-or-space from the WHOLE input
-		 * BEFORE the tab/newline pass — at the trailing edge
-		 * 'https://device.example/verify ' is '/verify' in every
-		 * WHATWG consumer while this parse kept the space verbatim
-		 * (driven: the trailing edge constructed green at HEAD; the
-		 * leading edge refused as hostless, parse_url() handing the
-		 * space-stuck spelling back as a path) — the same
-		 * two-consumers divergence class the tab byte's refusal
-		 * exists to kill. The edge STRIPS where the interior
-		 * REFUSES: an edge byte names nothing (no client means to
-		 * send it — the browser's own verdict strips it), so both
-		 * readings agree on one URL; the interior keeps every
-		 * verdict above and below. Both steps ride the Standard's
-		 * order — an edge TAB strips here and never reaches the
-		 * refusal below (a browser never sees it either), the
-		 * interior C0/newline bytes still refuse at the entry
-		 * screen above (a refusal never silently diverges), and the
-		 * interior SPACE keeps its adjudicated verdict. The strip
-		 * set derives the class exactly — U+0000–U+001F + U+0020,
-		 * the contiguous byte run trim()'s list enumerates —
-		 * byte-wise and locale-free, no PCRE abort to guard. The
-		 * strip rides its ONE owner since OCR round 57 (t31-ocr57-4):
-		 * strip_edge_control_or_space() below, so HttpRequest stores
-		 * the SAME validated spelling the parse judges — the stored
-		 * bytes and every derived surface answer one verdict.
+		 * the control screen above (the control vocabulary); the tab
+		 * is the byte that reached every surface past it. This
+		 * SUPERSEDES the round-1 adjudication's tab half ("they
+		 * render oddly but forge nothing") — the tab forges; the
+		 * SPACE keeps its verdict (a WHATWG consumer does not strip
+		 * a space: a space-bearing host FAILS validation there
+		 * rather than contacting another host, so the two consumers
+		 * never name DIFFERENT hosts over it). An edge TAB already
+		 * stripped at §4.1 step 1 above (a browser never sees it
+		 * either); the interior tab refuses here.
 		 */
-		$url = self::strip_edge_control_or_space( $url );
 		if ( false !== strpbrk( $url, "\t\n\r" ) ) {
 			throw new InvalidArgumentException( 'The URL must not carry tabs or newlines — the URL Standard strips those bytes from the whole input before parsing, so a browser sees a different URL ("https://id<TAB>p.example" reaches idp.example there; a tab in the path or query rides stripped) while this parse keeps them verbatim, and the two must agree: write the URL without them.' );
 		}
