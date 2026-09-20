@@ -334,9 +334,37 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              * legitimately-used trait in the tree — the fence keeps
              * the errand on imports.
              */
+            /*
+             * The statement-start BOUNDARY replaces the line anchor
+             * (OCR round 63, t31-ocr63-1 — the r62 anchor's own
+             * straggler): [ \t]* under /m still saw only
+             * statement-INITIAL lines, while the engine admits a use
+             * statement mid-line — 'namespace X { use A\B; }' on one
+             * line, 'use A\B; use C\D;' on one line, '<?php use A\B;'
+             * (the use riding the open tag's line), every one
+             * php -l-clean — so a dead import in any of them was
+             * INVISIBLE to the gate (red at HEAD: 0) while bin/
+             * build.php's rewriter, whose statement-start judgment is
+             * a lookbehind with no line anchor, handled them fine —
+             * the gate drift the round-62 census claimed closed. The
+             * lookbehind is the boundary class the r49/r60 census
+             * owns ('(?<![label byte])', the same WP_CONNECTORS_
+             * LABEL_BYTES class the mention boundary spells): a use
+             * token is a use STATEMENT exactly when no label byte
+             * runs into it — mid-line after '{', ';', '}', or the
+             * open tag all satisfy it, while a 'use' inside a longer
+             * label ('reuse') or riding a label's tail
+             * ('<?phpuse' — not an open tag at all, the engine's
+             * own spelling rule) never does. The /m modifier rides
+             * off with the anchor (no '^' left to fold). The fence
+             * below owns the whole trait judgment now — every
+             * spelling the rewriter's own class names, the fence the
+             * one errand keeper (a one-line 'class C { use T; }' is
+             * matched AND fenced, never anchor-blinded).
+             */
             $matches = array();
             preg_match_all(
-                '/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+([' . WP_CONNECTORS_LABEL_BYTES . ']+))?\s*(?:;|\?>)/m',
+                '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+([' . WP_CONNECTORS_LABEL_BYTES . ']+))?\s*(?:;|\?>)/',
                 $code_view,
                 $matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -358,7 +386,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              */
             $group_matches = array();
             preg_match_all(
-                '/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+\s*\{/m',
+                '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+\s*\{/',
                 $code_view,
                 $group_matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -376,7 +404,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              */
             $comma_matches = array();
             preg_match_all(
-                '/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_BYTES . ']+)?\s*,/m',
+                '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_BYTES . ']+)?\s*,/',
                 $code_view,
                 $comma_matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -435,7 +463,11 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 // two-byte close tag the widened pattern now matches
                 // (t31-ocr62-1).
                 $terminator_length = '?>' === substr($match[0][0], -2) ? 2 : 1;
-                $qualified = trim(preg_replace('/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?/', '', substr($match[0][0], 0, -$terminator_length)));
+                // The strip anchor rides the boundary class the match
+                // now opens with (t31-ocr63-1): the matched text BEGINS
+                // at the 'use' keyword itself, so the derivation strips
+                // exactly what the widened pattern matched.
+                $qualified = trim(preg_replace('/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?/', '', substr($match[0][0], 0, -$terminator_length)));
                 $lastBackslash = strrpos($qualified, '\\');
                 $alias = isset($match[1][0]) && \is_string($match[1][0]) ? $match[1][0] : '';
                 $short = '' !== $alias
@@ -521,7 +553,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 }
 
                 $body = (string) preg_replace(
-                    '/^[ \t]*(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?/',
+                    '/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?/',
                     '',
                     substr($code_view, $match[0][1], $statement_end - $terminator_length - $match[0][1])
                 );
@@ -623,7 +655,10 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
  * column 0 (the top level, or an unbraced namespace declaration),
  * and a TRAIT clause list — `use SomeTrait;` inside a class body —
  * is always indented, so no trait use ever matched a pattern. The
- * widened [ \t]* anchor sees both, and the gate must not send a
+ * r62 [ \t]* anchor saw the indented spelling, and the r63
+ * statement-start boundary after it sees EVERY spelling mid-line
+ * included ('class C { use SomeTrait; }' on one line is matched AND
+ * fenced) — so the gate must not send a
  * trait clause down the import errand: the trait's name is its own
  * only mention in the typical tree, so the mention verdict would
  * flag every legitimately-used trait (the false-positive class the

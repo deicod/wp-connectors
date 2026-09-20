@@ -600,6 +600,62 @@ FIXTURE
                 "<?php\ntrait Host {\n    use TraitA, TraitB;\n}\n",
                 0,
             ),
+            /*
+             * OCR round 63 (t31-ocr63-1 — the r62 anchor's own
+             * straggler): [ \t]* under /m still saw only
+             * statement-INITIAL lines, so three LEGAL mid-line
+             * spellings stayed invisible — the one-line braced
+             * namespace block ('namespace X { use A\B; }'), the
+             * second statement on a two-statement line, and the use
+             * riding the OPEN TAG's line ('<?php use A\B;') — while
+             * bin/build.php's rewriter (statement-start lookbehind,
+             * no line anchor) handled them fine, the gate drift the
+             * round-62 census claimed closed. The boundary anchor
+             * ('(?<![label byte])', the r49/r60 census's own class)
+             * owns the spelling class now; the trait fence below
+             * owns the judgment — the one-line class-body rows stay
+             * 0 by FENCE now, never by anchor blindness.
+             */
+            'dead mid-line import in a one-line braced namespace block flags (t31-ocr63-1)' => array(
+                "<?php\nnamespace X { use Vendor\\Other\\Widget; }\n",
+                1,
+            ),
+            'used mid-line import in a one-line braced namespace block does not flag (t31-ocr63-1)' => array(
+                "<?php\nnamespace X { use Vendor\\Other\\Widget; \$x = new Widget(); }\n",
+                0,
+            ),
+            'dead second import on a two-statement line flags (t31-ocr63-1)' => array(
+                "<?php\nuse Vendor\\Live; use Vendor\\Package\\DeadThing;\n\$x = new Live();\n",
+                1,
+            ),
+            'both imports on a two-statement line used do not flag (t31-ocr63-1)' => array(
+                "<?php\nuse Vendor\\Live; use Vendor\\Package\\Widget;\n\$x = new Live();\n\$y = new Widget();\n",
+                0,
+            ),
+            'dead import riding the open tag line flags (t31-ocr63-1)' => array(
+                "<?php use Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'used import riding the open tag line does not flag (t31-ocr63-1)' => array(
+                "<?php use Vendor\\Other\\Widget; \$x = new Widget();\n",
+                0,
+            ),
+            'dead mid-line group member in a one-line braced namespace block flags (t31-ocr63-1)' => array(
+                "<?php\nnamespace X { use Vendor\\Pkg\\{DeadThing}; }\n",
+                1,
+            ),
+            'one-line class-body trait use does not flag, fenced not blind (t31-ocr63-1)' => array(
+                "<?php\nclass C { use SomeTrait; }\n",
+                0,
+            ),
+            'one-line trait comma list does not flag, fenced not blind (t31-ocr63-1)' => array(
+                "<?php\ntrait T { use TraitA, TraitB; }\n",
+                0,
+            ),
+            'one-line trait adaptation does not flag, fenced not blind (t31-ocr63-1)' => array(
+                "<?php\nclass C { use SomeTrait { m as x; } }\n",
+                0,
+            ),
         );
     }
 
