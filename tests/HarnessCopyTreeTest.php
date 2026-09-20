@@ -2514,6 +2514,23 @@ final class HarnessCopyTreeTest extends TestCase
      * (putenv before the spawn, getenv inside the child — the real
      * OS environment, read in every SAPI whatever variables_order
      * says); the leg's subject is the harness guard, never argv.
+     *
+     * OCR round 65 (t31-ocr65-3 — the child-side twin of the
+     * t31-ocr65-2 retirement): the child once planted its guard leg
+     * with releaseScratch('/') too, running as the test user (uid 0
+     * on a root CI container) — a regressed rrmdir root refusal
+     * turned the CHILD into the destructive walk over the
+     * filesystem root. The child releases a chmod-0000 scratch tree
+     * now, staged PARENT-side and passed through the environment
+     * beside the harness path (the t31-ocr44-7 doctrine — the
+     * parent's finally is the only owner that can reclaim a tree
+     * the refusal strands, so the staging never rides inside a
+     * child whose own exit is the verdict under test); the parent's
+     * opendir probe answers constructibility for the child (exec
+     * spawns no privilege change — the child runs as this process),
+     * and a host that opens chmod-0000 directories skips visibly:
+     * the asserted diagnostic would fail through RUNNER TOPOLOGY
+     * there, never the guard doctrine the leg pins.
      */
     public function testTheReleaseGuardSpeaksASapiIndependentStreamVocabulary(): void
     {
@@ -2544,12 +2561,33 @@ final class HarnessCopyTreeTest extends TestCase
             $this->markTestSkipped('No php-cgi SAPI beside ' . PHP_BINARY . ' — the non-CLI shape is unconstructible on this install, so the t31-ocr38-4 SAPI pin cannot run on this runner.');
         }
 
+        $locked = sys_get_temp_dir() . '/wpct-release-cgi-' . uniqid('', true) . '-locked';
         $child = sys_get_temp_dir() . '/wpct-release-cgi-' . uniqid('', true) . '.php';
         try {
+            // The staging asserts its own landing (t31-ocr53-9): a
+            // failed mkdir fails as staging, never as the SAPI pin's
+            // verdict.
+            $this->assertTrue(mkdir($locked, 0755, true), 'staging: the locked tree must create — a staging failure fails as staging, never as the SAPI pin\'s verdict.');
+            chmod($locked, 0000);
+            /*
+             * The unlistable-shape probe (the t31-ocr4-1 root
+             * doctrine, answered parent-side for the child — exec
+             * spawns no privilege change, the child runs as this
+             * process): a host whose process OPENS chmod-0000
+             * directories cannot construct the refusal the asserted
+             * diagnostic names — skip visibly, never a topology
+             * failure wearing the guard's verdict.
+             */
+            $probe = @opendir($locked);
+            if (false !== $probe) {
+                closedir($probe);
+                chmod($locked, 0755);
+                $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the child\'s deterministic release refusal is unconstructible here, and the destructive-capacity \'/\' spelling the leg once rode is retired (t31-ocr65-3) — never fired at the root.');
+            }
             $this->stage($child, '<?php
 require getenv("WPCT_RELEASE_CGI_HARNESS");
 try {
-    WpHarness::releaseScratch("/");
+    WpHarness::releaseScratch(getenv("WPCT_RELEASE_CGI_TREE"));
 } catch (\Throwable $guard_threw) {
     echo "GUARD-THREW ", get_class($guard_threw), ": ", $guard_threw->getMessage(), "\n";
     exit(4);
@@ -2557,14 +2595,21 @@ try {
 echo "RETURNED\n";
 ');
             putenv('WPCT_RELEASE_CGI_HARNESS=' . $harnessPath);
+            putenv('WPCT_RELEASE_CGI_TREE=' . $locked);
             exec(escapeshellarg($cgi) . ' -q ' . escapeshellarg($child) . ' 2>&1', $output, $exit);
             $rendered = implode("\n", $output);
             $this->assertSame(0, $exit, "The guard never throws from inside its own catch in ANY SAPI — the child said: {$rendered}");
             $this->assertStringNotContainsString('GUARD-THREW', $rendered, 'The diagnostic must not throw the undefined-constant Error a non-CLI SAPI raises over the STDERR constant (red at HEAD: GUARD-THREW Error: Undefined constant "STDERR").');
-            $this->assertStringContainsString('scratch release failed for /:', $rendered, 'The environmental diagnostic still surfaces — php://stderr answers in every SAPI, the refusal named, the verdict riding untouched.');
+            $this->assertStringContainsString('scratch release failed for ' . $locked . ':', $rendered, 'The environmental diagnostic still surfaces — php://stderr answers in every SAPI, the refusal named, the verdict riding untouched.');
             $this->assertStringContainsString('RETURNED', $rendered, 'The release call returns normally behind the guard — the ocr33-7 contract holds in every SAPI.');
         } finally {
             putenv('WPCT_RELEASE_CGI_HARNESS');
+            putenv('WPCT_RELEASE_CGI_TREE');
+            // The @ owns the restore (the t31-ocr42-8 class, the
+            // t31-ocr64-4 twin): the fence refusal strands the locked
+            // tree for THIS finally, on every exit the skip included.
+            @chmod($locked, 0755);
+            WpHarness::releaseScratch($locked);
             @unlink($child);
         }
     }
