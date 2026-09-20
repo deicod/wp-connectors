@@ -139,9 +139,13 @@ final class Url {
 		 * interior SPACE keeps its adjudicated verdict. The strip
 		 * set derives the class exactly — U+0000–U+001F + U+0020,
 		 * the contiguous byte run trim()'s list enumerates —
-		 * byte-wise and locale-free, no PCRE abort to guard.
+		 * byte-wise and locale-free, no PCRE abort to guard. The
+		 * strip rides its ONE owner since OCR round 57 (t31-ocr57-4):
+		 * strip_edge_control_or_space() below, so HttpRequest stores
+		 * the SAME validated spelling the parse judges — the stored
+		 * bytes and every derived surface answer one verdict.
 		 */
-		$url = trim( $url, "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F\x20" );
+		$url = self::strip_edge_control_or_space( $url );
 		if ( false !== strpbrk( $url, "\t\n\r" ) ) {
 			throw new InvalidArgumentException( 'The URL must not carry tabs or newlines — the URL Standard strips those bytes from the whole input before parsing, so a browser sees a different URL ("https://id<TAB>p.example" reaches idp.example there; a tab in the path or query rides stripped) while this parse keeps them verbatim, and the two must agree: write the URL without them.' );
 		}
@@ -590,6 +594,30 @@ final class Url {
 		$parts = self::parse_validated( $url );
 
 		return $parts['scheme'] . '://' . $parts['authority'] . $parts['path'];
+	}
+
+	/**
+	 * The URL Standard §4.1 step-1 edge strip (OCR round 56,
+	 * t31-ocr56-2; the ONE owner since OCR round 57, t31-ocr57-4):
+	 * removes leading and trailing C0-control-or-space bytes from the
+	 * WHOLE input — the browser's own first verdict over the URL
+	 * surface, before the tab/newline pass and every screen below.
+	 * parse_validated() rides it at the entry, and HttpRequest rides
+	 * it BEFORE storing, so url() names exactly the bytes the screens
+	 * validated — the stored/derived agreement doctrine (the r25-3
+	 * raw/redacted rule, the spelling side of it).
+	 *
+	 * The strip set is the Standard's own class, U+0000–U+001F plus
+	 * U+0020 — the contiguous byte run trim()'s list enumerates —
+	 * byte-wise and locale-free, no PCRE abort to guard.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $url URL.
+	 * @return string The URL with leading/trailing C0-control-or-space bytes stripped.
+	 */
+	public static function strip_edge_control_or_space( string $url ): string {
+		return trim( $url, "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F\x20" );
 	}
 
 	/**

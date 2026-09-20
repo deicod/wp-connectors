@@ -75,7 +75,10 @@ final class HttpRequest {
 	private readonly string $method;
 
 	/**
-	 * Absolute http(s) URL exactly as requested.
+	 * Absolute http(s) URL, the VALIDATED spelling: leading/trailing
+	 * C0-control-or-space bytes are stripped before storing (URL
+	 * Standard §4.1 step 1, t31-ocr57-4), so url() names exactly the
+	 * bytes the screens judged.
 	 *
 	 * @since 0.1.0
 	 *
@@ -137,6 +140,23 @@ final class HttpRequest {
 
 		$header_map = new HeaderMap( $headers );
 
+		/*
+		 * The stored spelling is the VALIDATED spelling (OCR round
+		 * 57, t31-ocr57-4): the r56-2 §4.1 step-1 edge strip meant
+		 * Url::parse_validated() judged the STRIPPED spelling while
+		 * $this->url kept the caller's raw bytes — an accepted
+		 * ' https://device.example/verify ' constructed with url()
+		 * holding edge bytes no screen ever judged (driven at HEAD),
+		 * the raw/derived divergence the codebase's own agreement
+		 * doctrine refuses (r25-3 refuses ':0443' precisely because
+		 * 'url() holds the caller's bytes exactly' — and a transport
+		 * cannot reconstruct the validated URL from that url()). The
+		 * strip rides the ONE owner Url owns; url() now names
+		 * exactly the bytes the screens validated, and the redacted
+		 * form derives from the same stored spelling.
+		 */
+		$url = Url::strip_edge_control_or_space( $url );
+
 		$this->method       = $normalized_method;
 		$this->url          = $url;
 		$this->headers      = $header_map;
@@ -156,7 +176,10 @@ final class HttpRequest {
 	}
 
 	/**
-	 * URL exactly as requested.
+	 * The validated URL spelling — edge C0-control-or-space bytes
+	 * stripped at construction (§4.1 step 1), the exact bytes the
+	 * screens judged; every byte a screen refused never reaches the
+	 * stored form.
 	 *
 	 * @since 0.1.0
 	 *

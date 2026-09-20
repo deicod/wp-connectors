@@ -638,6 +638,25 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         } catch (\InvalidArgumentException $e) {
             $this->assertStringContainsString('must not carry tabs or newlines', $e->getMessage(), 'The interior refusal keeps its strip-set class.');
         }
+
+        /*
+         * OCR-round-57 pin (t31-ocr57-4 — the STORED side of the
+         * r56-2 strip): the request VO kept the caller's raw bytes
+         * while Url::parse_validated() judged the stripped spelling,
+         * so an accepted ' https://device.example/verify '
+         * constructed with url() holding edge bytes no screen ever
+         * judged and redacted_url() deriving from a DIFFERENT
+         * spelling (driven at HEAD) — the raw/derived divergence the
+         * agreement doctrine (r25-3) refuses. The stored spelling is
+         * the validated spelling now (the §4.1 step-1 shape through
+         * the ONE owner Url rides), and a URL with no edge bytes
+         * stores byte-exact — the strip touches nothing else.
+         */
+        $edge_request = new HttpRequest('GET', " \thttps://device.example/verify\t ");
+        $this->assertSame('https://device.example/verify', $edge_request->url(), 'url() names exactly the bytes the screens validated — the edge bytes are stripped BEFORE storing (red at HEAD: url() held them while redacted_url() derived from the stripped parse).');
+        $this->assertSame('https://device.example/verify', $edge_request->redacted_url(), 'The redacted form derives from the same stored spelling — one verdict across every derived surface.');
+        $clean = new HttpRequest('GET', 'https://device.example/verify?code=abcd');
+        $this->assertSame('https://device.example/verify?code=abcd', $clean->url(), 'A URL with no edge bytes stores byte-exact — the query rides verbatim, the strip is the browser\'s own first verdict and touches nothing else.');
     }
 
     /**
