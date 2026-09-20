@@ -278,8 +278,9 @@ final class HeaderMap {
 	 */
 	public static function assert_no_control_bytes( string $value, string $what ): void {
 		if ( 0 !== preg_match( self::VALUE_CONTROL_BYTE_PATTERN, $value ) ) {
+			// The sentence names the CLASSES the pattern bans (t31-ocr69-3): the bidi/zero-width formatting material the r2-6/r8-5/r9-10 arms added refuses far beyond the control/line-break vocabulary, and an operator whose value dies on a ZWJ or a soft hyphen needs the actual cause — one sentence, the classes the pattern's own docblock names, no codepoint enumeration (the precise-rejection doctrine, the named zone-id and leading-zero-port sentences).
 			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- $what is the CALLER's compile-time field label ('The device code'), never provider data; escaping belongs to the display layer (the same posture the response VO's status rejection carries).
-			throw new InvalidArgumentException( sprintf( '%s must not contain control characters or line breaks — including their UTF-8 spellings (U+2028/U+2029, C1 controls), which forge log lines in the safe debug forms.', $what ) );
+			throw new InvalidArgumentException( sprintf( '%s must not contain control characters, line breaks, or invisible formatting (bidi/zero-width) bytes — including their UTF-8 spellings (U+2028/U+2029, C1 controls), which forge log lines or reorder and spoof rendered values in the safe debug forms.', $what ) );
 		}
 	}
 

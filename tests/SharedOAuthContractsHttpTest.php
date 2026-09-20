@@ -1817,6 +1817,39 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-69 pin (t31-ocr69-3): the rejection names the CLASSES
+     * the pattern bans. VALUE_CONTROL_BYTE_PATTERN refuses far beyond
+     * the control/line-break vocabulary the message once named — the
+     * bidi-override/direction-mark classes (U+202A-E, U+2066-9,
+     * U+200E/F, U+061C) and the zero-width joining/spoofing class
+     * (U+200B-D, U+FEFF, U+00AD) — and an operator whose value died
+     * on a ZWJ or a soft hyphen got no hint of the actual cause: the
+     * generic 'control characters or line breaks' sentence named
+     * neither, against the codebase's own precise-rejection doctrine
+     * (the named zone-id and leading-zero-port sentences). The
+     * message names the formatting CLASS now — one sentence, no
+     * codepoint enumeration (the classes the pattern's own docblock
+     * names) — pinned over the finding's own probes: a ZWJ and a soft
+     * hyphen both reject with the formatting class in the sentence
+     * (red at HEAD: the generic message, the class fragment absent).
+     */
+    public function testTheControlByteRejectionNamesTheInvisibleFormattingClass(): void
+    {
+        $hostile = array(
+            'U+200D ZWJ (glyph joining)' => "ok\xE2\x80\x8Devac",
+            'U+00AD soft hyphen' => "ok\xC2\xADevac",
+        );
+        foreach ($hostile as $label => $value) {
+            try {
+                HeaderMap::assert_no_control_bytes($value, 'The device code');
+                $this->fail("A value carrying {$label} must be rejected by the ONE shared guard (every provider-supplied string surface rides it).");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not contain control characters, line breaks, or invisible formatting (bidi/zero-width) bytes', $e->getMessage(), "The rejection must NAME the formatting class — an operator whose value dies on {$label} needs the actual cause, never the generic control vocabulary alone (the precise-rejection doctrine).");
+            }
+        }
+    }
+
+    /**
      * Fix-round pin (t31-r9-1, the byte-swap half of the r8-5 decision):
      * the r8-5 ALM arm banned \xD9\x9C — the UTF-8 encoding of U+065C
      * ARABIC VOWEL SIGN DOT BELOW, a VISIBLE combining vowel sign
