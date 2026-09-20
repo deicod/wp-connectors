@@ -1509,6 +1509,59 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('p/.../a.php', $flat, 'The traversal line names the dots-run twin.');
         $this->assertStringNotContainsString('case-fold duplicate', $flat, 'No spurious case-fold line beside the traversal rejection — the dots-only class stays outside the fold, the census contract\'s own wording.');
 
+        /*
+         * (b-traversal, the JUNK-DOT limb) The exclusion owns the
+         * traversal-junk class (OCR round 67, t31-ocr67-2): the
+         * verbatim branch once tested trim($segment, '.'), so any
+         * edge-junk byte BLOCKED the exclusion — '.. ', '..\t', '. .'
+         * fell to the rtrim, which strips junk AND dots (the dot
+         * rides the edge-junk class) down to '', the filter dropped
+         * them, and 'p/.. /x.php' folded onto 'p/x.php': a zip
+         * carrying both answered a case-fold-duplicate line whose
+         * premise is factually WRONG (the spelling escapes the tree
+         * on a normalizing host — it is traversal, judged so by the
+         * traversal predicate over the same class) beside its real
+         * traversal rejection (red at HEAD: exactly that pair). One
+         * class, both censuses agree now — the fold's exclusion
+         * rides the traversal predicate's own spelling.
+         */
+        foreach (array(
+            'trailing space' => 'p/.. /a.php',
+            'trailing tab' => "p/..\t/a.php",
+            'junk between dots' => 'p/. ./a.php',
+        ) as $label => $junkEntry) {
+            $zipPath = self::distDir() . "/connectors-{$slug}-1.0.10-" . substr(md5($label), 0, 4) . '.zip';
+            file_put_contents($zipPath, self::storedZipBytes(array(
+                array("{$slug}/{$slug}.php", $main),
+                array("{$slug}/src/autoload.php", $autoload),
+                array("{$slug}/{$junkEntry}", 'junk-dot twin'),
+                array("{$slug}/p/a.php", 'plain twin'),
+            )));
+            $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
+            $flat = implode("\n", $violations);
+            $this->assertStringContainsString('escapes the extraction directory', $flat, "The junk-dot twin answers its traversal refusal ({$label}) — the predicate judges the junk-stripped remainder, the parent token to every normalizing host.");
+            $this->assertStringContainsString(wp_connectors_printable("{$slug}/{$junkEntry}"), $flat, "The traversal line names the junk-dot twin ({$label}).");
+            $this->assertStringNotContainsString('case-fold duplicate', $flat, "No wrong-premise case-fold line beside the traversal rejection ({$label}) — a segment that junk-strips to dots-only is excluded from the duplicate vocabulary the same way its pure spelling is (red at HEAD: the fold-duplicate line answered first).");
+            unlink($zipPath);
+        }
+
+        /*
+         * The clean junk twin still folds (the same round's control):
+         * trailing junk on a CONTENT segment — not dots — keeps the
+         * r11-3 duplicate verdict; the exclusion owns exactly the
+         * junk-to-dots class.
+         */
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.11.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/p/a.php", 'plain twin'),
+            array("{$slug}/p/a.php ", 'trailing-space twin'),
+        )));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-dup'));
+        $this->assertStringContainsString('case-fold duplicate', implode("\n", $violations), 'A trailing-junk CONTENT segment still folds onto its plain twin — the exclusion owns exactly the junk-to-dots class, never the whole junk vocabulary.');
+        unlink($zipPath);
+
         // (c) The forged-name arm of the SAME fence: a duplicate whose
         // name carries a newline (and the verdict-lookalike text the
         // security lens used) renders with the newline neutralized —

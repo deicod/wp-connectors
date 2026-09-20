@@ -113,7 +113,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * it.
          */
         $folded_name = wp_connectors_ascii_lower(implode('/', array_filter(array_map(
-            static function ( $segment ) {
+            static function ( $segment ) use ( $nonDotJunkChars ) {
                 /*
                  * A DOTS-ONLY segment of two or more dots rides the
                  * key VERBATIM (OCR round 48, t31-ocr48-3, for the
@@ -137,8 +137,29 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
                  * at extraction they NAME the same file, a genuine
                  * duplicate), and junk-carrying segments still fold
                  * their junk exactly as before.
+                 *
+                 * The exclusion OWNS the traversal-junk class, judged
+                 * by the traversal predicate's own spelling (OCR
+                 * round 67, t31-ocr67-2): the verbatim branch once
+                 * tested trim($segment, '.') — leading/trailing DOTS
+                 * only — so any edge-junk byte BLOCKED the exclusion
+                 * and the segment fell to the rtrim below, which
+                 * strips the junk AND the dots (the dot rides the
+                 * edge-junk class) down to '' — the filter drops it,
+                 * 'p/.. /x.php' folded onto 'p/x.php', and a zip
+                 * carrying both answered a case-fold-duplicate line
+                 * whose premise is factually WRONG beside its
+                 * traversal rejection: the spelling escapes the tree
+                 * on a normalizing host (the traversal predicate —
+                 * junk stripped ANYWHERE in the segment, then a
+                 * dots-only remainder of two or more dots — judges
+                 * exactly those spellings the parent token, the
+                 * r27-1 fold). One class, both censuses agree: the
+                 * predicate below is the traversal screen's own,
+                 * spelled over the same hoisted $nonDotJunkChars.
                  */
-                if (2 <= strlen($segment) && '' === trim($segment, '.')) {
+                $junk_folded = str_replace($nonDotJunkChars, '', (string) $segment);
+                if ('' === rtrim($junk_folded, '.') && strlen($junk_folded) >= 2) {
                     return $segment;
                 }
                 return rtrim((string) $segment, wp_connectors_path_edge_junk());
