@@ -6,6 +6,63 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 64)
+
+Sixty-fourth OCR round (61/61 fully complete): 5 findings, driver
+accepts all — three numbered commits t31-ocr64-1, -2, -4 (the two
+finally-chmod sites one commit), and ONE finding REFUTED on
+execution evidence with no commit (the µs-fraction serializable
+edge — see the ledger round), plus this docs record, the full
+offline check green after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10→3→6→3→5.
+Round 64 answered NEW findings, so the OCR phase continues per
+plan. Suite 1769 → 1775 tests, 47056 → 47062 assertions, 3 skipped
+unchanged (deltas +3/+3, +3/+3, +0/+0, measured from output).
+The round's shape: the open-tag follower class ('<?phpecho' is
+HTML), the three r63-1 lookbehinds riding the full shared anchor
+class, and the finally-chmod twins — with the µs-fraction edge
+refuted on arithmetic (truncation makes the guard stricter, never
+looser).
+
+- **The open-tag arm flipping to PHP mode on any '<?php' byte pair
+  (t31-ocr64-1, bug:medium; bin/check-conventions.php)** — the
+  engine lexes T_OPEN_TAG only when '<?php' is followed by
+  whitespace or end of input; '<?phpecho'/'<?phpinfo()' are INLINE
+  HTML under the production-default short_open_tag=Off, so an HTML
+  region carrying a glued spelling then 'use …' text flipped the
+  fence walk at a tag the engine never opened and raised a phantom
+  over markup. The follower is the engine's own class — exactly
+  [ \t\r\n] or end of input (probed: even '\x0B'/'\f' leave a glued
+  spelling HTML) — and it is read from the RAW SOURCE, not the
+  masked view: the view blanks a comment to spaces, and
+  '<?php//note' is HTML to the engine while the blanked view would
+  answer a space; tag detection stays on the view, where a
+  string-embedded '<?php' is masked away entirely. '<?=' stays an
+  opener unconditionally and every other '<?' spelling stays a
+  non-opener (the r63-2 INI-independence kept, pinned under both
+  INI settings). Driven: the glued, past-glue, and comment-glued
+  rows red at HEAD (1, 2, 1), all correct now.
+- **The three statement lookbehinds guarding label bytes only
+  (t31-ocr64-2, bug:low; bin/check-conventions.php)** — the shared
+  statement-start anchor the r63-1 census comments claim to ride
+  (build.php's own spelling) includes the namespace separator, so
+  'use Foo\use Bar;' matched at the SECOND use and raised a phantom
+  for Bar, the exact drift class build.php's t31-ocr49-3 closed for
+  the rewriter. All three statement patterns (plain, group,
+  comma-list) ride the FULL class now — label bytes plus separator —
+  the premise the census comment already stated, made true. Driven:
+  the plain, comma-list, and group glued rows red at HEAD (1, 2,
+  1), all 0 now; legal imports unchanged.
+- **The permission-probe legs restoring with a bare chmod() in
+  finally (t31-ocr64-4, bug:low; tests/UnusedImportScannerTest.php)**
+  — a failed restore (NFS/quota/AV lock, vanished tree) converts to
+  a Warning exception under the suite's convertWarningsToExceptions
+  and REPLACES the in-flight verdict, the t31-ocr42-8 class the
+  sibling batteries suppress at the identical seam. Both finally
+  restores ride @chmod (the file's own doctrine at this seam), with
+  a census comment; a file-wide sweep found no other bare
+  chmod-in-finally straggler. Construction-evident; suite green.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 63)
 
 Sixty-third OCR round (61/61 fully complete): 3 findings, driver
