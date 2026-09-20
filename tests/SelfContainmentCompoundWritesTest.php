@@ -424,10 +424,20 @@ final class SelfContainmentCompoundWritesTest extends TestCase
          */
         // A SIBLING of the plugin root — outside must not sit inside it.
         $outside = sys_get_temp_dir() . '/wpct-scanroot-outside-' . uniqid('', true);
-        $this->assertTrue(mkdir($outside . '/sub', 0755, true), 'staging: the outside scan root must create — a staging failure fails as staging, never as the boundary verdict.');
-        $this->assertNotFalse(file_put_contents($outside . '/sub/spy.php', "<?php\n\$f = dirname(__DIR__, 2) . '/../escape.php';\nrequire \$f;\n"), 'staging: the outside-root fixture must write — a staging failure fails as staging, never as the boundary verdict.');
-
+        /*
+         * The staging-inside-try completion (t31-ocr54-2 — the
+         * t31-ocr16-14/t31-ocr18-3 leak class this file's changeset
+         * siblings already closed): $outside's staging sat BEFORE the
+         * try whose finally releases it, so a failed staging assert
+         * (the r52-5 asserts above) stranded the half-built
+         * 'wpct-scanroot-outside-*' tree — a uniqid stem no pid sweep
+         * vocabulary ever names — in system temp. Staging rides
+         * inside the try now: the finally owns every exit from the
+         * mkdir on.
+         */
         try {
+            $this->assertTrue(mkdir($outside . '/sub', 0755, true), 'staging: the outside scan root must create — a staging failure fails as staging, never as the boundary verdict.');
+            $this->assertNotFalse(file_put_contents($outside . '/sub/spy.php', "<?php\n\$f = dirname(__DIR__, 2) . '/../escape.php';\nrequire \$f;\n"), 'staging: the outside-root fixture must write — a staging failure fails as staging, never as the boundary verdict.');
             // The verdicts ride the ONE refusal owner (t31-ocr15-7,
             // WpHarness::refusalOf()): this suite extends the bare
             // TestCase, so the hand-rolled $caught=null/try/catch/
