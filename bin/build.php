@@ -2435,6 +2435,46 @@ final class WpConnectorsBuild
                     continue;
                 }
                 /*
+                 * THE STREAM-SEPARATOR CLASS AT COLLECTION (OCR round
+                 * 63, t31-ocr63-3 — the one-verdict drift the r62
+                 * inspector fence opened): a ':' in a walk-collected
+                 * segment is LEGAL on a POSIX tree
+                 * ('assets/icon:2x.png'), so the collector once
+                 * staged it without complaint, the zip published at
+                 * exit 0, and bin/inspect-artifact.php's stream fence
+                 * refused the SAME entry over the SAME bytes — a
+                 * build that says green and an inspector that says
+                 * refused, no CI run satisfiable (the t31-r5-10
+                 * one-verdict doctrine's exact shape, the near-source
+                 * pair one vocabulary over). The builder owns the
+                 * class at COLLECTION now, AFTER the exclusion filter
+                 * (what never ships never judges the build): a
+                 * segment bearing ':' answers the build's own loud
+                 * refusal naming the stream separator — ONE class,
+                 * TWO owners, ONE verdict, the inspector's fence kept
+                 * as defense in depth over the ARCHIVE-CONTROLLED
+                 * names this walk never sees. No drive-letter
+                 * exemption rides here (the inspector's own fence
+                 * exempts the '\A[A-Za-z]:' head as ABSOLUTE-path
+                 * grammar, the r39-2 vocabulary): these segments are
+                 * RELATIVES under the plugin root, and the entry a
+                 * drive-letter-NAMED tree node ('C:') would compose
+                 * is '<slug>/C:/…' — slug-prefixed, so the
+                 * inspector's head exemption never applies to it,
+                 * and the un-exempted per-segment refusal keeps the
+                 * pair's one verdict on the pathological spelling
+                 * too.
+                 */
+                foreach ($parts as $part) {
+                    if (strpos($part, ':') !== false) {
+                        throw new RuntimeException(sprintf(
+                            'build: the plugin tree carries a stream separator in the name %s (segment \'%s\') — on a Windows/NTFS extraction target the zip entry resolves into an alternate data stream of the colon-free file (the \':$DATA\' spelling its MAIN stream), plugin-reachable bytes no content gate judges under the separator-bearing spelling; the collector refuses at collection what bin/inspect-artifact.php refuses at extraction — one class, two owners, one verdict; write the colon-free name.',
+                            $relative,
+                            $part
+                        ));
+                    }
+                }
+                /*
                  * A symlink REFUSES the build loudly (verifier round
                  * t31-r4-16, extending t31-r4-7's doctrine from the shared
                  * tree to the plugin tree) — scoped, since t31-r5-7, to the

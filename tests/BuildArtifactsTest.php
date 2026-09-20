@@ -1752,6 +1752,70 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-63 pin (t31-ocr63-3 — the builder side of the r62
+     * stream fence, the one-verdict drift the inspector's own fence
+     * opened): ':' is LEGAL in a POSIX filename, so the collector
+     * once staged 'assets/icon:2x.png' without complaint, published
+     * the zip at exit 0, and the inspector's stream fence refused
+     * the same entry over the same bytes — a build that says green
+     * and an inspector that says refused, no CI run satisfiable
+     * (red at HEAD: the build RETURNED a zip path, the near-source
+     * pair's exact shape one vocabulary over). The builder owns the
+     * class at COLLECTION now: a ':'-bearing segment answers the
+     * build's own loud refusal BEFORE any staging or zip write —
+     * one class, two owners, one verdict, the inspector fence kept
+     * as defense in depth over archive-controlled names.
+     */
+    public function testThePluginTreeCollectorRefusesStreamSeparatorNamesSoBothFencesAnswerOneVerdict(): void
+    {
+        $scratch = self::scratchPath('streams-collect');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        /*
+         * The staging asserts its own landing (the t31-ocr53-9
+         * doctrine): a failed write left the leg green over nothing
+         * staged — vacuously, the refusal it exists to redden never
+         * constructible. The fixture plugin already carries its
+         * assets/ tree (copyTree lands it with the copy).
+         */
+        $this->assertNotFalse(file_put_contents($scratch . '/plugin/example-connector/assets/icon:2x.png', 'png'), 'staging: the stream-named asset must write — a staging failure fails as staging, never as the refusal verdict.');
+
+        try {
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A plugin tree carrying a stream-separator name must REFUSE the build (red at HEAD: the build returned a zip path and published it).');
+            } catch (RuntimeException $refusal) {
+                $this->assertStringContainsString('stream separator', $refusal->getMessage(), 'The refusal names the stream-separator class.');
+                $this->assertStringContainsString('icon:2x.png', $refusal->getMessage(), 'The refusal names the offending separator-bearing name.');
+            }
+
+            // Control: the colon-FREE twin of the same tree builds
+            // and inspects green — the refusal owns exactly the
+            // ':'-bearing class (at HEAD this leg WAS the drift: the
+            // colon-bearing original built green and the inspector
+            // refused the very zip it answered).
+            unlink($scratch . '/plugin/example-connector/assets/icon:2x.png');
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertIsString($zipPath, 'The colon-free twin builds — the refusal owns exactly the stream-separator class.');
+            /*
+             * The exec-capability guard (t31-ocr26-9, the ocr20-5
+             * doctrine): the green inspector verdict rides the
+             * internal php -l spawn over the extracted tree — the
+             * refusal leg above already passed on any host.
+             */
+            if (! self::canSpawnChildren()) {
+                $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the one-verdict inspect leg (the inspector\'s internal php -l spawn) cannot run; the refusal leg above already passed.');
+            }
+            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/.inspect-streams-pair'), 'Build and inspect answer one verdict over the plugin tree\'s stream-separator names — never build-ships-what-inspect-rejects.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * OCR-round-23 pin (t31-ocr23-8): the BUILDER side of the
      * near-source fence — the residual the r20 round itself named and
      * carried (the ledger's builder-side name fence): collectFiles()

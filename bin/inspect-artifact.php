@@ -315,6 +315,15 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * the verdict that screen has always answered — both named
          * here so the exemption never reads as an oversight (the
          * driven control below keeps that verdict unchanged).
+         *
+         * The builder owns the class at COLLECTION since t31-ocr63-3
+         * (bin/build.php's collectFiles(), its own loud refusal over
+         * the walk-collected relatives — one class, two owners, one
+         * verdict, no drive-letter exemption needed on the relative
+         * side): the builder never ships the shape anymore. This
+         * fence STAYS as defense in depth — the inspector judges
+         * ARCHIVE-CONTROLLED names, a surface the builder's own tree
+         * never reaches.
          */
         $stream_probe = 1 === preg_match('/\A[A-Za-z]:/', $name) ? (string) substr($name, 2) : $name;
         if (strpos($stream_probe, ':') !== false) {
