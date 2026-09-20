@@ -515,20 +515,24 @@ final class SharedOAuthContractsTokenSetAndClockTest extends WpConnectorsTestCas
     }
 
     /**
-     * OCR round 26 (t31-ocr26-6 — the narrative inverted at OCR round
-     * 43, t31-ocr43-9): a CLEAN serialized parse emits zero
+     * OCR round 26 (t31-ocr26-6 — the narrative corrected at OCR
+     * round 43, t31-ocr43-9, the version anchor corrected at OCR
+     * round 62, t31-ocr62-5): a CLEAN serialized parse emits zero
      * diagnostics on either engine shape. DateTimeImmutable::
-     * getLastErrors() answers an ARRAY with zero counts (both keys
-     * present) on a clean parse before 8.3 and FALSE on the 8.3+
-     * rewrite — a guard keyed on one shape alone mishandles the other
-     * build's clean parse, so the guard owns both shapes. The
-     * shape-driven pin captures the diagnostics channel over a clean
-     * round trip and asserts it EMPTY — on a false-shape engine by
-     * the guard's false branch, on an array-shape engine by its
-     * zero-count branch (both keys present, both counts zero) — both
-     * by construction rather than by mocking the engine's own static
-     * (this runner's engine hands false; the array shape is the
-     * cross-engine premise).
+     * getLastErrors() ALWAYS answers its ARRAY — zero counts, both
+     * keys present — on a clean parse before 8.2.0, and FALSE on a
+     * clean parse from the 8.2.0 rewrite on — a guard keyed on one
+     * shape alone mishandles the other build's clean parse, so the
+     * guard owns both shapes. The shape-driven pin captures the
+     * diagnostics channel over a clean round trip and asserts it
+     * EMPTY — on a false-shape engine by the guard's false branch,
+     * on an array-shape engine by its zero-count branch (both keys
+     * present, both counts zero) — both by construction rather than
+     * by mocking the engine's own static (the manual's 8.2.0
+     * changelog entry names the rewrite's version and direction, and
+     * the live 8.5.10 runner probes it — a clean createFromFormat()
+     * parse answers false here; the array shape is the cross-engine
+     * premise).
      */
     public function testACleanSerializedParseEmitsNoDiagnosticsOnEitherEngineShape(): void
     {

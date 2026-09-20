@@ -638,18 +638,21 @@ final class AccessTokenSet {
 
 		/*
 		 * Both engine shapes are CLEAN (OCR round 26, t31-ocr26-6 —
-		 * the narrative inverted at OCR round 43, t31-ocr43-9; the
-		 * guard's logic was always right, only the story was
-		 * backwards): the pre-8.3 spelling hands an ARRAY on a clean
-		 * parse — zero counts, both keys present — and the 8.3+
-		 * rewrite hands FALSE, so a guard keyed on ONE shape alone
-		 * mishandles the other build's clean parse (key reads on a
-		 * false, a skipped verdict on an array). The ! empty() guard
-		 * reads the keys only when the engine POPULATED the array:
-		 * false and the zero-count array are both the clean verdict
-		 * they name, on their respective engine shapes (this
-		 * runner's engine still hands false — the array shape is
-		 * the cross-engine premise).
+		 * the narrative corrected at OCR round 43, t31-ocr43-9, the
+		 * version anchor corrected at OCR round 62, t31-ocr62-5; the
+		 * guard's logic was right all along): before 8.2.0 the
+		 * engine ALWAYS hands the array on a clean parse — zero
+		 * counts, both keys present — and the 8.2.0 rewrite hands
+		 * FALSE, so a guard keyed on ONE shape alone mishandles the
+		 * other build's clean parse (key reads on a false, a skipped
+		 * verdict on an array). The ! empty() guard reads the keys
+		 * only when the engine POPULATED the array: false and the
+		 * zero-count array are both the clean verdict they name, on
+		 * their respective engine shapes (the manual's 8.2.0
+		 * changelog entry names the rewrite's version and direction,
+		 * and this 8.5.10 runner probes it — a clean
+		 * createFromFormat() parse answers false here; the array
+		 * shape is the cross-engine premise).
 		 */
 		$errors = DateTimeImmutable::getLastErrors();
 		if ( ! empty( $errors ) && ( $errors['warning_count'] > 0 || $errors['error_count'] > 0 ) ) {
