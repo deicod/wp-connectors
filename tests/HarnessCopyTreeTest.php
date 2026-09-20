@@ -1201,6 +1201,17 @@ final class HarnessCopyTreeTest extends TestCase
         if (! WpHarness::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the reap pin\'s children cannot spawn (the t31-ocr16-12 doctrine).');
         }
+        /*
+         * The reaping-topology gate (t31-ocr55-4, the probe helper's
+         * own census below): the DEAD direction premises a runner
+         * whose init reaps adopted orphans — on a PID 1 that does not
+         * (a container entrypoint, a pod without a reaping init) the
+         * canary probe demonstrated the shape and the leg skips
+         * loudly, never failing through topology.
+         */
+        if (! $this->runnerReapsAdoptedOrphans()) {
+            $this->markTestSkipped('This runner\'s init never reaps adopted orphans inside the bounded wait (a container entrypoint as PID 1, a pod without a reaping init — t31-ocr55-4): a dead child stays a zombie, both liveness spellings answer ALIVE for a zombie, and the dead-direction reap premise is unconstructible here.');
+        }
 
         // The DEAD direction: a child that exits at once — the staging
         // failure's own shape — orphaned at spawn and reaped by init,
@@ -1272,6 +1283,14 @@ final class HarnessCopyTreeTest extends TestCase
         }
         if (! WpHarness::canSpawnChildren()) {
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the freeze pin\'s children cannot spawn (the t31-ocr16-12 doctrine).');
+        }
+        /*
+         * The reaping-topology gate (t31-ocr55-4 — the reap pin's
+         * twin gate): the DEAD direction premises a runner whose init
+         * reaps adopted orphans; the canary probe owns the answer.
+         */
+        if (! $this->runnerReapsAdoptedOrphans()) {
+            $this->markTestSkipped('This runner\'s init never reaps adopted orphans inside the bounded wait (a container entrypoint as PID 1, a pod without a reaping init — t31-ocr55-4): a dead child stays a zombie, both liveness spellings answer ALIVE for a zombie, and the dead-direction reap premise is unconstructible here.');
         }
 
         /*
@@ -2456,6 +2475,62 @@ echo "RETURNED\n";
     private function stage(string $path, string $bytes): void
     {
         $this->assertNotFalse(file_put_contents($path, $bytes), "Staging {$path} must land — a failed stage is the leg's own verdict, never a misleading downstream one.");
+    }
+
+    /**
+     * Whether this runner's init reaps adopted orphans (probed once
+     * per process — the canary's own answer, never an assumption).
+     *
+     * @var bool|null
+     */
+    private static ?bool $runner_reaps_adopted_orphans = null;
+
+    /*
+     * The reaping-topology probe (OCR round 55, t31-ocr55-4): the
+     * two reap pins' DEAD directions premise that a backgrounded
+     * child — orphaned at spawn when the exec subshell exits — is
+     * REAPED by the runner's init (PID 1 reaping adopted orphans,
+     * the container-init default). On a runner whose PID 1 does not
+     * reap (a container entrypoint running phpunit as PID 1, a pod
+     * without a reaping init) the dead child stays a ZOMBIE, and
+     * BOTH liveness spellings answer ALIVE for a zombie
+     * (posix_kill(pid, 0) succeeds against zombies; /proc/<pid>
+     * exists until reaped), so childIsAlive() never flips and the
+     * pins fail through RUNNER TOPOLOGY, never the doctrine they
+     * pin. The file's own doctrine converts every unconstructible
+     * environment shape into a visible markTestSkipped
+     * (canSpawnChildren, canSymlink, isPosixHost, the permission
+     * probes) — the reaping premise joins that family: probe ONCE per
+     * process (a canary child that exits immediately, bounded-waited
+     * to its reaping; a spawn the probe cannot answer answers false —
+     * the callers' own canSpawnChildren gate owns that shape, and an
+     * unanswered spawn is never a reaping observed), and a runner
+     * that never reaps skips BOTH legs loudly naming the topology.
+     * The skip's verification is CONSTRUCTION-EVIDENT: the canary
+     * itself demonstrates the shape (a dead child whose liveness
+     * never flips inside the bounded wait is exactly the zombie the
+     * pins' DEAD directions cannot construct there) — on a reaping
+     * host the canary reaps within milliseconds and both pins run.
+     */
+    private function runnerReapsAdoptedOrphans(): bool
+    {
+        if (null !== self::$runner_reaps_adopted_orphans) {
+            return self::$runner_reaps_adopted_orphans;
+        }
+        $spawned = array();
+        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('exit(0);') . ' >/dev/null 2>&1 & echo $!', $spawned);
+        $canary = (int) trim((string) ($spawned[0] ?? ''));
+        if ($canary <= 0) {
+            return self::$runner_reaps_adopted_orphans = false;
+        }
+        for ($wait = 0; $wait < 40; ++$wait) {
+            usleep(50000);
+            if (! $this->childIsAlive($canary)) {
+                return self::$runner_reaps_adopted_orphans = true;
+            }
+        }
+
+        return self::$runner_reaps_adopted_orphans = false;
     }
 
     /*
