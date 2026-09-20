@@ -6,6 +6,60 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 54)
+
+Fifty-fourth OCR round (61/61 fully complete): 4 findings, driver
+accepts all — all test:low, all completion twins of the two classes
+round 53's sweeps started (the sweeps reached the batteries they
+named and missed the siblings); ties the loop minimum (4). 2
+numbered commits t31-ocr54-1..2 (one per class), plus this docs
+record, the full offline check green after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4.
+Round 54 answered NEW findings, so the OCR phase continues per
+plan. Suite 1728 tests unchanged, 46817 → 46820 assertions, 3
+skipped unchanged.
+
+- **The unasserted-staging sweep completion (t31-ocr54-1,
+  test:low ×2)** — the two sites round 53's staging-assert sweeps
+  walked past: the known-secret battery kept its bare staging
+  writes while r53-6 asserted every other scan site in its file (a
+  failed mkdir/write surfaced as a missing 'zai-key'/'github-token'
+  verdict — scanner-shaped red over a staging failure, the
+  misattribution class; the r53-6 census had adjudicated this site
+  outside its sweep as never-vacuous, and the completion brings it
+  under the idiom as the misattribution fix), and
+  'zip-staging-path-blocked' is the only CLEAN row planting
+  filesystem state, its mkdir unasserted while its two sibling rows
+  got asserts at r53-7 — the row's whole point is that the pid-only
+  blocker spelling is INERT, so a silently failed mkdir yielded an
+  identical green verdict over a plant that never landed (a vacuous
+  pass, coverage gone). Both assert their own landing, each
+  assertion naming its path; the zip row's closure drops 'static'
+  so $this binds (the r53-7 shape), an assertion failure riding the
+  table's apply-throw channel (t31-ocr30-6) as the row's own FAIL,
+  never a phantom CLEAN. Construction-evident regressions; happy
+  paths unchanged, every verdict byte-identical when the plants
+  land.
+- **The staging-inside-try sweep completion (t31-ocr54-2,
+  test:low ×2)** — the four sites the sibling fixes left staging
+  before the try that releases it: the three scan batteries r53-6
+  asserted (prune-fold, artifact-scan, fresh-process) staged every
+  fixture BEFORE the try/finally owning releaseScratch() (a failed
+  staging assert threw with the tree half-planted and no finally in
+  scope — each stem is used once per run, no later battery's pid
+  sweep reclaims it), and $outside's staging in the
+  self-containment boundary battery sat before its try (the
+  half-built 'wpct-scanroot-outside-*' tree, a uniqid stem no pid
+  sweep vocabulary ever names, leaked in system temp when the
+  r52-5 write assert failed) — the exact t31-ocr16-14/t31-ocr18-3
+  class the changeset's siblings already closed. All four stage
+  inside the try now (the ocr30-4/ocr53-10 mid-landing shape): the
+  finally owns every exit from the first mkdir on, the staging
+  failure still failing as staging through the assert's own named
+  verdict while the release reclaims whatever landed.
+  Construction-evident; happy paths byte-identical (same stage
+  calls, same verdicts, same assert count).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 53)
 
 Fifty-third OCR-tool round (main run partial 53/61 + fill-in r58b over
