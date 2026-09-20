@@ -6,6 +6,73 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 63)
+
+Sixty-third OCR round (61/61 fully complete): 3 findings, driver
+accepts all — THREE numbered commits t31-ocr63-1..3 (one per
+finding), plus this docs record, the full offline check green after
+every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10→3→6→3.
+Round 63 answered NEW findings, so the OCR phase continues per
+plan. Suite 1751 → 1769 tests, 47034 → 47056 assertions, 3 skipped
+unchanged (deltas +10/+10, +7/+7, +1/+5, measured from output).
+The round's shape: every finding a round-62 follow-on — the
+mid-line anchor straggler, the inline-HTML brace arm, and the
+builder-side stream-separator arm closing the one-verdict drift.
+
+- **The unused-import gate's line anchor over three legal mid-line
+  spellings (t31-ocr63-1, bug:medium; bin/check-conventions.php)**
+  — the r62 anchors ([ \t]* under /m) still saw only
+  statement-INITIAL lines, so the one-line braced namespace block
+  ('namespace X { use A\B; }'), the second statement on a
+  two-statement line, and the use riding the open tag's line
+  ('<?php use A\B;') were invisible while bin/build.php's rewriter
+  (statement-start lookbehind, no line anchor) handled them fine —
+  the gate drift the round-62 census claimed closed. The
+  statement-start boundary replaces the line anchor ('(?<![label
+  byte])' over the ONE label class — mid-line after '{', ';', '}',
+  or the open tag all satisfy it; a 'use' inside a longer label
+  never does), riding all three statement patterns and the two
+  keyword-prefix strips; the TRAIT FENCE carries the whole judgment
+  (a one-line 'class C { use SomeTrait; }' is matched AND fenced,
+  never anchor-blind). Driven: the dead mid-line spellings flag
+  (red at HEAD: 0), the used twins and the one-line trait/comma/
+  adaptation rows stay 0.
+- **The trait-fence walk counting inline-HTML braces as code
+  (t31-ocr63-2, bug:low; bin/check-conventions.php)** —
+  T_INLINE_HTML keeps its bytes on the masked view, so a php
+  -l-clean file whose '?>' HTML carries a template placeholder or
+  inline JS/CSS braces armed an 'other' frame and every use after
+  the HTML was judged a trait clause and skipped (dead imports
+  escaping); a stray HTML '}' popped a frame the code still owed
+  (verified verdict-neutral on every lint-clean shape — a close tag
+  inside a class body is a parse error); and the '?' branch treated
+  any '<?' as an open tag, so a leading '<?xml … ?>' HTML head rode
+  the same arm. The walk owns the inline-HTML arm: the engine
+  starts in HTML mode, braces and ';' in HTML never touch the frame
+  stack, only the INI-independent spellings ('<?php', '<?=') open
+  PHP mode, and a match landing in HTML is never an import (the
+  region judgment the boundary anchor left for the fence). Driven:
+  the unbalanced-brace, xml-led-brace, and in-HTML-use rows red at
+  HEAD (0, 0, 1), all correct now; balanced, clean-xml, stray-'}'
+  and used controls green before and after.
+- **The builder collecting what the r62 stream fence refuses
+  (t31-ocr63-3, bug:medium; bin/build.php, bin/inspect-artifact.php)**
+  — ':' is legal in a POSIX filename, so 'assets/icon:2x.png'
+  staged, published at exit 0, and the inspector's r62 stream fence
+  refused the same bytes: build green, inspect refused, no CI run
+  satisfiable. The builder owns the class at COLLECTION — a
+  ':'-bearing segment answers the build's own loud refusal after
+  the exclusion filter, before any staging or zip write (no
+  drive-letter exemption needed on the relative side: the entry a
+  'C:'-named node would compose is slug-prefixed, so the
+  inspector's absolute-path head exemption never applies to it) —
+  one class, two owners, one verdict, the inspector fence kept as
+  defense in depth; the census rides both sites. Driven: the
+  colon-bearing tree fails the BUILD loudly at collection (red at
+  HEAD: the build returned a zip path), the colon-free twin builds
+  and inspects green.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 62)
 
 Sixty-second OCR round (61/61 fully complete): 6 findings, driver
@@ -85,8 +152,6 @@ vindicated, its version anchor corrected to 8.2.0.
   changelog entry recorded as evidence. The guard stays
   shape-agnostic; no runtime branch. Doc-only, assertions
   byte-unchanged.
-
-### Fixed (shared — M3 Task 3.1, OCR round 61)
 
 ### Fixed (shared — M3 Task 3.1, OCR round 61)
 
