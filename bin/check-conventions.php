@@ -415,7 +415,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
             }
 
             foreach ($matches as $match) {
-                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1])) {
+                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1], $source)) {
                     // A trait clause list, never an import — the
                     // fence helper's own census.
                     continue;
@@ -532,7 +532,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              * docblocks), case-insensitive.
              */
             foreach ($comma_matches as $match) {
-                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1])) {
+                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1], $source)) {
                     // A trait clause list ('use TraitA, TraitB;') —
                     // the fence helper's own census.
                     continue;
@@ -577,7 +577,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
             }
 
             foreach ($group_matches as $match) {
-                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1])) {
+                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1], $source)) {
                     // A trait adaptation ('use T { … }'), never a
                     // group import — the fence helper's own census.
                     continue;
@@ -695,7 +695,11 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
  * '<?php' and '<?=' — never a bare '<?': '<?xml … ?>' in a leading
  * HTML head is inline HTML under the production-default INI
  * (short_open_tag=Off), and the walk's judgment must not depend on
- * the host's INI the way token_get_all's does. A match offset that
+ * the host's INI the way token_get_all's does. '<?php' further
+ * carries the engine's own FOLLOWER class — [ \t\r\n] or end of
+ * input, read from the raw source (a comment glued to the tag is a
+ * NON-opener to the engine, and the masked view would answer the
+ * blanked space; t31-ocr64-1). A match offset that
  * lands in HTML is never an import statement — the bytes are inline
  * text the statement patterns still SEE (the r63 boundary anchor
  * matches a mid-HTML 'use' exactly as it does a code one), so the
@@ -705,10 +709,13 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
  *
  * @param string $code_view The masked view the statement offsets came from.
  * @param int    $offset    The statement's byte offset (the pattern match).
+ * @param string $source    The raw source (same length as the view — the
+ *                          open-tag follower reads the byte the view's
+ *                          comment-blanking would hide).
  * @return bool True when no non-namespace block encloses the statement
  *              AND the statement sits in PHP code, never inline HTML.
  */
-function wp_connectors_use_statement_in_import_position(string $code_view, int $offset): bool
+function wp_connectors_use_statement_in_import_position(string $code_view, int $offset, string $source): bool
 {
     $frames = array();
     $run_start = 0;
@@ -736,9 +743,31 @@ function wp_connectors_use_statement_in_import_position(string $code_view, int $
                     $in_html = false;
                     $run_start = $after;
                 } elseif ('php' === strtolower((string) substr($code_view, $after, 3))) {
-                    $after += 3;
-                    $in_html = false;
-                    $run_start = $after;
+                    /*
+                     * The follower is the engine's own class, read
+                     * from the RAW source (OCR round 64, t31-ocr64-1):
+                     * T_OPEN_TAG lexes only when '<?php' is followed
+                     * by whitespace or end of input — '<?phpecho'/
+                     * '<?phpinfo()' are INLINE HTML under the
+                     * production-default short_open_tag=Off, and the
+                     * walk once flipped to PHP mode on any byte pair,
+                     * letting a 'use …;' TEXT line in the markup raise
+                     * a phantom over a region the engine never parsed.
+                     * The class is exactly [ \t\r\n] (probed: even
+                     * '\x0B'/'\f' leave the glued spelling HTML), and
+                     * the byte must be RAW because the view blanks a
+                     * comment to spaces — '<?php//note' is HTML to the
+                     * engine (no follower) while the blanked view
+                     * would answer a space; tag DETECTION stays on the
+                     * view, where a string-embedded '<?php' is masked
+                     * away and cannot flip the mode at all.
+                     */
+                    $follower = $source[$after + 3] ?? '';
+                    if ('' === $follower || str_contains(" \t\r\n", $follower)) {
+                        $after += 3;
+                        $in_html = false;
+                        $run_start = $after;
+                    }
                 }
                 continue;
             }

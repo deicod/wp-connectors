@@ -709,6 +709,34 @@ FIXTURE
                 "<?php\n?>\nuse Vendor\\HtmlText;\n",
                 0,
             ),
+            /*
+             * OCR round 64 (t31-ocr64-1): the r63-2 open-tag candidate
+             * flipped to PHP mode on ANY '<?php' byte pair, but the
+             * engine lexes T_OPEN_TAG only when the tag is followed by
+             * whitespace or end of input — '<?phpecho'/'<?phpinfo()'
+             * are INLINE HTML under the production-default
+             * short_open_tag=Off, so an HTML region carrying a glued
+             * spelling then 'use …' text flipped the walk at a tag the
+             * engine never opened and raised a phantom over markup
+             * (red at HEAD: 1 on the glued row, 2 on the past-glue
+             * row — the second use counted beside the phantom). The
+             * follower is the engine's own class ([ \t\r\n] or end of
+             * input; '<?php\x0B' is HTML too), '<?=' stays an opener
+             * unconditionally, and every other '<?' spelling stays a
+             * non-opener — the r63-2 census's INI-independence kept.
+             */
+            'glued "<?phpecho" HTML keeps the use-text HTML, no phantom (t31-ocr64-1)' => array(
+                "<?php\n?>\n<?phpecho use Vendor\\Glued\\Widget;\n",
+                0,
+            ),
+            'dead import past a glued "<?phpecho" HTML region flags, the glue itself silent (t31-ocr64-1)' => array(
+                "<?php\n?>\n<?phpecho use Vendor\\Glued\\Gadget;\n<?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'comment glued to the open tag keeps the file HTML, no phantom (t31-ocr64-1)' => array(
+                "<?php//note\nuse Vendor\\Glued\\Widget;\n",
+                0,
+            ),
         );
     }
 
