@@ -499,6 +499,29 @@ FIXTURE
                 "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f as Gr\xc3\xbcn;\n\$x = new Gr\xc3\xbcn();\n",
                 0,
             ),
+            /*
+             * OCR round 60 (t31-ocr60-1 — the r59 widening's follow-on
+             * at the mention seam): \b is PCRE's ASCII word boundary,
+             * and a high byte is a NON-word byte in byte mode, so for
+             * a short name carrying one the verdict broke BOTH
+             * directions — 'new Grüß()' found no trailing boundary
+             * between the 0x9F and '(' so the USED import flagged
+             * (red at HEAD: 1), while \bGrüß\b matched inside the
+             * lookalike 'Grüßx' so the DEAD import passed (red at
+             * HEAD: 0). The mention boundary rides the ONE label byte
+             * class now, at the plain form's legs here — the
+             * group-member twin rides the same boundary one commit
+             * over, its high-byte members becoming visible at the
+             * member-NAME shape guard first (t31-ocr60-2).
+             */
+            'used high-byte import mentioned un-aliased does not flag (t31-ocr60-1)' => array(
+                "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f;\n\$x = new Gr\xc3\xbc\xc3\x9f();\n",
+                0,
+            ),
+            'lookalike-only high-byte import flags (t31-ocr60-1)' => array(
+                "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f;\n\$x = new Gr\xc3\xbc\xc3\x9fx();\n",
+                1,
+            ),
         );
     }
 

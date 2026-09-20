@@ -388,7 +388,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 // — str_replace removed every copy, so a comment line
                 // ending in the exact use-statement text was stripped too,
                 // flagging an import whose only other mention was that
-                // comment), then require at least one word-boundary mention
+                // comment), then require at least one label-boundary mention
                 // of the short name anywhere in the remaining source (code,
                 // comments, or docblocks).
                 $withoutUse = substr_replace($source, '', $statement_offset, strlen($statement));
@@ -396,7 +396,20 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 // itself case-insensitive (glm17-9), so `new widget()` is a
                 // real use of an import of ...Widget. The i modifier only
                 // widens what counts as a use — strictly more conservative.
-                if (preg_match('/\b' . preg_quote($short, '/') . '\b/i', $withoutUse) === 1) {
+                /*
+                 * The mention boundary rides the ONE label byte class (OCR
+                 * round 60, t31-ocr60-1 — the r59 widening's follow-on):
+                 * \b is PCRE's ASCII word boundary, and a high byte is a
+                 * NON-word byte in byte mode, so for a short name ending
+                 * in one ('Grüß') the verdict broke BOTH directions — a
+                 * real mention 'new Grüß()' found no boundary between the
+                 * 0x9F and '(' (legal code flagged unused), while \bGrüß\b
+                 * DID match inside the lookalike 'Grüßx' (a dead import
+                 * passing). The label-class lookarounds ask the question
+                 * \b asked — does a name END here — over the bytes a PHP
+                 * label actually admits.
+                 */
+                if (preg_match('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . preg_quote($short, '/') . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])/i', $withoutUse) === 1) {
                     continue;
                 }
 
@@ -441,9 +454,13 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
 
                 foreach ($member_imports as $member_import) {
                     // Same mention contract as the single form: one
-                    // word-boundary mention anywhere (code, comments,
-                    // docblocks), case-insensitive (glm17-9).
-                    if (preg_match('/\b' . preg_quote($member_import['short'], '/') . '\b/i', $withoutUse) === 1) {
+                    // label-boundary mention anywhere (code, comments,
+                    // docblocks), case-insensitive (glm17-9) — the boundary
+                    // rides the ONE label byte class above (t31-ocr60-1),
+                    // this seam with it: \b broke both directions for a
+                    // high-byte short name in the single form, and the
+                    // member twin carries the same short names.
+                    if (preg_match('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . preg_quote($member_import['short'], '/') . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])/i', $withoutUse) === 1) {
                         continue;
                     }
 
