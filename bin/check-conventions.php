@@ -295,7 +295,9 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              * r46-9 keyword census closed, one grammar member over).
              * Every class that matches identifier bytes here — the
              * statement pair, the group opening, and the member alias
-             * parse below — spells WP_CONNECTORS_LABEL_BYTES (bin/lib/
+             * parse below (its un-aliased else-arm, the member NAME
+             * shape guard, riding the same class since t31-ocr60-2)
+             * — spells WP_CONNECTORS_LABEL_BYTES (bin/lib/
              * plugin-tools.php, the census comment there listing every
              * seam aligned).
              */
@@ -567,8 +569,19 @@ function wp_connectors_group_use_imports(string $prefix, string $body): array
         if (1 === preg_match('/^([' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+)\s+(?i:as)\s+([' . WP_CONNECTORS_LABEL_BYTES . ']+)$/', $member, $parts)) {
             $alias = $parts[2];
             $member = $parts[1];
-        } elseif (1 !== preg_match('/^[\w\\\\]+$/', $member)) {
-            // Not a name/alias shape: unparseable input, lint owns it.
+        } elseif (1 !== preg_match('/^[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+$/', $member)) {
+            /*
+             * Not a name/alias shape: unparseable input, lint owns it.
+             * The shape guard rides the ONE label byte class (OCR
+             * round 60, t31-ocr60-2 — the r59 straggler the alias
+             * parse one branch above already closed): the ASCII \w
+             * class refused an un-aliased high-byte member
+             * ('use Vendor\Pkg\{Grüß};' matches the widened group
+             * opening, then died HERE) — silently continue'd,
+             * invisible to the unused-import gate, the exact
+             * silent-false-negative class the round claims retired
+             * while the aliased twin of the same member flagged.
+             */
             continue;
         }
 

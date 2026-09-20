@@ -30,9 +30,11 @@ declare(strict_types=1);
  *   the reserved-vocab oracle consults, the group-use member grammar's
  *   alias shape and member NAME (the derivation source);
  * - bin/check-conventions.php: the unused-import scanner's statement
- *   patterns and member alias parse (the \w classes — ASCII in PCRE's
- *   byte mode — that once left a high-byte import INVISIBLE to the
- *   gate, the r46-9 silent-false-negative class);
+ *   patterns, member alias parse, and member NAME shape guard (the
+ *   \w classes — ASCII in PCRE's byte mode — that once left a
+ *   high-byte import INVISIBLE to the gate, the r46-9
+ *   silent-false-negative class; the shape guard's straggler closed
+ *   at t31-ocr60-2);
  * - here: the sibling pattern's continuation segment.
  *
  * bin/inspect-artifact.php, bin/lib/secret-scanner.php,

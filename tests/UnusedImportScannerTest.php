@@ -522,6 +522,32 @@ FIXTURE
                 "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f;\n\$x = new Gr\xc3\xbc\xc3\x9fx();\n",
                 1,
             ),
+            /*
+             * OCR round 60 (t31-ocr60-2 — the r59 straggler at the
+             * member-NAME shape guard): the guard's ASCII \w class
+             * refused an UN-ALIASED high-byte member after the
+             * widened group opening had matched it, and the silent
+             * continue left the member invisible to the gate (red at
+             * HEAD: 0 — the unused row) while the aliased twin of the
+             * same member flagged — the exact silent-false-negative
+             * class the r59 round claims retired. The guard rides the
+             * ONE label byte class now, and the member flows into the
+             * mention check whose label boundary t31-ocr60-1 landed:
+             * the used member does not flag, the lookalike-only twin
+             * does (both red at HEAD through this hole: 0 and 0).
+             */
+            'unused high-byte group member flags (t31-ocr60-2)' => array(
+                "<?php\nuse Vendor\\Pkg\\{Gr\xc3\xbc\xc3\x9f};\n",
+                1,
+            ),
+            'used high-byte group member does not flag (t31-ocr60-1/2)' => array(
+                "<?php\nuse Vendor\\Pkg\\{Gr\xc3\xbc\xc3\x9f};\n\$x = new Gr\xc3\xbc\xc3\x9f();\n",
+                0,
+            ),
+            'lookalike-only high-byte group member flags (t31-ocr60-1/2)' => array(
+                "<?php\nuse Vendor\\Pkg\\{Gr\xc3\xbc\xc3\x9f};\n\$x = new Gr\xc3\xbc\xc3\x9fx();\n",
+                1,
+            ),
         );
     }
 
