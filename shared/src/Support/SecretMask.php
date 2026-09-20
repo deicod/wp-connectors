@@ -317,11 +317,29 @@ final class SecretMask {
 	 * — stays verbatim by the boundary, the suffix bytes never
 	 * spanning the segment).
 	 *
+	 * OCR round 66 (t31-ocr66-5, security — the credential-material
+	 * suffix tier's own 'password' member): 'password' is the final
+	 * token of vendor-documented credential headers — 'X-Password'
+	 * and the composed 'X-Api-Password'/'X-User-Password' family —
+	 * and it matched neither catalog nor suffix (driven at HEAD: the
+	 * value rendered verbatim through every safe debug form), the
+	 * r12-4/ocr15-1 leak class the tier exists to close, the same
+	 * tier doctrine as round 24 ('token'/'secret'/'authorization'),
+	 * round 52 ('key'), and round 55 ('authentication'). One member
+	 * speaks every delimiter spelling per the r50-1 boundary doctrine
+	 * (the fold normalizes the whole tchar delimiter class, so
+	 * 'X_Password'/'X.Password' judge the same); no flattened glued
+	 * twin joins ('xpassword' — no vendor spells it, the r55-1
+	 * 'authentication' treatment), and the boundary is unchanged: a
+	 * name whose final token merely precedes it
+	 * ('x-password-policy', 'x-passport') stays verbatim, the suffix
+	 * bytes never spanning the segment.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'signature', 'signature-256' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'signature', 'signature-256' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.

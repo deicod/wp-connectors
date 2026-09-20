@@ -2549,6 +2549,37 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertFalse(SecretMask::is_sensitive_header_name('x-authentication-scheme'), 'The boundary twin stays verbatim — the suffix bytes never span the segment the class judges, the sibling included.');
 
         /*
+         * OCR-round-66 pin (t31-ocr66-5 — the tier's own 'password'
+         * member): 'password' is the final token of vendor-documented
+         * credential headers — 'X-Password' and the composed
+         * 'X-Api-Password'/'X-User-Password' family — and it matched
+         * neither catalog nor suffix, so the credential rendered
+         * verbatim through every safe debug form (red at HEAD:
+         * unmasked, driven), the r12-4 leak class under the plainest
+         * credential word the tier had not named. One member speaks
+         * every delimiter per the r50-1 fold; no flattened glued twin
+         * joins (no vendor spells 'XPassword', the r55-1 treatment),
+         * and the boundary twin keeps its charge: a final token
+         * merely PRECEDING the suffix stays verbatim.
+         */
+        $password_secret = FakeSecrets::accessToken();
+        foreach (array('X-Password', 'X-Api-Password', 'X-User-Password', 'x-password', 'password', 'x_password', 'x.api.password') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — the credential tier's own 'password' member, over every delimiter spelling (red at HEAD: unmasked).");
+        }
+        $password_map = new HeaderMap(array(
+            'X-Password' => $password_secret,
+            'X-Api-Password' => $password_secret,
+            'x-request-id' => 'req-66',
+        ));
+        foreach (array('dump' => print_r($password_map, true), 'serialize' => serialize($password_map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($password_secret, $rendered, "The 'X-Password' and 'X-Api-Password' values render masked in the {$channel} channel — pre-fix the plainest credential word was the one suffix the tier had not named.");
+            $this->assertStringContainsString('req-66', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
+        }
+        foreach (array('x-password-policy', 'x-passport', 'xpassword') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling stays verbatim — a policy tail, a lookalike word, and the unflattened glue are all outside the boundary the class judges.");
+        }
+
+        /*
          * OCR-round-57 pin (t31-ocr57-2 — the flattened 'csrftoken'
          * twin): 'X-CSRFToken' is Django's canonical CSRF header
          * spelling (CSRF_HEADER_NAME; the cookie default is the bare
