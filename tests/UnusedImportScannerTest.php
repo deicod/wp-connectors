@@ -656,6 +656,59 @@ FIXTURE
                 "<?php\nclass C { use SomeTrait { m as x; } }\n",
                 0,
             ),
+            /*
+             * OCR round 63 (t31-ocr63-2): T_INLINE_HTML keeps its
+             * bytes on the masked view while the fence's brace walk
+             * counted them as CODE braces — a legal php -l-clean
+             * file whose '?>' HTML carries a template placeholder or
+             * inline JS/CSS braces armed an 'other' frame past the
+             * reopen and every use after the HTML was judged a trait
+             * clause and skipped (dead imports escaping, red at HEAD:
+             * 0); the '<?xml' spelling of a leading HTML head rode
+             * the same arm ('?' branch once treated any '<?' as an
+             * open tag); and a column-0 'use …;' written IN the HTML
+             * flagged as an import (red at HEAD: 1 — inline text,
+             * never a statement). The walk owns the inline-HTML arm
+             * now: braces and ';' in HTML never touch the frame
+             * stack, only '<?php'/'<?=' open PHP mode (the engine's
+             * INI-independent spellings — '<?xml' stays HTML under
+             * the production-default short_open_tag=Off, and the
+             * walk must not inherit the host's INI), and a match
+             * landing in HTML is never an import. The pop direction
+             * — a stray HTML '}' popping a frame the code still owes
+             * — is verdict-neutral on every lint-clean shape by
+             * construction (a close tag inside a class body is a
+             * parse error, verified), so the stray-'}' row pins the
+             * code braces judged correctly through it, not a flip.
+             */
+            'dead import after unbalanced inline-HTML braces flags (t31-ocr63-2)' => array(
+                "<?php\n?> <div>{placeholder</div> <?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'dead import after balanced inline-HTML braces still flags (t31-ocr63-2)' => array(
+                "<?php\n?> <div>{placeholder}</div> <?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'used import after inline-HTML braces does not flag (t31-ocr63-2)' => array(
+                "<?php\n?> <div>{placeholder}</div> <?php\nuse Vendor\\Other\\Widget;\n\$x = new Widget();\n",
+                0,
+            ),
+            'dead import past an xml-led HTML head with a brace flags (t31-ocr63-2)' => array(
+                "<?xml version=\"1.0\"?>\n<div>{x\n<?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'dead import past a clean xml-led HTML head still flags (t31-ocr63-2)' => array(
+                "<?xml version=\"1.0\"?>\n<?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'stray inline-HTML close brace does not fence the import after it (t31-ocr63-2)' => array(
+                "<?php\nnamespace X {\n?> <div>}</div> <?php\nuse Vendor\\Dead\\Thing;\n}\n",
+                1,
+            ),
+            'a use statement written in inline HTML is never an import (t31-ocr63-2)' => array(
+                "<?php\n?>\nuse Vendor\\HtmlText;\n",
+                0,
+            ),
         );
     }
 

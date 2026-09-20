@@ -675,22 +675,89 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
  * counts is code — an interpolation's braces cannot unbalance the
  * count the way they once build.php's token walk (the t31-ocr16-10
  * class), and a brace inside a heredoc body is data (glm17-8).
- * Inline HTML between close and open tags keeps its bytes on that
- * view — the glm17-8 boundary the statement patterns themselves
- * already carry: this gate owns PHP-source trees, never templating
+ *
+ * THE INLINE-HTML ARM (OCR round 63, t31-ocr63-2): inline HTML
+ * between close and open tags keeps its bytes on that view, and the
+ * walk once counted every HTML '{'/'}' as a CODE brace — a legal
+ * php -l-clean file whose '?>' HTML carries a template placeholder
+ * or inline JS/CSS braces armed an 'other' frame past the reopen,
+ * and every use statement after the HTML was judged a trait clause
+ * and skipped (dead imports escaping, red at HEAD); a stray HTML
+ * '}' popped a real frame the code still owed (verified empty of
+ * verdict flips on every lint-clean shape — a close tag inside a
+ * class body is a parse error, so the frame a trait clause needs is
+ * always pushed after the HTML — but the walk judged code braces it
+ * never owned). The arm is the file's own brace-counting doctrine
+ * for non-code regions: while the engine is in HTML mode (between a
+ * real close tag and the next real open tag, and over a leading
+ * HTML head), braces and ';' never touch the frame stack. The open
+ * tag judgment counts ONLY the engine's INI-independent spellings —
+ * '<?php' and '<?=' — never a bare '<?': '<?xml … ?>' in a leading
+ * HTML head is inline HTML under the production-default INI
+ * (short_open_tag=Off), and the walk's judgment must not depend on
+ * the host's INI the way token_get_all's does. A match offset that
+ * lands in HTML is never an import statement — the bytes are inline
+ * text the statement patterns still SEE (the r63 boundary anchor
+ * matches a mid-HTML 'use' exactly as it does a code one), so the
+ * fence owns the region judgment the anchor no longer carries by
+ * accident: this gate owns PHP-source trees, never templating
  * mixtures, and @lint owns what does not parse.
  *
  * @param string $code_view The masked view the statement offsets came from.
  * @param int    $offset    The statement's byte offset (the pattern match).
- * @return bool True when no non-namespace block encloses the statement.
+ * @return bool True when no non-namespace block encloses the statement
+ *              AND the statement sits in PHP code, never inline HTML.
  */
 function wp_connectors_use_statement_in_import_position(string $code_view, int $offset): bool
 {
     $frames = array();
     $run_start = 0;
+    // The engine starts in HTML mode: a file's leading bytes are
+    // inline HTML until the first real open tag (t31-ocr63-2).
+    $in_html = true;
     $length = min($offset, strlen($code_view));
     for ($i = 0; $i < $length; ++$i) {
         $byte = $code_view[$i];
+        if ('?' === $byte) {
+            if (0 < $i && '<' === $code_view[$i - 1]) {
+                // Open tag candidate: only the INI-independent
+                // spellings ('<?php', '<?=') open PHP mode — the run
+                // resumes past the tag's keyword bytes (its trailing
+                // whitespace is the run class's own leading side).
+                // A '<?' in any other spelling ('<?xml' over a
+                // leading HTML head) is HTML text, never a mode
+                // switch: the engine's own default-INI lexing, made
+                // INI-independent here because the walk must not
+                // inherit the host's short_open_tag the masked
+                // view's tokenizer does.
+                $after = $i + 1;
+                if ('=' === ($code_view[$after] ?? '')) {
+                    ++$after;
+                    $in_html = false;
+                    $run_start = $after;
+                } elseif ('php' === strtolower((string) substr($code_view, $after, 3))) {
+                    $after += 3;
+                    $in_html = false;
+                    $run_start = $after;
+                }
+                continue;
+            }
+            if ('>' === ($code_view[$i + 1] ?? '') && ! $in_html) {
+                // Close tag: the implied ';' (run boundary). The HTML
+                // past it is the inline-HTML arm's own territory —
+                // braces there never touch the frame stack.
+                $in_html = true;
+                $run_start = $i;
+            }
+            continue;
+        }
+        if ($in_html) {
+            // Inline HTML: braces and ';' are template text. An
+            // unbalanced '{placeholder' no longer arms an 'other'
+            // frame past the reopen, and a stray '}' no longer pops
+            // a frame the code still owes (t31-ocr63-2).
+            continue;
+        }
         if ('{' === $byte) {
             // The declaration run before the brace — everything since
             // the last structural boundary — is the `namespace`
@@ -698,7 +765,7 @@ function wp_connectors_use_statement_in_import_position(string $code_view, int $
             // for 'namespace {') exactly when it matches this shape;
             // any other opener (a class, 'if (…)', 'function f(…)')
             // carries a byte the run class refuses. The mode tags are
-            // boundaries themselves (below): the OPEN tag's bytes
+            // boundaries themselves (above): the OPEN tag's bytes
             // must not ride into the run of the first declaration
             // after it — '<?php namespace X {' is the canonical file
             // head, and the tag's '<' would otherwise classify the
@@ -713,28 +780,14 @@ function wp_connectors_use_statement_in_import_position(string $code_view, int $
                 array_pop($frames);
             }
             $run_start = $i + 1;
-        } elseif ('?' === $byte) {
-            // A mode tag is a structural boundary (the statement-
-            // boundary owner's own vocabulary): the close tag implies
-            // the ';' and the open tag's own bytes never belong to
-            // the declaration run that follows them.
-            if (0 < $i && '<' === $code_view[$i - 1]) {
-                // Open tag ('<?php', '<?='): the run resumes past the
-                // tag's keyword bytes (its trailing whitespace is the
-                // run class's own leading side).
-                $after = $i + 1;
-                if ('=' === ($code_view[$after] ?? '')) {
-                    ++$after;
-                } elseif ('php' === strtolower((string) substr($code_view, $after, 3))) {
-                    $after += 3;
-                }
-                $run_start = $after;
-            } elseif ('>' === ($code_view[$i + 1] ?? '')) {
-                // Close tag: the implied ';' (run boundary; the HTML
-                // past it is the glm17-8 boundary the census names).
-                $run_start = $i;
-            }
         }
+    }
+
+    // A match that lands in HTML is inline text, never an import
+    // statement — the region judgment the r63 boundary anchor left
+    // for this fence to own.
+    if ($in_html) {
+        return false;
     }
 
     return ! in_array('other', $frames, true);
