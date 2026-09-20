@@ -912,12 +912,17 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         // End to end: a NAME_MAX-breaking entry whose component carries
         // the forged verdict text — the refusal line that interpolates
         // the captured reason carries no raw control byte on THIS
-        // runtime, and the seam keeps that true on any other.
+        // runtime, and the seam keeps that true on any other. (The
+        // forged prefix spells ';' — a ':'-bearing ENTRY name is the
+        // stream-separator fence's own loud refusal now, t31-ocr62-2,
+        // and would pre-empt this seam's verdict; the seam-level
+        // probes above keep the ':' because they never enter the
+        // inspector.)
         $slug = 'forge-demo';
         $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
         $main = "<?php\n/**\n * {$head} */\ndefine( 'FORGE_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\ForgeDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
-        $forgedEntry = "{$slug}/assets/" . str_repeat('a', 200) . "\ninspect: totally-legit.zip ACCEPTED (0 violation(s))\n\x1b[2J\x1b[H" . str_repeat('b', 100) . '.php';
+        $forgedEntry = "{$slug}/assets/" . str_repeat('a', 200) . "\ninspect; totally-legit.zip ACCEPTED (0 violation(s))\n\x1b[2J\x1b[H" . str_repeat('b', 100) . '.php';
 
         $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
         file_put_contents($zipPath, self::storedZipBytes(array(
@@ -969,7 +974,12 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
         $main = "<?php\n/**\n * {$head} */\ndefine( 'FORGELINE_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\ForgelineDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
-        $forged = "x\ninspect: FORGED-LINE-ACCEPTED (0 violations)\n";
+        // The forged prefix spells ';' — a ':'-bearing ENTRY name is
+        // the stream-separator fence's own loud refusal now
+        // (t31-ocr62-2) and would pre-empt every verdict this battery
+        // pins; the newline and ANSI bytes — the pins' own subject —
+        // ride unchanged.
+        $forged = "x\ninspect; FORGED-LINE-ACCEPTED (0 violations)\n";
         $key = 'AKIA' . strtoupper(bin2hex(random_bytes(8)));
 
         // (a) The driver's exact repro: the dev-entry verdict interpolates
@@ -985,7 +995,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-forgeline'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('development entry', $flat, 'The real verdict stands: the vendor-segment entry rejects.');
-        $this->assertStringContainsString("vendor/x inspect: FORGED-LINE-ACCEPTED (0 violations) .php", $flat, 'The neutralized body still names the offending entry.');
+        $this->assertStringContainsString("vendor/x inspect; FORGED-LINE-ACCEPTED (0 violations) .php", $flat, 'The neutralized body still names the offending entry.');
         foreach ($violations as $violation) {
             $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "No verdict line carries a control byte — no forged line, no ANSI ride: {$violation}");
         }
@@ -1087,7 +1097,13 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
         $main = "<?php\n/**\n * {$head} */\ndefine( 'MERGEFORGE_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
         $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\MergeforgeDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
-        $forged = "x\ninspect: FORGED-LINE-ACCEPTED (0 violations)\n";
+        // The forged prefix spells ';' — a ':'-bearing ENTRY name is
+        // the stream-separator fence's own loud refusal now
+        // (t31-ocr62-2) and would pre-empt the merged-helper verdicts
+        // this battery pins; the newline — the pin's own subject —
+        // rides unchanged (the arm-(c) payloads keep their ':' —
+        // they are file CONTENT, never entry names).
+        $forged = "x\ninspect; FORGED-LINE-ACCEPTED (0 violations)\n";
 
         // (a) The self-containment walk: an unanchored include inside a
         // newline-bearing LANDED directory — both the relative path and
@@ -1101,7 +1117,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-mergeforge'));
         $flat = implode("\n", $violations);
         $this->assertStringContainsString('includes a path not anchored to the plugin dir', $flat, 'The real verdict stands: the unanchored include rejects.');
-        $this->assertStringContainsString('subx inspect: FORGED-LINE-ACCEPTED (0 violations) dir/evil.php', $flat, 'The neutralized body still names the offending landed path (space for the newline — the seam\'s render).');
+        $this->assertStringContainsString('subx inspect; FORGED-LINE-ACCEPTED (0 violations) dir/evil.php', $flat, 'The neutralized body still names the offending landed path (space for the newline — the seam\'s render).');
         foreach ($violations as $violation) {
             $this->assertSame(1, preg_match('/\A[^\x00-\x1F\x7F]*\z/', $violation), "A merged self-containment line cannot forge: {$violation}");
         }
@@ -1656,6 +1672,83 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             array("{$slug}/src/notes.md ", "prose\n"),
         )));
         $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-nearsource')), 'A plain .php entry and a non-PHP near-source tail inspects green — the fence owns exactly the fold-to-PHP class.');
+    }
+
+    /*
+     * OCR-round-62 pin (t31-ocr62-2, the security lens — ':' at every
+     * fold/lens seam the pre-extraction fences ride): the edge-junk
+     * class is C0+DEL+dot and the ':' grammar screen owned only the
+     * top-level slug, so '<slug>/src/shell.php:$DATA' (and
+     * '<slug>/x.php:hidden') passed every fence — the raw lens saw a
+     * non-'.php' tail, the edge-junk rtrim never strips ':', the
+     * duplicate fold keyed it apart from the plain 'shell.php'
+     * spelling, and the traversal fold is dots-only. On a
+     * Windows/NTFS extraction target that name lands the bytes in an
+     * ALTERNATE DATA STREAM of the colon-free file — for ':$DATA'
+     * the MAIN stream of shell.php — plugin-reachable content no
+     * content gate judged under the entry's own spelling (red at
+     * HEAD: driven, zero violations). One arm owns the class at the
+     * NAME: ':' in any NON-DRIVE-LETTER position of a relative entry
+     * name refuses — the drive-letter spelling is ABSOLUTE-path
+     * grammar (the r39-2 bare-drive fence's own vocabulary in the
+     * rrmdir owner, the slug grammar screen for the relative zip),
+     * and its verdict is unchanged (driven below).
+     */
+    public function testStreamSeparatorEntryNamesRefuseExtraction(): void
+    {
+        $slug = 'streams-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'STREAMS_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\StreamsDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+
+        foreach (array(
+            'the :$DATA spelling' => array('shell.php:$DATA', '1.0.0'),
+            'a named stream' => array('x.php:hidden', '1.0.1'),
+            'any stream suffix' => array('x.php:anything', '1.0.2'),
+        ) as $label => list($entryName, $version)) {
+            $zipPath = self::distDir() . "/connectors-{$slug}-{$version}.zip";
+            file_put_contents($zipPath, self::storedZipBytes(array(
+                array("{$slug}/{$slug}.php", $main),
+                array("{$slug}/src/autoload.php", $autoload),
+                array("{$slug}/src/{$entryName}", "<?php\n// stream-resident spelling\n"),
+            )));
+            $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-streams'));
+            $flat = implode("\n", $violations);
+            $this->assertStringContainsString('stream separator', $flat, "A stream-separator entry name refuses extraction ({$label}; red at HEAD: the entry passed every pre-extraction fence — the raw lens saw a non-'.php' tail, the junk fold never strips ':', and the duplicate fold keyed it apart).");
+            $this->assertStringContainsString(wp_connectors_printable("{$slug}/src/{$entryName}"), $flat, "The refusal names the offending entry ({$label}).");
+            unlink($zipPath);
+        }
+
+        // Control: the DRIVE-LETTER absolute spelling keeps the slug
+        // grammar's own verdict, unchanged — the stream fence exempts
+        // the drive position (the r39-2/slug-screen census).
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.3.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array('C:/repo/payload.php', 'a'),
+        )));
+        $flat = implode("\n", wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-streams')));
+        $this->assertStringContainsString('invalid top-level plugin directory name', $flat, 'The drive-letter absolute spelling keeps the slug grammar screen\'s own refusal — the stream fence does not shadow it.');
+        $this->assertStringNotContainsString('stream separator', $flat, 'The drive position is exempt from the stream fence (the absolute-path grammar\'s own vocabulary).');
+        unlink($zipPath);
+
+        // Control: a colon-FREE tree of the same shape refuses nothing
+        // here — the fence owns exactly the stream-separator class.
+        /*
+         * The exec-capability guard (t31-ocr27-7, the ocr20-5/ocr26-9
+         * doctrine): the GREEN control leg extracts real PHP sources
+         * and rides the internal php -l sweep; the refusal legs above
+         * refuse PRE-extraction and already passed on any host.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the green control leg (the inspector\'s internal php -l spawn over the extracted PHP sources) cannot run; the stream-separator refusal legs above already passed.');
+        }
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.4.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+            array("{$slug}/src/shell.php", "<?php\n// an ordinary source\n"),
+        )));
+        $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-streams')), 'A colon-free tree of the same shape inspects green — the fence owns exactly the stream-separator class.');
     }
 
     /**

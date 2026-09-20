@@ -59,6 +59,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     $sawDirectoryEntry = false;
     $traversalEntries = array();
     $nearSourceEntries = array();
+    $streamSeparatorEntries = array();
     $seenEntryNames = array();
     $seenFoldedNames = array();
     $reportedDuplicateEntries = array();
@@ -290,6 +291,38 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
             }
         }
         /*
+         * The NTFS STREAM-SEPARATOR fence (OCR round 62, t31-ocr62-2,
+         * the security lens — ':' at every fold/lens seam the
+         * pre-extraction fences ride): the edge-junk class is
+         * C0+DEL+dot and the ':' grammar screen owns only the
+         * top-level slug, so '<slug>/src/shell.php:$DATA' (and
+         * '<slug>/x.php:hidden') passed every fence — the raw lens
+         * saw a non-'.php' tail, the edge-junk rtrim never strips
+         * ':', the duplicate fold keyed it apart from the plain
+         * 'shell.php' spelling, and the traversal fold is
+         * dots-only. On a Windows/NTFS extraction target that name
+         * lands the bytes in an ALTERNATE DATA STREAM of the
+         * colon-free file — for the ':$DATA' spelling the MAIN
+         * stream of shell.php — plugin-reachable content no content
+         * gate judged under the entry's own separator-bearing
+         * spelling. ONE arm owns the class at the NAME, upstream of
+         * all four seams: ':' in any NON-DRIVE-LETTER position of
+         * the relative entry name refuses — the drive-letter
+         * spelling ('C:/…', the bare 'C:') is ABSOLUTE-path
+         * grammar, the r39-2 bare-drive fence's own vocabulary in
+         * the rrmdir owner below, and its relative-zip twin dies at
+         * the slug grammar screen (':' outside [A-Za-z0-9_.-]) with
+         * the verdict that screen has always answered — both named
+         * here so the exemption never reads as an oversight (the
+         * driven control below keeps that verdict unchanged).
+         */
+        $stream_probe = 1 === preg_match('/\A[A-Za-z]:/', $name) ? (string) substr($name, 2) : $name;
+        if (strpos($stream_probe, ':') !== false) {
+            // Keyed like the traversal collector (t31-ocr32-5):
+            // first-verdict-wins per name — one offense, one line.
+            $streamSeparatorEntries[ $name ] = true;
+        }
+        /*
          * The forbidden-entry vocabulary is a PLUGIN-OWNED-path concept
          * (review round t31-r5-5): the generated <slug>/src/Shared/
          * subtree is embedded from shared/src, which has NO exclusion
@@ -422,6 +455,23 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         foreach (array_keys($nearSourceEntries) as $name) {
             $violations[] = sprintf(
                 'inspect: zip entry "%s" is a NEAR-SOURCE PHP spelling (trailing whitespace, control byte, or dot hides the extension) — every normalizing extraction target (Windows strips trailing dots and spaces per component) lands it as a live .php source while every gate judged it as not one; write the plain .php name.',
+                wp_connectors_printable($name)
+            );
+        }
+
+        return $violations;
+    }
+    // The stream-separator refusal owns the same pre-extraction shape
+    // (t31-ocr62-2, its census at the collector): the artifact is
+    // refused whole, never extracted-and-judged — the entry name
+    // rides the printable seam (a control byte in the spelling is
+    // hostile input, see the dev-entry site).
+    if ($streamSeparatorEntries !== array()) {
+        // array_keys: the collector is keyed per name (t31-ocr32-5) —
+        // one line per offending name, never one per copy.
+        foreach (array_keys($streamSeparatorEntries) as $name) {
+            $violations[] = sprintf(
+                'inspect: zip entry "%s" carries a stream separator (\':\') — on a Windows/NTFS extraction target the name resolves into an alternate data stream of the colon-free file (the \':$DATA\' spelling its MAIN stream), plugin-reachable bytes no content gate judged under the separator-bearing spelling; write the colon-free name.',
                 wp_connectors_printable($name)
             );
         }
