@@ -138,12 +138,24 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          * red over a staging failure, the misattribution class. Every
          * staging write asserts its own landing now, naming its path
          * (the r53-6 sweep's own idiom).
+         *
+         * The staging-inside-try completion (t31-ocr55-7 — the
+         * battery the r54-1 asserts GAINED was left out of the
+         * r54-2 inside-try closure, and rode in NO try at all): a
+         * scan throw or a report assert once stranded the planted
+         * tree in the shared temp root with no finally anywhere.
+         * Staging and scan ride inside the try now, the finally
+         * owning every exit from the first mkdir on — the report
+         * asserts judge captured findings above the release.
          */
-        $this->assertTrue(mkdir($tempDir, 0755, true), "staging: {$tempDir} must create — a staging failure fails as staging, never as the maker verdict.");
-        $this->assertNotFalse(file_put_contents($tempDir . '/known-secret-fixture.conf', "api_key = {$zaiKey}\ntoken: {$githubToken}\n"), "staging: {$tempDir}/known-secret-fixture.conf must write — a staging failure fails as staging, never as the maker verdict.");
+        try {
+            $this->assertTrue(mkdir($tempDir, 0755, true), "staging: {$tempDir} must create — a staging failure fails as staging, never as the maker verdict.");
+            $this->assertNotFalse(file_put_contents($tempDir . '/known-secret-fixture.conf', "api_key = {$zaiKey}\ntoken: {$githubToken}\n"), "staging: {$tempDir}/known-secret-fixture.conf must write — a staging failure fails as staging, never as the maker verdict.");
 
-        $findings = wp_connectors_scan_paths(array( $tempDir ));
-        WpHarness::releaseScratch($tempDir);
+            $findings = wp_connectors_scan_paths(array( $tempDir ));
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
 
         $report = implode("\n", $findings);
         $this->assertStringContainsString('zai-key', $report);
@@ -216,40 +228,63 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         do {
             $stale = sys_get_temp_dir() . '/wp-connectors-scan-' . getmypid() . '-' . bin2hex(random_bytes(4));
         } while (is_dir($stale));
-        $this->assertTrue(mkdir($stale, 0755, true), 'staging: the stale debris tree must create — a staging failure fails as staging, never as the maker verdict.');
-        $this->assertNotFalse(file_put_contents($stale . '/debris.conf', "api_key = stale\n"), 'staging: the stale debris marker must write — a staging failure fails as staging, never as the maker verdict.');
-
         /*
-         * The foreign pid rides ONE ABOVE THE KERNEL'S OWN CEILING
-         * (PID_MAX_LIMIT, 2^22 = 4194304 on every 64-bit Linux build —
-         * a pid above it is claimable by NO live process; OCR round
-         * 52, t31-ocr52-4): the plant once spelled getmypid() + 1, an
-         * ADJACENT pid — and adjacent pids are exactly two runners
-         * spawned by one orchestrator (the parallel-CI shape the
-         * HarnessCopyTreeTest 'parallel CI runners sharing the temp
-         * root' doctrine contemplates), so the plant could sit on a
-         * REAL runner's live scratch vocabulary and the simulation
-         * collide with what it simulates. Above the ceiling the
-         * docblock's 'foreign by construction' claim holds
-         * unconditionally: the sweep's pid scope can never name it
-         * and no live process ever will.
+         * The staging-inside-try completion (t31-ocr55-7): the plants
+         * once preceded the try (the $foreign pair) or rode in NO
+         * finally at all (the $stale debris — the sweep's own
+         * subject, so its release must survive a staging assert that
+         * throws before the sweep ever runs). Every plant rides the
+         * outer try now; the inner finally keeps its own release, and
+         * the outer finally reclaims whatever still stands (a $stale
+         * the maker's sweep already took is a guarded no-op, a
+         * $foreign this test never finishes planting is reclaimed
+         * instead of stranded).
          */
-        $foreignPid = 4194305;
-        do {
-            $foreign = sys_get_temp_dir() . '/wp-connectors-scan-' . $foreignPid . '-' . bin2hex(random_bytes(4));
-        } while (is_dir($foreign));
-        $this->assertTrue(mkdir($foreign, 0755, true), 'staging: the foreign tree must create — a staging failure fails as staging, never as the maker verdict.');
-        $this->assertNotFalse(file_put_contents($foreign . '/foreign.conf', "foreign run tree\n"), 'staging: the foreign marker must write — a staging failure fails as staging, never as the maker verdict.');
-
-        $root = $this->scanScratchRoot('wp-connectors-scan');
         try {
-            $this->assertFileDoesNotExist($stale, 'A same-process stale tree is the pid prefix\'s own — the sweep reclaims it (a site that died before its finally leaves no permanent debris).');
-            $this->assertFileExists($foreign . '/foreign.conf', 'A tree under a pid this process does not hold is foreign by construction — the sweep\'s pid scope never names it, the roll never reclaims it.');
-            $this->assertNotSame($stale, $root);
-            $this->assertNotSame($foreign, $root);
-            $this->assertTrue(mkdir($root, 0755, true), 'The rolled root is free — the site proceeds under a fresh suffix.');
+            $this->assertTrue(mkdir($stale, 0755, true), 'staging: the stale debris tree must create — a staging failure fails as staging, never as the maker verdict.');
+            $this->assertNotFalse(file_put_contents($stale . '/debris.conf', "api_key = stale\n"), 'staging: the stale debris marker must write — a staging failure fails as staging, never as the maker verdict.');
+
+            /*
+             * The foreign pid rides ONE ABOVE THE KERNEL'S OWN CEILING
+             * (PID_MAX_LIMIT, 2^22 = 4194304 on every 64-bit Linux build —
+             * a pid above it is claimable by NO live process; OCR round
+             * 52, t31-ocr52-4): the plant once spelled getmypid() + 1, an
+             * ADJACENT pid — and adjacent pids are exactly two runners
+             * spawned by one orchestrator (the parallel-CI shape the
+             * HarnessCopyTreeTest 'parallel CI runners sharing the temp
+             * root' doctrine contemplates), so the plant could sit on a
+             * REAL runner's live scratch vocabulary and the simulation
+             * collide with what it simulates. Above the ceiling the
+             * docblock's 'foreign by construction' claim holds
+             * unconditionally: the sweep's pid scope can never name it
+             * and no live process ever will.
+             */
+            $foreignPid = 4194305;
+            do {
+                $foreign = sys_get_temp_dir() . '/wp-connectors-scan-' . $foreignPid . '-' . bin2hex(random_bytes(4));
+            } while (is_dir($foreign));
+            $this->assertTrue(mkdir($foreign, 0755, true), 'staging: the foreign tree must create — a staging failure fails as staging, never as the maker verdict.');
+            $this->assertNotFalse(file_put_contents($foreign . '/foreign.conf', "foreign run tree\n"), 'staging: the foreign marker must write — a staging failure fails as staging, never as the maker verdict.');
+
+            $root = $this->scanScratchRoot('wp-connectors-scan');
+            try {
+                $this->assertFileDoesNotExist($stale, 'A same-process stale tree is the pid prefix\'s own — the sweep reclaims it (a site that died before its finally leaves no permanent debris).');
+                $this->assertFileExists($foreign . '/foreign.conf', 'A tree under a pid this process does not hold is foreign by construction — the sweep\'s pid scope never names it, the roll never reclaims it.');
+                $this->assertNotSame($stale, $root);
+                $this->assertNotSame($foreign, $root);
+                $this->assertTrue(mkdir($root, 0755, true), 'The rolled root is free — the site proceeds under a fresh suffix.');
+            } finally {
+                WpHarness::releaseScratch($foreign, $root);
+            }
         } finally {
-            WpHarness::releaseScratch($foreign, $root);
+            // The foreign tree exists only past its own plants (a
+            // $stale staging assert throws before $foreign is ever
+            // derived) — release what stands, never an undefined
+            // spelling.
+            WpHarness::releaseScratch($stale);
+            if (isset($foreign)) {
+                WpHarness::releaseScratch($foreign);
+            }
         }
     }
 
@@ -345,9 +380,17 @@ final class SecureFixturesTest extends WpConnectorsTestCase
              */
             $holder = dirname($tempDir) . '/wp-connectors-scan-ancestor-' . getmypid() . '-' . bin2hex(random_bytes(4));
             $ancestor = $holder . '/DIST';
-            $this->assertTrue(mkdir($ancestor . '/root', 0755, true), "staging: {$ancestor}/root must create — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
-            $this->assertNotFalse(file_put_contents($ancestor . '/root/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$ancestor}/root/leak.conf must write — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
             try {
+                /*
+                 * The staging-inside-try completion (t31-ocr55-7): the
+                 * r53-6 asserts landed BEFORE this inner try, so a
+                 * failed staging assert threw with the ancestor tree
+                 * half-planted and no finally in scope — the exact
+                 * leak class one finally down. The plants ride the
+                 * try whose finally owns them.
+                 */
+                $this->assertTrue(mkdir($ancestor . '/root', 0755, true), "staging: {$ancestor}/root must create — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
+                $this->assertNotFalse(file_put_contents($ancestor . '/root/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$ancestor}/root/leak.conf must write — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
                 $ancestorReport = implode("\n", wp_connectors_scan_paths(array( $ancestor . '/root' )));
                 $this->assertStringContainsString('root' . DIRECTORY_SEPARATOR . 'leak.conf', $ancestorReport, 'A dev-named ANCESTOR (case-variant, the folded spelling) of the scan root never prunes the scan itself.');
                 $this->assertStringContainsString('zai-key', $ancestorReport);

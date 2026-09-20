@@ -107,10 +107,35 @@ final class HarnessCopyTreeTest extends TestCase
 
         $from = sys_get_temp_dir() . '/wpct-copytree-slash-' . uniqid('', true);
         $to = sys_get_temp_dir() . '/wpct-copytree-slash-dst-' . uniqid('', true);
-        mkdir($from . '/src', 0755, true);
-        $this->stage($from . '/src/file.php', 'bytes');
 
+        /*
+         * The staging-inside-try sweep, for real this time (OCR round
+         * 55, t31-ocr55-7 — the t31-ocr16-14/t31-ocr18-3 leak class,
+         * ONE census comment across this file's swept sites): the
+         * r53-10/ocr54-2 closures named their own sites and the r54
+         * ledger claimed the file-wide shape, but these batteries
+         * still planted scratch BEFORE the try whose finally releases
+         * it — a failed staging assert (a read-only temp, ENOSPC)
+         * threw with the tree half-planted and no finally in scope,
+         * stranding the partial wpct-* scratch into the shared temp
+         * root (each stem once per run: no later battery's pid sweep
+         * reclaims them). This commit sweeps exactly these sites —
+         * the trailing-slash leg here, the precondition battery, the
+         * path-case vocabulary leg, the root-anchored battery, the
+         * symlink-shapes battery, the two-link cycle, the recursion
+         * fence (whose skip's own release rides the owning finally
+         * now), both redirected-TMPDIR sims, the relative-target
+         * leg, and the release-guard stage — and claims NOTHING
+         * beyond them: staging rides inside the owning try, the
+         * finally owns every exit from the first mkdir on (the
+         * ocr30-4/ocr53-10 mid-landing shape), and the staging
+         * failure still fails as staging through the assert's own
+         * named verdict while the release reclaims whatever landed.
+         */
         try {
+            mkdir($from . '/src', 0755, true);
+            $this->stage($from . '/src/file.php', 'bytes');
+
             // The verdict rides the ONE refusal owner (t31-ocr15-7) —
             // the family this site's original catch declared rides the
             // third parameter.
@@ -278,12 +303,13 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         $from = sys_get_temp_dir() . '/wpct-copytree-guard-' . uniqid('', true);
-        mkdir($from . '/src', 0755, true);
-        $this->stage($from . '/src/file.php', 'original bytes');
-        $file_source = $from . '/plain.txt';
-        $this->stage($file_source, 'a file, not a tree');
 
         try {
+            mkdir($from . '/src', 0755, true);
+            $this->stage($from . '/src/file.php', 'original bytes');
+            $file_source = $from . '/plain.txt';
+            $this->stage($file_source, 'a file, not a tree');
+
             // The verdict rides the ONE refusal owner (WpHarness::refusalOf(),
             // t31-ocr15-7): the old fail()-inside-try shape was swallowed by
             // the very catch meant for copyTree() — fail() throws
@@ -519,10 +545,11 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         $from = sys_get_temp_dir() . '/wpct-copytree-case-' . uniqid('', true);
-        mkdir($from . '/src', 0755, true);
-        $this->stage($from . '/src/file.php', 'original bytes');
 
         try {
+            mkdir($from . '/src', 0755, true);
+            $this->stage($from . '/src/file.php', 'original bytes');
+
             if (WpHarness::isCaseInsensitivePathHost()) {
                 $caught = WpHarness::refusalOf(
                     fn() => WpHarness::copyTree($from . '/src', $from . '/SRC'),
@@ -1427,10 +1454,11 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         $from = sys_get_temp_dir() . '/wpct-copytree-root-' . uniqid('', true);
-        mkdir($from . '/src', 0755, true);
-        $this->stage($from . '/src/file.php', 'original bytes');
 
         try {
+            mkdir($from . '/src', 0755, true);
+            $this->stage($from . '/src/file.php', 'original bytes');
+
             // The same refusal owner the parent battery rides
             // (t31-ocr15-7): the family the original catch declared
             // rides the third parameter.
@@ -1663,10 +1691,11 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         $plain = sys_get_temp_dir() . '/wpct-copytree-link-' . uniqid('', true);
-        mkdir($plain . '/src', 0755, true);
-        $this->stage($plain . '/src/real.php', 'real bytes');
 
         try {
+            mkdir($plain . '/src', 0755, true);
+            $this->stage($plain . '/src/real.php', 'real bytes');
+
             /*
              * Per-leg targets (OCR round 22, t31-ocr22-1): the in-tree
              * link refusals fire at the first link the ITERATOR
@@ -1892,10 +1921,10 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         $base = sys_get_temp_dir() . '/wpct-copytree-cycle-' . uniqid('', true);
-        mkdir($base . '/a', 0755, true);
-        mkdir($base . '/src', 0755, true);
-        $this->stage($base . '/src/real.php', 'real bytes');
         try {
+            mkdir($base . '/a', 0755, true);
+            mkdir($base . '/src', 0755, true);
+            $this->stage($base . '/src/real.php', 'real bytes');
             // The finding's own shape: /a/link -> /b, /b -> /a/link.
             symlink($base . '/b', $base . '/a/link');
             symlink($base . '/a/link', $base . '/b');
@@ -1933,23 +1962,27 @@ final class HarnessCopyTreeTest extends TestCase
     {
         $from = sys_get_temp_dir() . '/wpct-copytree-unlistable-' . uniqid('', true);
         $to = $from . '-dst';
-        mkdir($from . '/open', 0755, true);
-        $this->stage($from . '/open/x.txt', 'bytes');
-        mkdir($from . '/locked/inner', 0755, true);
-        $this->stage($from . '/locked/inner/y.txt', 'bytes');
-        chmod($from . '/locked', 0000);
-        // The unlistable-shape probe (the t31-ocr4-1 root doctrine):
-        // a host whose process opens chmod-0000 directories cannot
-        // construct the shape — skip visibly, never a vacuous green.
-        $probe = @opendir($from . '/locked');
-        if (false !== $probe) {
-            closedir($probe);
-            chmod($from . '/locked', 0755);
-            WpHarness::releaseScratch($from);
-            $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
-        }
-
         try {
+            mkdir($from . '/open', 0755, true);
+            $this->stage($from . '/open/x.txt', 'bytes');
+            mkdir($from . '/locked/inner', 0755, true);
+            $this->stage($from . '/locked/inner/y.txt', 'bytes');
+            chmod($from . '/locked', 0000);
+            // The unlistable-shape probe (the t31-ocr4-1 root doctrine):
+            // a host whose process opens chmod-0000 directories cannot
+            // construct the shape — skip visibly, never a vacuous green.
+            // The skip's own release rides the owning finally now (the
+            // staging-inside-try sweep, t31-ocr55-7): the pre-try
+            // releaseScratch() once sat beside the skip with the tree
+            // planted OUTSIDE the try — the skip's throw and every
+            // staging assert before it leaked the half-built scratch.
+            $probe = @opendir($from . '/locked');
+            if (false !== $probe) {
+                closedir($probe);
+                chmod($from . '/locked', 0755);
+                $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
+            }
+
             $refusal = WpHarness::refusalOf(
                 fn() => WpHarness::copyTree($from, $to),
                 'An unlistable SUBDIRECTORY of the source must answer the harness\'s own refusal, never the SPL iterator\'s vocabulary.',
@@ -1960,7 +1993,12 @@ final class HarnessCopyTreeTest extends TestCase
             $this->assertStringContainsString('locked', $refusal->getMessage(), 'The refusal names the path — the SPL message parenthetical carries it.');
             $this->assertStringContainsString('Failed to open directory', $refusal->getMessage(), 'The parenthetical carries the engine\'s own diagnostic for the path — named, never laundered silent.');
         } finally {
-            chmod($from . '/locked', 0755);
+            // The @ owns the half-built exits (t31-ocr55-7): staging
+            // rides inside the try now, and a staging assert that
+            // throws before the locked tree exists must not have its
+            // verdict replaced by a bare chmod() warning in finally
+            // (the t31-ocr42-8 class).
+            @chmod($from . '/locked', 0755);
             WpHarness::releaseScratch($from, $to);
         }
     }
@@ -2029,16 +2067,17 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         $base = sys_get_temp_dir() . '/wpct-anchor-' . uniqid('', true);
-        mkdir($base . '/real/scratch/sub', 0755, true);
-        $this->stage($base . '/real/scratch/sub/x.txt', 'bytes');
-        mkdir($base . '/real/copy-src', 0755, true);
-        $this->stage($base . '/real/copy-src/f.php', 'copy bytes');
-        mkdir($base . '/real/victim', 0755, true);
-        $this->stage($base . '/real/victim/keep.txt', 'survivor');
-        symlink($base . '/real', $base . '/anchor-link');
-        symlink($base . '/real/victim', $base . '/real/planted-link');
 
         try {
+            mkdir($base . '/real/scratch/sub', 0755, true);
+            $this->stage($base . '/real/scratch/sub/x.txt', 'bytes');
+            mkdir($base . '/real/copy-src', 0755, true);
+            $this->stage($base . '/real/copy-src/f.php', 'copy bytes');
+            mkdir($base . '/real/victim', 0755, true);
+            $this->stage($base . '/real/victim/keep.txt', 'survivor');
+            symlink($base . '/real', $base . '/anchor-link');
+            symlink($base . '/real/victim', $base . '/real/planted-link');
+
             /*
              * The child: putenv FIRST (before any temp-dir read can
              * warm the cache), then the harness, then both consumers
@@ -2136,17 +2175,18 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         $base = sys_get_temp_dir() . '/wpct-anchor6-' . uniqid('', true);
-        mkdir($base . '/real/src', 0755, true);
-        $this->stage($base . '/real/src/f.php', 'layout bytes');
-        mkdir($base . '/real/gone', 0755, true);
-        $this->stage($base . '/real/gone/x.txt', 'bytes');
-        mkdir($base . '/real/deep', 0755, true);
-        mkdir($base . '/real/victim', 0755, true);
-        $this->stage($base . '/real/victim/keep.txt', 'survivor');
-        symlink($base . '/real', $base . '/layout-link');
-        symlink($base . '/real/victim', $base . '/real/deep/planted-link');
 
         try {
+            mkdir($base . '/real/src', 0755, true);
+            $this->stage($base . '/real/src/f.php', 'layout bytes');
+            mkdir($base . '/real/gone', 0755, true);
+            $this->stage($base . '/real/gone/x.txt', 'bytes');
+            mkdir($base . '/real/deep', 0755, true);
+            mkdir($base . '/real/victim', 0755, true);
+            $this->stage($base . '/real/victim/keep.txt', 'survivor');
+            symlink($base . '/real', $base . '/layout-link');
+            symlink($base . '/real/victim', $base . '/real/deep/planted-link');
+
             /*
              * The child: putenv FIRST (the fresh-engine premise), then
              * both consumers through the LAYOUT spelling (the copy of
@@ -2306,12 +2346,13 @@ final class HarnessCopyTreeTest extends TestCase
         $base = sys_get_temp_dir() . '/wpct-copytree-relative-' . uniqid('', true);
         $w = $base . '/w';
         $from = $base . '/src';
-        mkdir($w, 0755, true);
-        mkdir($from . '/sub', 0755, true);
-        $this->stage($from . '/sub/file.php', "SRC BYTES\n");
 
         $previous_cwd = (string) getcwd();
         try {
+            mkdir($w, 0755, true);
+            mkdir($from . '/sub', 0755, true);
+            $this->stage($from . '/sub/file.php', "SRC BYTES\n");
+
             // (a) THE WRONG-REFUSAL REPRO (red at HEAD): from a cwd of
             // …/w, the mangled target_real read …/w . 'st' = …/wst — a
             // source tree AT exactly that spelling made the MIRROR
@@ -2438,7 +2479,8 @@ final class HarnessCopyTreeTest extends TestCase
         }
 
         $child = sys_get_temp_dir() . '/wpct-release-cgi-' . uniqid('', true) . '.php';
-        $this->stage($child, '<?php
+        try {
+            $this->stage($child, '<?php
 require getenv("WPCT_RELEASE_CGI_HARNESS");
 try {
     WpHarness::releaseScratch("/");
@@ -2448,7 +2490,6 @@ try {
 }
 echo "RETURNED\n";
 ');
-        try {
             putenv('WPCT_RELEASE_CGI_HARNESS=' . $harnessPath);
             exec(escapeshellarg($cgi) . ' -q ' . escapeshellarg($child) . ' 2>&1', $output, $exit);
             $rendered = implode("\n", $output);

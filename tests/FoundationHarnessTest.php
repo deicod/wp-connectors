@@ -585,16 +585,19 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         // read as "the corrupt archive" — a neighbor's plant steering
         // this leg's fixture (the naming shape t31-ocr10-18 rejects).
         $corrupt = sys_get_temp_dir() . '/wpct-corrupt-' . getmypid() . '-' . bin2hex(random_bytes(4)) . '.zip';
-        // The staging write asserts its own success (t31-ocr29-10,
-        // the t31-ocr27-9 doctrine): a silent false leaves the file
-        // absent and the open gate's refusal reads ER_NOENT — a
-        // staging problem wearing the CORRUPT-archive verdict's
-        // vocabulary.
-        $this->assertNotFalse(
-            file_put_contents($corrupt, 'this is not a zip archive'),
-            'staging: the corrupt archive must write — a staging failure fails as staging, never as the ER_NOZIP verdict (an unwritten scratch file answers ER_NOENT instead).'
-        );
         try {
+            // The staging write asserts its own success (t31-ocr29-10,
+            // the t31-ocr27-9 doctrine) and rides INSIDE the try whose
+            // finally unlinks it (t31-ocr55-7, the staging-inside-try
+            // sweep): the write once sat before the try, so a partial
+            // write's staging assert stranded the scratch zip in the
+            // shared temp root with no finally in scope — the finally
+            // owns every exit from the first write on.
+            $this->assertNotFalse(
+                file_put_contents($corrupt, 'this is not a zip archive'),
+                'staging: the corrupt archive must write — a staging failure fails as staging, never as the ER_NOZIP verdict (an unwritten scratch file answers ER_NOENT instead).'
+            );
+
             // The refusal-verdict owner (t31-ocr15-7): the hand-rolled
             // $caught=null/try/catch/fail-if-null shape was this helper's
             // own inline twin — the family its original catch declared
