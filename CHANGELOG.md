@@ -6,6 +6,72 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 65)
+
+Sixty-fifth OCR round (61/61 fully complete): 4 findings, driver
+accepts all — three numbered commits t31-ocr65-2, -3, -4, and ONE
+finding REFUTED on execution evidence with no commit (the
+whitespace-free keyword-follower class — see the ledger round),
+plus this docs record, the full offline check green after every
+commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10→3→6→3→5→4.
+Round 65 answered NEW findings, so the OCR phase continues per
+plan. Suite 1775 → 1776 tests, 47062 → 47075 assertions, 3 skipped
+unchanged (deltas +0/+1, +0/+1, +1/+11, measured from output).
+The round's shape: the probe-before-fire twins retiring the '/'
+release vehicle (destructive-capacity legs never fire at the
+filesystem root — a chmod-0000 scratch tree fires the same
+deterministic refusal), the bootstrap guard learning the PARTIAL
+checkout (per-interface-file gates), and the whitespace-free
+keyword-follower finding refuted on engine grammar (the glued
+'use\Foo\Bar;' is a constant fetch, one name token, never a T_USE —
+and every glued-keyword spelling that IS an import was already
+matched by the keyword arm's own fallthrough).
+
+- **The verdict-replacement leg planting its refusal at '/'
+  (t31-ocr65-2, test:medium; tests/HarnessCopyTreeTest.php)** —
+  the t31-ocr33-7 pin's safety rested entirely on the rrmdir root
+  check: a regressed guard turns the LEG itself into the CHILD_FIRST
+  destructive walk over the filesystem root on a root CI container,
+  and the sibling is_writable('/') gating does not close it. ANY
+  rrmdir refusal serves the leg's assertion, so the vehicle is a
+  chmod-0000 scratch tree staged and released instead — the fence's
+  'Failed to open directory' refusal fires deterministically on an
+  unprivileged host (driven); on a uid-0 host the leg stays green
+  with the catch arm unpinned, the stated price of never firing at
+  the root. Assertion identical — the fix is blast-radius, green
+  before and after.
+- **The php-cgi child's guard leg planting its refusal at '/'
+  (t31-ocr65-3, test:medium; tests/HarnessCopyTreeTest.php)** —
+  the child-side twin of the same retirement: the child ran as the
+  test user (uid 0 on root CI), a regressed root refusal turning it
+  into the destructive walk. The child releases a chmod-0000
+  scratch tree staged PARENT-side and passed through the
+  environment beside the harness path (the parent's finally the
+  only owner that can reclaim the stranded tree); the parent's
+  opendir probe answers constructibility for the child, a uid-0
+  host skipping visibly. Four assertions unchanged in shape, the
+  refusal-naming one now naming the scratch tree; driven green
+  with the diagnostic surfacing through php://stderr in the cgi
+  SAPI.
+- **The bootstrap's Shared-fixture requires gating only the whole
+  directory (t31-ocr65-4, test:low; tests/bootstrap.php,
+  tests/FoundationHarnessTest.php)** — the guard modeled only
+  fully-absent and fully-present shared/src, but a PARTIAL checkout
+  (sparse checkout, mid-rebase worktree: directory present, one
+  contract file missing) executed the requires with the autoloader
+  unable to resolve the fixtures' implements clauses at CLASS LOAD
+  — a whole-suite bootstrap fatal. Each require gates on the
+  specific interface FILE its fixture implements now: a partial
+  checkout degrades to the documented per-test missing-fixture
+  shape for exactly the missing pieces, never all-or-nothing.
+  Driven end-to-end and pinned: a scratch checkout whose shared/src
+  is copied minus Clock/ClockInterface.php runs the real bootstrap
+  in a child — red at HEAD with the predicted 'Interface
+  ClockInterface not found' fatal (exit 255), green after (exit 0,
+  the Clock fixture absent beside the Token fixture loading through
+  its present interface, 11 assertions).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 64)
 
 Sixty-fourth OCR round (61/61 fully complete): 5 findings, driver
