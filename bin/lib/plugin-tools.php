@@ -40,10 +40,17 @@ declare(strict_types=1);
  * bin/inspect-artifact.php, bin/lib/secret-scanner.php,
  * bin/lint-php.php, and bin/scan-secrets.php carry NO label-class seam
  * of this grammar (census-verified — their byte classes are slug, path,
- * and token-literal spellings). The BOUNDARY lookarounds
- * ((?<![A-Za-z0-9_]) / (?![A-Za-z0-9_])) stay the r46/r49 word-byte
- * census on purpose: they guard where an ASCII family spelling ENDS, a
- * different question from what a label may contain.
+ * and token-literal spellings). The BOUNDARY lookarounds once stayed
+ * the r46/r49 word-byte census on purpose (they guard where an ASCII
+ * family spelling ENDS, "a different question from what a label may
+ * contain") — but once the high bytes became label CONTENT that
+ * purpose inverted: a boundary that passes at 0xC3 reads a segment as
+ * ending mid-segment, and OCR round 60 (t31-ocr60-1/3/4/5) swept the
+ * boundary lookarounds of the mention checks, build.php's
+ * statement-start anchor and member-leaf rewrite, and BOTH text-lens
+ * pattern generators to the LABEL_BYTES class — every boundary a
+ * label-shaped name can now carry is judged over the bytes the label
+ * grammar admits.
  */
 const WP_CONNECTORS_LABEL_HEAD_BYTES = 'A-Za-z_\x80-\xff';
 const WP_CONNECTORS_LABEL_BYTES = 'A-Za-z0-9_\x80-\xff';
@@ -269,6 +276,15 @@ function wp_connectors_shared_source_namespace()
  * are unchanged; the generator only makes the same shape derivable for
  * any other family spelling.
  *
+ * The leaf/stem boundaries ride the ONE label byte class (OCR round
+ * 60, t31-ocr60-5 — the r59 widening's follow-on at the text lens):
+ * the ASCII lookaheads passed at a high byte, so '…\WpConnectors\
+ * Sharedü' — a DISTINCT sibling segment — matched the leaf arm
+ * MID-SEGMENT and reported a finding under the TRUNCATED own-namespace
+ * name, while the name walk judges whole segments. The label-class
+ * lookarounds keep the two lenses of the one detector agreeing on
+ * every spelling the grammar admits.
+ *
  * @param string $namespace A family namespace (source or target side).
  * @return string PCRE pattern matching a spelling of that namespace.
  */
@@ -282,8 +298,11 @@ function wp_connectors_family_namespace_pattern($namespace)
     );
     $leaf = array_pop( $segments );
     $stem = implode( '\\s*\\\\\\s*', $segments );
+    // The boundary classes derive from the LABEL_BYTES owner
+    // (t31-ocr60-5): label content, never a segment boundary.
+    $not_label_byte = '(?![' . WP_CONNECTORS_LABEL_BYTES . '])';
 
-    return '/(?<![A-Za-z0-9_])' . $stem . '\\s*\\\\\\s*(?:' . $leaf . '(?![A-Za-z0-9_])|\\{(?:[^;]*?[\\s,{])?' . $leaf . '(?![A-Za-z0-9_]))/i';
+    return '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . $stem . '\\s*\\\\\\s*(?:' . $leaf . $not_label_byte . '|\\{(?:[^;]*?[\\s,{])?' . $leaf . $not_label_byte . ')/i';
 }
 
 /**
@@ -357,6 +376,14 @@ function wp_connectors_family_sibling_pattern(array $excluded_tails)
      */
     $separator = '(?:\\s*\\\\\\s*|\\s*\\\\\\\\\\s*)';
 
+    /*
+     * The exclusion tails' boundary derives from the LABEL_BYTES owner
+     * (t31-ocr60-5): 'shared' followed by a high byte is NOT the
+     * excluded source tail — 'Sharedü' is a sibling the continuation
+     * segment owns whole — so the exclusion must FAIL there exactly
+     * as the leaf arm's own boundary does, or the sibling pattern
+     * would stay silent over a spelling the name lens reports.
+     */
     $excluded = array();
     foreach ( $excluded_tails as $tail ) {
         $excluded[] = implode($separator, array_map(
@@ -364,7 +391,7 @@ function wp_connectors_family_sibling_pattern(array $excluded_tails)
                 return preg_quote( wp_connectors_ascii_lower( (string) $segment ), '/' );
             },
             explode( '\\', (string) $tail )
-        )) . '(?![A-Za-z0-9_])';
+        )) . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])';
     }
 
     /*
@@ -388,9 +415,12 @@ function wp_connectors_family_sibling_pattern(array $excluded_tails)
      * WP_CONNECTORS_LABEL_* lists this seam): a sibling's next segment
      * is a PHP label, and a high-byte one ('…\WpConnectors\Grüß') once
      * truncated at the first high byte, reporting a name no segment
-     * spells.
+     * spells. The stem's OWN boundaries ride the same class since OCR
+     * round 60 (t31-ocr60-5): the text lens judges whole segments,
+     * agreeing with the name walk on every spelling the grammar
+     * admits.
      */
-    return '/(?<![A-Za-z0-9_])' . $stem . '(?![A-Za-z0-9_])' . $exclusion_lookahead . '(?:' . $separator . '[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)?/i';
+    return '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . $stem . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])' . $exclusion_lookahead . '(?:' . $separator . '[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)?/i';
 }
 
 /**

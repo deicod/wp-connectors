@@ -1761,6 +1761,67 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-60 pin (t31-ocr60-5 — the r59 widening's follow-on at
+     * the text lens's boundaries): the family pattern's leaf/stem
+     * lookarounds spelled the ASCII word class, so a docblock naming
+     * the high-byte SIBLING 'Deicod\WpConnectors\Sharedü' (a DISTINCT
+     * segment) matched the leaf arm MID-SEGMENT — 'Shared' followed by
+     * 0xC3 passes the ASCII lookahead — and reported the finding under
+     * the TRUNCATED own-namespace name (red at HEAD: a 'comment' whose
+     * lower was exactly 'deicod\wpconnectors\shared'), while the name
+     * walk judges whole segments ('Sharedü\Clock' in a code position
+     * reports its full sibling name, pinned beside). The boundaries
+     * ride the ONE label byte class now, the sibling pattern's
+     * exclusion boundary with them: the docblock finding names the
+     * whole-segment sibling exactly as the name lens does — the two
+     * lenses of the one detector agree on every spelling the grammar
+     * admits — and the ASCII sibling 'SharedStorage' keeps its
+     * whole-segment report byte-identically.
+     */
+    public function testTheTextLensJudgesWholeSegmentsOverTheLabelByteBoundaries(): void
+    {
+        $high_byte_docblock = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/** @see Deicod\\WpConnectors\\Shared\xc3\xbc\\Clock */\ninterface HighByteSiblingFixture\n{\n}\n";
+        $findings = array();
+        foreach (wp_connectors_shared_family_references($high_byte_docblock) as $reference) {
+            if ('declaration' === $reference['kind']) {
+                continue;
+            }
+            $findings[] = $reference;
+        }
+        $this->assertNotSame(array(), $findings, 'The high-byte sibling docblock must trip the text lens at all.');
+        foreach ($findings as $reference) {
+            $this->assertNotSame('deicod\\wpconnectors\\shared', $reference['lower'], 'No finding may wear the TRUNCATED own-namespace name — the leaf arm once matched mid-segment and reported the sibling under the own tree\'s spelling (red at HEAD: exactly this comment finding).');
+        }
+        $sibling_names = array();
+        foreach ($findings as $reference) {
+            $sibling_names[] = $reference['name'];
+        }
+        $this->assertContains("Deicod\\WpConnectors\\Shared\xc3\xbc", $sibling_names, 'The docblock finding names the whole-segment sibling (red at HEAD: absent — the truncated finding was the only one).');
+
+        // The name lens agrees on the same spelling in a code
+        // position, whole segments both lenses.
+        $high_byte_code = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface HighByteCodeFixture\n{\n}\nfinal class HighByteCodeCarrier\n{\n    public function name(): string\n    {\n        return \\Deicod\\WpConnectors\\Shared\xc3\xbc\\Clock::class;\n    }\n}\n";
+        $code_names = array();
+        foreach (wp_connectors_shared_family_references($high_byte_code) as $reference) {
+            if ('code' === $reference['kind']) {
+                $code_names[] = $reference['name'];
+            }
+        }
+        $this->assertContains("Deicod\\WpConnectors\\Shared\xc3\xbc\\Clock", $code_names, 'The name walk reports the whole-segment sibling in a code position — the spelling the text lens now agrees with.');
+
+        // The ASCII sibling keeps its whole-segment report unchanged.
+        $ascii_docblock = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n/** @see Deicod\\WpConnectors\\SharedStorage\\Clock */\ninterface AsciiSiblingFixture\n{\n}\n";
+        $ascii_names = array();
+        foreach (wp_connectors_shared_family_references($ascii_docblock) as $reference) {
+            if ('declaration' === $reference['kind']) {
+                continue;
+            }
+            $ascii_names[] = $reference['name'];
+        }
+        $this->assertContains('Deicod\\WpConnectors\\SharedStorage', $ascii_names, 'The ASCII sibling text mention is still reported, whole-segment.');
+    }
+
+    /**
      * OCR-round-35 pin (t31-ocr35-6, the ocr33-2 narrowing swept to
      * THIS file's own readers): the sweep-side line lenses count only
      * the terminators the tokenizer counts. numberedLines() split by
