@@ -6,6 +6,94 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 55)
+
+Fifty-fifth OCR round (61/61 fully complete): 16 findings, driver
+accepts all. The r54 "closed file-wide" census claims were over-broad
+— this round proves ~14 more staging-leak sites the named sweeps
+walked past, plus a NEW environment-topology class (zombie reaping).
+9 numbered commits t31-ocr55-1..9 (one per finding; same-class = one
+commit), plus this docs record, the full offline check green after
+every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16.
+Round 55 answered NEW findings, so the OCR phase continues per
+plan. Suite 1728 → 1729 tests, 46820 → 46868 assertions, 3 skipped
+unchanged.
+
+- **'authentication' joins the suffix class (t31-ocr55-1,
+  security:medium)** — the 'authorization' tier's own sibling: the
+  final token of 'X-Authentication'/'Proxy-Authentication'/
+  'Client-Authentication' matched neither catalog (only the '-info'
+  exchange spellings) nor suffix screens, so the credential rendered
+  verbatim through every safe debug form. One member speaks every
+  delimiter per the r50-1 fold; driven — seven spellings answer
+  masked (red at HEAD: verbatim), the boundary twin stays verbatim,
+  and the census names the neighbor scan (no non-credential
+  '-authentication' header is known to exist).
+- **The representative fence reads realpath()'s false as false
+  (t31-ocr55-2, bug:low)** — a failed realpath of the temp root cast
+  to '' made the fence prefix read as '/', every absolute base
+  passed, and the probe planted OUTSIDE scratch (the r40-5 residue
+  shape opened through the fence's own vocabulary) with the measured
+  answer riding into the per-volume cache. Driven through the
+  redirected-TMPDIR child over the ocr39-7 cache-unset seam:
+  answer:false with cache:unmeasured — verified RED AT HEAD
+  stash-verified ('cache:measured', the escaped plant's own answer).
+- **The printable map rides a static (t31-ocr55-3, performance:low)**
+  — wp_connectors_printable() rebuilt its 43-entry substitution map
+  per invocation, per entry in the archive walk and per violation
+  line; the file's own hoisting idiom (t31-ocr52-6) owns it now,
+  byte-identical by construction.
+- **The zombie-reaping topology joins the skip family (t31-ocr55-4,
+  test:medium ×2, ONE commit)** — both reap pins hard-fail on
+  runners whose PID 1 does not reap adopted orphans (container
+  entrypoint, pod without a reaping init): a zombie answers ALIVE
+  under both liveness spellings, so childIsAlive() never flips and
+  the pins fail through topology. A per-process canary probe (spawn,
+  bounded-wait its reaping) gates both legs, the skip loud and
+  construction-evident — on this reaping host the canary reaps in
+  milliseconds and both pins stay green and RUNNING.
+- **The states() table's last silent-return plants assert their
+  landing (t31-ocr55-5, test:medium)** — the chmod pair, the
+  whitespace/upper-.PHP/near-source/build.json writes, both
+  collision pairs, all three landing-blocker pairs, the empty-tree
+  plants, the manifest lock, and the traversal write: every plant
+  asserts through the table's own asserted-staging vocabulary, the
+  assertion riding the apply-throw channel as the ROW's FAIL (never
+  'the silent third', never a vacuous pass). ONE census comment
+  closes the table.
+- **The forced-archive legs' staged plants assert their landing
+  (t31-ocr55-6, test:medium ×2, ONE commit)** — the $staged writes,
+  the mid-leg unlink (the vanished-source premise itself), and the
+  (b) chmod lock: a chmod false left the source readable and the leg
+  reds at the assertNotNull as a PHANTOM finalization defect. The
+  sibling locked legs' own shape ('staging: the lock must take').
+- **The staging-before-try sweep, for real this time (t31-ocr55-7,
+  test:low ×5 comments, ONE commit)** — the r54 "closed file-wide"
+  census claims were over-broad; this sweep LISTS what it closes:
+  SecureFixtures' known-secret battery (which rode in NO try at all),
+  the ancestor sub-test's plants, the sweep battery's $stale/$foreign
+  plants; HarnessCopyTree's trailing-slash, precondition,
+  path-case, root-anchored, symlink-shapes, two-link-cycle,
+  recursion-fence (its skip's release rides the owning finally, its
+  finally-chmod gains the @ that owns the half-built exits), both
+  redirected-TMPDIR sims, relative-target, and release-guard sites;
+  FoundationHarness' corrupt-archive write. The finally owns every
+  exit from the first mkdir on; the census claims ONLY the sites it
+  lists.
+- **classifyClean()'s last two launderers (t31-ocr55-8, test:low ×2,
+  ONE commit)** — the extraction mkdir's failure surfaced as 'the
+  independent extraction returned failure' (a soundness
+  misattribution) and hash_file()'s false as 'the sidecar does not
+  describe the shipped zip' (the laundering class readMemberOrMarker
+  exists to close): both answer the row's own FAIL naming their
+  channel.
+- **The dead $spawnExit binding drops at all five spawn sites
+  (t31-ocr55-9, maintainability:low)** — bound by reference, never
+  read; the pid assert downstream already owns the staging verdict
+  (t31-ocr27-9). Chosen shape: DROP (exec()'s &$result_code is
+  optional), applied at every site, one census comment.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 54)
 
 Fifty-fourth OCR round (61/61 fully complete): 4 findings, driver
