@@ -156,6 +156,23 @@ final class WpConnectorsBuild
             },
             $family_segments
         );
+        /*
+         * The ONE statement-start anchor, all three keyword-bearing
+         * patterns below (the r49 census; the HIGH-BYTE arm since OCR
+         * round 60, t31-ocr60-3): the class is the label byte class
+         * plus the namespace separator, DERIVED from the LABEL_BYTES
+         * owner — high bytes are label content since r59, and a
+         * keyword glued inside a high-byte label ('Grüßuse …') lexes
+         * as ONE T_STRING (no `use` token — invisible to every
+         * token-aware pass, exactly the anchor's premise) while the
+         * one-byte lookbehind reads the preceding 0x9F as a boundary:
+         * the match splices beside leftover label bytes, the
+         * mid-name-splice shape the anchor was minted to kill. A
+         * label's last byte is either an ASCII word byte or a
+         * multibyte continuation byte (0x80-0xBF), so the one-byte
+         * lookbehind over this class refuses every glued spelling.
+         */
+        $statement_start = '(?<![' . WP_CONNECTORS_LABEL_BYTES . '\\\\])';
         $shared_pattern = implode('\\\\', $quoted_segments);
         $vendor_pattern = implode('\\\\', array_slice($quoted_segments, 0, -1));
         $shared_leaf = (string) end($quoted_segments);
@@ -227,14 +244,17 @@ final class WpConnectorsBuild
          * at HEAD). The plain-use lookbehind and the group-use
          * prefix pattern guard word bytes only and ride the same
          * anchor in this round's own commits (t31-ocr49-2/3). All
-         * three spell the one anchor `(?<![A-Za-z0-9_\\\\])`: word
-         * byte or separator, the match refuses, the spelling rides
-         * verbatim, and the postcondition's family-reference verdict
-         * owns it — never a rewrite that splices mid-name.
+         * three spell the one anchor $statement_start: word byte,
+         * separator, or — since r59 made the high bytes label
+         * content — a high byte (t31-ocr60-3, 'Grüßuse …' lexing as
+         * ONE T_STRING with no `use` token), the match refuses, the
+         * spelling rides verbatim, and the postcondition's
+         * family-reference verdict owns it — never a rewrite that
+         * splices mid-name.
          */
         $rewritten = self::replaceOrThrow(
             preg_replace(
-                '/((?<![A-Za-z0-9_\\\\])(?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*\s*;)/',
+                '/(' . $statement_start . '(?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*\s*;)/',
                 '$1' . $target_escaped . '$2',
                 $rewritten
             ),
@@ -343,9 +363,12 @@ final class WpConnectorsBuild
                  * target over the matched span, and the leftover
                  * `use Foo\` bytes shipped parse-error output at
                  * exit 0 (driven at HEAD, the plain and brace-tail
-                 * spellings alike).
+                 * spellings alike). The anchor's byte class derives
+                 * from the LABEL_BYTES owner since t31-ocr60-3: a
+                 * high byte before the keyword is label content
+                 * ('Grüßuse'), not a boundary.
                  */
-                '/(?<![A-Za-z0-9_\\\\])((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*)(\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
+                '/' . $statement_start . '((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*)(\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
                 static function ($matches) use ($sourceVersion, $vendor, $pluginSuffix, $family_leaf) {
                     // The optional groups are ABSENT keys (never
                     // null/'' — no PREG_UNMATCHED_AS_NULL here), the
@@ -498,12 +521,14 @@ final class WpConnectorsBuild
          * Deicod\WpConnectors\{Shared\Clock};` matched at the SECOND
          * `use` and the members rewrote beside a rewritten prefix
          * with the leftover `use Foo\` bytes shipping ahead of them —
-         * the statement-start class (word byte or separator refused,
-         * the one census comment at the declaration seam).
+         * the statement-start class (word byte, separator, or high
+         * byte refused — the one census comment at the declaration
+         * seam, its byte class the LABEL_BYTES owner's since
+         * t31-ocr60-3).
          */
         $rewritten = self::replaceOrThrow(
             preg_replace_callback(
-                '/((?<![A-Za-z0-9_\\\\])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
+                '/(' . $statement_start . '(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
                 static function ($matches) use ($pluginSuffix, $sourceVersion, $shared_leaf) {
                     $members = array();
                     $member_pieces = explode(',', $matches[3]);

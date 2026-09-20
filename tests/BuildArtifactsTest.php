@@ -7424,6 +7424,52 @@ FIXTURE;
             $this->assertStringContainsString('reserved', $refusal->getMessage());
         }
 
+        /*
+         * OCR round 60 (t31-ocr60-3 — the r49 anchor census, now
+         * complete in bytes): 'Grüßuse …' lexes as ONE T_STRING (no
+         * `use` token — driven above, invisible to every token-aware
+         * pass, exactly the anchor's premise) while the one-byte
+         * lookbehind read the preceding 0x9F as a boundary, so the
+         * pattern matched at the keyword glued inside the name and
+         * spliced the rewritten target beside leftover label bytes —
+         * the mid-name-splice shape the anchor was minted to kill.
+         * All three keyword-bearing seams refuse the glued spelling
+         * now (the anchor's byte class derived from the LABEL_BYTES
+         * owner), the spelling rides verbatim, and the postcondition
+         * names the UNSPLICED family reference — at HEAD the plain
+         * and declaration legs named the target-spliced artifact
+         * ('Deicod\WpConnectors\OpenAiOauth\Shared…', the splice
+         * itself, one verdict late), the group twin its prefix
+         * beside members the seam had already rewritten.
+         */
+        $glued = array(
+            'plain use glued inside a high-byte label' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n\$x = Gr\xc3\xbc\xc3\x9fuse Deicod\\WpConnectors\\Shared\\Clock;\nclass A {}\n",
+                'Deicod\\WpConnectors\\Shared\\Clock',
+            ),
+            'namespace keyword glued inside a high-byte label' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nGr\xc3\xbc\xc3\x9fnamespace Deicod\\WpConnectors\\Shared;\nclass A {}\n",
+                'Deicod\\WpConnectors\\Shared',
+            ),
+            'group-use prefix glued inside a high-byte label' => array(
+                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nGr\xc3\xbc\xc3\x9fuse Deicod\\WpConnectors\\{Shared\\Clock};\nclass A {}\n",
+                // The group twin's survivor is the bare vendor prefix
+                // itself (a code position the splice never owned) —
+                // the same reference HEAD's spliced output carried, so
+                // this leg pins the refusal where the plain and
+                // declaration legs drive the red.
+                'Deicod\\WpConnectors',
+            ),
+        );
+        foreach ($glued as $label => list($glued_source, $verbatim_spelling)) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace($glued_source, 'OpenAiOauth', 'shared/src/Storage/GluedStore.php'),
+                "A keyword glued inside a high-byte label ({$label}) must answer the refusal with the spelling riding verbatim, never a mid-name splice.", \RuntimeException::class
+            );
+            $this->assertStringContainsString('survived the rewrite', $refusal->getMessage(), "The refusal is the postcondition's own ({$label}).");
+            $this->assertStringContainsString($verbatim_spelling, $refusal->getMessage(), "The refusal names the verbatim family spelling ({$label}; red at HEAD for the plain and declaration legs: the message named the target-SPLICED 'Deicod\\WpConnectors\\OpenAiOauth\\Shared…' the rewrite had manufactured — the splice itself, one verdict late).");
+        }
+
         // The rewritten file must be valid PHP (provenance placement must not
         // precede the open tag / strict_types) and must load without output.
         // Scratch hygiene (t31-r3-11): the lint/load scratch matches no
