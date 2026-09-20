@@ -770,7 +770,16 @@ function wp_connectors_use_statement_in_import_position(string $code_view, int $
                     ++$after;
                     $in_html = false;
                     $run_start = $after;
-                } elseif ('php' === strtolower((string) substr($code_view, $after, 3))) {
+                } elseif ('php' === wp_connectors_ascii_lower((string) substr($code_view, $after, 3))) {
+                    // The keyword fold rides the ONE ASCII owner (OCR
+                    // round 69, t31-ocr69-2, the r11-6 doctrine): the
+                    // r68-2 sweep claimed this seam for the locale-fold
+                    // census while the compare still consulted
+                    // strtolower() — no misclassification observable
+                    // (p/h are locale-invariant bytes, the r68-2
+                    // refutation's own leg), but every verdict-feeding
+                    // fold in the change set rides the table fold, and
+                    // the claim is true now.
                     /*
                      * The follower is the engine's own class, read
                      * from the RAW source (OCR round 64, t31-ocr64-1):
