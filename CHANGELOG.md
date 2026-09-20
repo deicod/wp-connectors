@@ -6,6 +6,29 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 58)
+
+Fifty-eighth OCR round (61/61 fully complete): 1 finding — TIES THE
+ALL-TIME LOW (round 37 also had 1). Driver accepts it. 1 numbered
+commit t31-ocr58-1, plus this docs record, the full offline check
+green after it. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1.
+Round 58 answered a NEW finding, so the OCR phase continues per
+plan. Suite unchanged at 1731 tests, 46916 assertions, 3 skipped
+(delta +0/+0 over the round).
+
+- **The scratch-root maker's untyped signature (t31-ocr58-1,
+  maintainability:low; tests/SecureFixturesTest.php)** — the r51-3
+  scratch-root maker carried no native type declarations while every
+  sibling maker in these files does (makeScratchRepo(string
+  $state_id): array the named example) and its own docblock already
+  declared @param string / @return string — the contract lived in
+  prose the signature did not enforce. The maker spells it natively
+  now — scanScratchRoot(string $stem): string — docblock and
+  signature agreeing; a mismatch now fails at the signature instead
+  of passing silently. Regression: suite green (callers pass literal
+  strings), counts unchanged.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 57)
 
 Fifty-seventh OCR round (61/61 fully complete): 5 findings. Driver
