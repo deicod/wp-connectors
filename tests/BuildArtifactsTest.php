@@ -7190,6 +7190,18 @@ FIXTURE;
             'kind-led bare keyword member: function list' => 'use Deicod\\WpConnectors\\{function list};',
             'special-class leaf member (the leaf half ship shape)' => 'use Deicod\\WpConnectors\\{Shared\\Storage\\int};',
             'special-class leaf member bare beside a sibling' => 'use Deicod\\WpConnectors\\{Shared\\Clock, never};',
+            /*
+             * OCR round 68 (t31-ocr68-1): the dangling-tail boundary's
+             * ASCII parity rows — the probe's \b once stood where the
+             * label-class lookbehind stands now, and these spellings
+             * must keep refusing at exactly this seam under either
+             * rider: a case-folded 'AS' tail and a second 'as' behind
+             * an alias tail are dangling under every case spelling of
+             * the keyword (both refused at HEAD too, the byte before
+             * the tail a space — a NON-label byte both riders pass).
+             */
+            'dangling as case-folded: AS' => 'use Deicod\\WpConnectors\\{Shared\\Clock AS};',
+            'dangling as behind an alias tail: Clock as as' => 'use Deicod\\WpConnectors\\{Shared\\Clock as as};',
         ) as $label => $statement) {
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\n{$statement}\nclass IllegalGroupStore\n{\n}\n", 'OpenAiOauth', 'shared/src/IllegalGroupStore.php'),
@@ -7197,6 +7209,27 @@ FIXTURE;
             );
             $this->assertStringContainsString('group-use member grammar refuses', $refusal->getMessage(), "The refusal names the member grammar's own seam — never a late postcondition verdict over a body the grammar should have named ({$label}).");
         }
+
+        /*
+         * OCR round 68 (t31-ocr68-1 — the t31-ocr60-1 sweep's
+         * straggler): the dangling-alias probe once rode PCRE's
+         * ASCII \b, and in byte mode every high byte is a NON-word
+         * byte — a LEGAL label byte per the class the member-NAME
+         * arm below judges over — so a legal member ending in 'as'
+         * behind one ('{Shared\Grüas}', bytes …0xBC 'a' 's' — php
+         * -l-legal input) matched /\bas\s*$/i and the build FALSELY
+         * REFUSED it as a dangling alias (red at HEAD: driven over
+         * exactly this statement). The boundary rides the
+         * label-class lookbehind now: the high byte before the tail
+         * reads as label CONTENT the way the engine's lexer reads
+         * it, the spelling constructs and rewrites — and the rows
+         * above pin the other side (every NON-label byte before the
+         * tail still refuses; a LABEL byte before it, as in
+         * '{Shared\Clockas}', matched under neither rider).
+         */
+        $high_byte_member = "Gr\xc3\xbcas";
+        $high_byte = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\{$high_byte_member}};\nclass HighByteStore\n{\n}\n", 'OpenAiOauth', 'shared/src/HighByteStore.php');
+        $this->assertStringContainsString("use Deicod\\WpConnectors\\{OpenAiOauth\\Shared\\{$high_byte_member}};", $high_byte, 'A legal high-byte member ending in \'as\' constructs and rewrites — the boundary asks the label question over label bytes, never the ASCII word question that misjudged the 0xBC.');
 
         /*
          * OCR round 40 (t31-ocr40-1 — the sixth use-grammar

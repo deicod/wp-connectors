@@ -2211,7 +2211,23 @@ final class WpConnectorsBuild
                         : 'an empty member between commas'));
             throw new RuntimeException("build: the group-use member grammar refuses the statement (body: '" . trim($body) . "') in {$sourceVersion} — here: {$shape}: every one of these spellings is a parse error the engine rejects at compile time, and the reassembly once normalized it through explode/trim/implode into a silent pass that shipped the parse-error bytes verbatim at exit 0; write one named member per comma, never an empty one");
         }
-        if (1 === preg_match('/\bas\s*$/i', $member)) {
+        /*
+         * The dangling-tail boundary rides the label-class lookbehind
+         * (OCR round 68, t31-ocr68-1 — the t31-ocr60-1 sweep's
+         * straggler): \b is PCRE's ASCII word boundary, and in byte
+         * mode every high byte is a NON-word byte — a legal label byte
+         * per WP_CONNECTORS_LABEL_BYTES, the class the member-NAME arm
+         * below already judges over — so a legal member ending in
+         * 'as' behind one ('{Shared\Grüas}', bytes …0xBC 'a' 's')
+         * matched the old /\bas\s*$/i and the build refused php
+         * -l-legal input as a dangling alias. The lookbehind asks the
+         * same question — does the identifier END before 'as' — over
+         * the bytes a PHP label admits: every NON-label byte before
+         * the tail (a space, the comma's own end, start of string)
+         * still refuses exactly as \b refused, and a high byte there
+         * reads as label CONTENT, the way the engine's lexer reads it.
+         */
+        if (1 === preg_match('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])as\s*$/i', $member)) {
             throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' with no identifier after it: a dangling alias is a parse error the engine rejects at compile time, and the reassembly once reassembled it into rewritten output that shipped ' as}' verbatim at exit 0; write the member as 'Name as Alias' or the bare 'Name'");
         }
         $tail = '';
