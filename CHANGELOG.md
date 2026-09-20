@@ -6,6 +6,107 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 60)
+
+Sixtieth OCR round (61/61 fully complete): 10 findings, driver
+accepts all — SEVEN numbered commits t31-ocr60-1..7 (one per
+finding; same-class = one commit; the 10 counts the gradings:
+2+1+3+1+1+1+1), plus this docs record, the full offline check green
+after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10.
+Round 60 answered NEW findings, so the OCR phase continues per
+plan. Suite 1734 → 1741 tests, 46931 → 46960 assertions, 3 skipped
+unchanged (deltas +2/+2, +3/+3, +0/+6, +0/+2, +1/+5, +1/+10,
++0/+1, measured from output). The round's shape: the r59 high-byte
+widening's follow-on surface — eight of ten findings are ONE class
+(the \b boundaries both directions, the member-name shape guard,
+the r49 anchor one byte short at all three seams, the member-leaf
+boundary, the text lens) — plus the control-screen/edge-strip
+order and the whitespace-tolerance pin.
+
+- **The mention boundary's ASCII \b over high-byte short names
+  (t31-ocr60-1, bug:medium ×2; bin/check-conventions.php)** — \b is
+  PCRE's ASCII word boundary and a high byte is a non-word byte in
+  byte mode, so after r59 a short name carrying one broke BOTH
+  directions: 'new Grüß()' found no trailing boundary between the
+  0x9F and '(' (legal code flagged 'unused import') while
+  \bGrüß\b matched inside the lookalike 'Grüßx' (a dead import
+  passing). Both mention seams ride label-class lookarounds now —
+  the question \b asked, asked over the bytes a PHP label admits.
+  Driven: the un-aliased used high-byte import stays green and its
+  lookalike-only twin flags (red at HEAD: 1 and 0).
+- **The member-NAME shape guard's ASCII \w (t31-ocr60-2,
+  bug:medium; bin/check-conventions.php, bin/lib/plugin-tools.php)**
+  — the group-use unroller's un-aliased arm refused an un-aliased
+  high-byte member ('use Vendor\Pkg\{Grüß};') after the widened
+  group opening had matched it, silently continue'd: invisible to
+  the unused-import gate, the exact silent-false-negative class the
+  round claims retired while the aliased twin flagged. The guard
+  rides the one label byte class now, the census enumerating this
+  member too. Driven: the member flags, its used twin does not
+  (red at HEAD: 0 and 0 through the hole).
+- **The r49 statement-start anchor, one byte class short at all
+  three seams (t31-ocr60-3, bug:low + bug:medium ×2;
+  bin/build.php)** — 'Grüßuse …' lexes as ONE T_STRING (no `use`
+  token — invisible to every token-aware pass, exactly the anchor's
+  premise) while the one-byte lookbehind read the preceding 0x9F as
+  a boundary, so the pattern matched at the keyword glued inside
+  the name and spliced the rewritten target beside leftover label
+  bytes — the mid-name-splice shape the anchor was minted to kill.
+  The one anchor derives its byte class from the LABEL_BYTES owner
+  plus the separator at the declaration, plain-use, and group-use
+  seams ($statement_start, one spelling). Driven: the glued
+  spellings answer the refusal with the spelling riding verbatim —
+  the plain and declaration legs naming the UNSPLICED family
+  reference (red at HEAD: the message named the target-spliced
+  artifact the rewrite had manufactured).
+- **The member-leaf rewrite boundary's ASCII lookahead
+  (t31-ocr60-4, bug:low; bin/build.php)** — a member segment
+  'Sharedü' (a DIFFERENT segment) passed (?![A-Za-z0-9_]) at its
+  high byte, the leaf matched mid-segment, and the rewrite spliced
+  '<Suffix>\Shared' into it — a mid-name splice the postcondition
+  refused one verdict late with a misleading survivor diagnostic.
+  The boundary rides the label byte class now; the member rides
+  verbatim and the refusal names the high-byte sibling precisely.
+  Driven: 'Sharedü' answers the named refusal (red at HEAD: the
+  anonymous survivor named the spliced '…OpenAiOauth\Sharedü');
+  'SharedStorage' unchanged.
+- **The text lens's ASCII leaf/stem boundaries (t31-ocr60-5,
+  bug:low; bin/lib/plugin-tools.php)** — the family pattern's leaf
+  arm matched '…\WpConnectors\Sharedü' MID-SEGMENT and reported the
+  finding under the truncated own-namespace name while the name
+  walk judges whole segments; the sibling pattern's EXCLUSION
+  boundary swallowed the same spelling. All the text lens's
+  boundaries derive from the LABEL_BYTES owner now (the exclusion
+  failing at a label byte exactly as the leaf arm does), the r59
+  census claim that the boundary lookarounds 'stay the word-byte
+  census on purpose' rewritten to the round-60 truth. Driven: the
+  docblock names the whole-segment sibling 'Deicod\WpConnectors\
+  Sharedü' (red at HEAD: only the truncated finding), the
+  SharedStorage text mention unchanged.
+- **The control-screen/edge-strip order (t31-ocr60-6, bug:medium;
+  shared/src/Http/Url.php)** — the entry control-byte screen ran
+  BEFORE the §4.1 step-1 edge strip while it bans every C0 byte
+  except tab at ANY position, so an edge \r, \x0B, \x0C, or NUL
+  refused before the strip could remove it: the strip degraded to
+  trim(" \t"), contradicting the adjacent docblock's own promises.
+  Verified against the Standard first (§4.1 step 1 strips
+  C0-control-or-space at the edges — all of it), the strip runs
+  before the screen: edge C0 strips, interior still refuses.
+  Driven: the edge "\r https://… \x0B" spelling parses to the
+  stripped URL (red at HEAD: refused); interior control bytes
+  still refuse.
+- **The whitespace-tolerance pin's one-space half measure
+  (t31-ocr60-7, test:low; tests/FoundationHarnessTest.php)** — the
+  collapse kept ONE space per run, so the zero-space needle failed
+  against 'defined( 'ZipArchive::RDONLY' )', this repo's own
+  prevailing style: a mechanical formatting pass would redden the
+  pin over a behaviorally-neutral reformat, the exact brittleness
+  t31-ocr29-10 set out to retire. The pin rides the \s*-class
+  pattern the repo's layout-tolerant pins already own against the
+  raw source. Construction-evident: the respaced spelling matches
+  the same pattern the real source does (red at HEAD).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 59)
 
 Fifty-ninth OCR round (61/61 fully complete; main run partial 55/61,
