@@ -69,6 +69,30 @@ if ( is_dir( $shared_src ) ) {
 			}
 		}
 	);
+
+	/*
+	 * The two harness fixtures that IMPLEMENT Shared interfaces ride
+	 * the same guard (t31-ocr57-5): DeterministicClock and
+	 * InMemoryTokenStorage implement ClockInterface and
+	 * TokenStorageInterface from the namespace the autoloader above
+	 * maps — resolved at CLASS LOAD, before any test runs — so in
+	 * exactly the scenario the guard models (a checkout without
+	 * shared/src) the unconditional require fatals ('Interface not
+	 * found') instead of degrading. Riding the guard, the
+	 * absent-checkout shape stays bootable and PHPUnit reports the
+	 * missing fixtures per-test — the guard's own modeled behavior.
+	 * The remaining requires below stay unconditional by census:
+	 * no other harness file resolves a Shared symbol at load time
+	 * (these two are the only Shared-typed files in harness/).
+	 * Regression: driven out-of-band this round — a scratch
+	 * checkout without shared/src (real vendor, harness, and
+	 * plugin-tools staged) fatals at the pre-fix line 79 with the
+	 * predicted 'Interface ClockInterface not found' and boots
+	 * clean (exit 0) after the fix; the normal path guards true
+	 * and requires as before (suite green through the full check).
+	 */
+	require_once __DIR__ . '/harness/DeterministicClock.php';
+	require_once __DIR__ . '/harness/InMemoryTokenStorage.php';
 }
 
 require_once __DIR__ . '/harness/wp-stubs.php';
@@ -76,8 +100,6 @@ require_once __DIR__ . '/harness/SdkHttpClient.php';
 require_once __DIR__ . '/harness/CurlPsr18Client.php';
 require_once __DIR__ . '/harness/WpConnectorsTestCase.php';
 require_once __DIR__ . '/harness/FakeSecrets.php';
-require_once __DIR__ . '/harness/DeterministicClock.php';
-require_once __DIR__ . '/harness/InMemoryTokenStorage.php';
 require_once __DIR__ . '/harness/HttpResponseFactory.php';
 require_once __DIR__ . '/harness/SimpleArrayCache.php';
 require_once __DIR__ . '/harness/OpaqueAuthentication.php';
