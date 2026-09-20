@@ -2685,7 +2685,26 @@ final class WpConnectorsBuild
                 $degenerate_segments = explode('\\', wp_connectors_shared_source_namespace());
                 $degenerate_vendor = implode('\\', array_slice($degenerate_segments, 0, -1));
                 $degenerate_leaf = $degenerate_segments[count($degenerate_segments) - 1];
-                if (0 === strcasecmp((string) $pluginSuffix, (string) $degenerate_leaf)) {
+                /*
+                 * The refusal's fold rides the ONE ASCII owner (OCR
+                 * round 56, t31-ocr56-1): strcasecmp() consults the
+                 * engine's locale mapping (the r11-6/ocr10-4/t31-ocr13-1
+                 * doctrine the LICENSE-injection and embed-collision
+                 * seams below already ride), and this comparison feeds
+                 * a build-refusing verdict — a fold whose verdict is a
+                 * question about the process, never a constant of the
+                 * artifact (on a locale-consulting engine a Turkish
+                 * tolower('I') = 0xFD reads a case-variant leaf as
+                 * not-the-leaf and ships the degenerate this fence
+                 * exists to refuse; no tr_* locale is generated on
+                 * this host, so like the t31-r2-14 hardening the
+                 * class is argued from the fold tables, not
+                 * reproduced). Census: the round's sweep found NO
+                 * other strcasecmp() call in this file — the two
+                 * seams below already spelled the owner; this was the
+                 * last straggler.
+                 */
+                if (wp_connectors_ascii_lower((string) $pluginSuffix) === wp_connectors_ascii_lower((string) $degenerate_leaf)) {
                     throw new RuntimeException("build: {$slug}: the slug-derived namespace suffix '{$pluginSuffix}' collides with the family namespace's own leaf segment '{$degenerate_leaf}' — the embed would compose {$degenerate_vendor}\\{$pluginSuffix}\\{$degenerate_leaf} and the rewrite re-matches its own output (a double rewrite shipping a namespace nothing loads, every gate green); no component may compose into the family's own spelling — rename the plugin");
                 }
                 self::assertNamespaceSegment($pluginSuffix);
