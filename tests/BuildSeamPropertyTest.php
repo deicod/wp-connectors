@@ -1171,7 +1171,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             // checked close ('cannot finalize …') each turn into the
             // build's refusal. Green on both libzip behaviors.
             $staged = $scratch['root'] . '/staged-source.php';
-            file_put_contents($staged, "<?php\n// staged\n");
+            $this->assertNotFalse(file_put_contents($staged, "<?php\n// staged\n"), "staging: {$staged} must write — a staging failure fails as staging, never as the archive-gate verdict (an absent source answers addFile/close differently across libzip shapes).");
             $addTemp = $scratch['dist'] . '/.add-probe.zip';
             $zip = new ZipArchive();
             $this->assertTrue(
@@ -1183,7 +1183,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 )
             );
             $this->assertTrue($zip->addFile($staged, 'staged-source.php'));
-            unlink($staged);
+            $this->assertTrue(unlink($staged), "staging: {$staged} must vanish between the adds — the whole premise of the vanished-source arm; a staging failure fails as staging, never as the archive-gate verdict.");
             $addReportedFailure = true !== @$zip->addFile($staged, 'vanished-source.php');
             // The @ is the whole suppression (t31-ocr6-16, the round's
             // own verifier pass): an error-handler capture here was
@@ -1248,7 +1248,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 $this->markTestSkipped('The forced-close leg premises POSIX permission bits — on a Win32 host chmod(0000) sets the read-only attribute only, libzip still reads the staged source, and the finalization refusal this leg pins never fires (t31-ocr34-5).');
             }
             $closeTemp = $scratch['dist'] . '/.close-probe.zip';
-            file_put_contents($staged, "<?php\n// staged\n");
+            $this->assertNotFalse(file_put_contents($staged, "<?php\n// staged\n"), "staging: {$staged} must re-write — the (b) arm's own source; a staging failure fails as staging, never as the finalization verdict.");
             $zip = new ZipArchive();
             $this->assertTrue(
                 true === ($opened = $zip->open($closeTemp, ZipArchive::CREATE | ZipArchive::OVERWRITE)),
@@ -1259,7 +1259,18 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 )
             );
             $this->assertTrue($zip->addFile($staged, 'staged-source.php'));
-            chmod($staged, 0000);
+            /*
+             * The lock asserts its own landing (t31-ocr55-6 — the
+             * sibling locked legs' own shape, 'staging: the lock must
+             * take'): a chmod() false left the source READABLE,
+             * close() succeeded, \$refused stayed null, and the leg
+             * reds at the assertNotNull below as a PHANTOM
+             * finalization defect — the seam's verdict over a staging
+             * failure, exactly the class this assert closes (the
+             * root-runner and POSIX gates above own the cases where a
+             * true chmod still cannot block the read).
+             */
+            $this->assertTrue(chmod($staged, 0000), "staging: {$staged} must lock — a staging failure fails as staging, never as the finalization verdict (a chmod false answers \$refused null and reds the assertNotNull as a phantom defect).");
             $finalize = new ReflectionMethod(WpConnectorsBuild::class, 'closeArchiveOrThrow');
             $refused = null;
             /*
