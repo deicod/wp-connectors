@@ -6,6 +6,67 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 61)
+
+Sixty-first OCR round (61/61 fully complete): 3 findings, driver
+accepts all — THREE numbered commits t31-ocr61-1..3 (one per
+finding), plus this docs record, the full offline check green
+after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10→3.
+Round 61 answered NEW findings, so the OCR phase continues per
+plan. Suite 1741 → 1742 tests, 46960 → 47016 assertions, 3 skipped
+unchanged (deltas +1/+4, +0/+14, +0/+38, measured from output).
+The round's shape: the r57-4 raw/validated divergence class swept
+to DeviceAuthorizationSession; the 'signature' suffix arm
+(Stripe/GitHub HMAC headers); the swallowed-sentinel doctrine
+applied file-wide.
+
+- **The stored verification_uri kept the caller's raw edge bytes
+  (t31-ocr61-1, security:medium; shared/src/Flow/
+  DeviceAuthorizationSession.php)** — the constructor validated
+  through Url::parse_validated() while storing the raw spelling,
+  but the parse's §4.1 step-1 edge strip judges the edge-STRIPPED
+  spelling: an accepted "https://device.example/verify\n"
+  constructed with verification_uri() (the RAW channel handed to
+  the authorization redirect) returning edge-control-bearing bytes
+  no screen ever judged — the exact raw/validated divergence
+  HttpRequest refused at t31-ocr57-4. The strip rides the one
+  owner Url owns, before storing; the docblocks state the
+  stored-form contract and the census names the field the one
+  URI-bearing shape this VO carries. Driven: the edge-spelled URI
+  constructs and verification_uri() answers the stripped spelling
+  (red at HEAD: the raw edge bytes); clean spellings byte-exact.
+- **The suffix class's missing 'signature' arm
+  (t31-ocr61-2, security:medium; shared/src/Support/SecretMask.php)**
+  — Stripe's 'Stripe-Signature', GitHub's 'X-Hub-Signature' and its
+  SHA-256 variant, the generic 'X-Signature', and Google's
+  'X-Goog-Signature' fold to a final token matching neither catalog
+  nor suffix, so the credential-derived HMAC material rendered
+  verbatim through every safe debug form. 'signature' joins (every
+  delimiter spelling per the r50-1 fold), the '-256' variant rides
+  its own two-token entry (its judged final segment is '256', a
+  token no credential name spells), the HTTP-signatures 'Digest'
+  twin considered-and-skipped in the census (an integrity digest
+  of the body it rides with is secret-free, not credential-derived
+  — the bar every member meets). Driven: the vendor spellings
+  answer masked (red at HEAD: verbatim); the non-credential
+  'x-signature-count' neighbors stay verbatim by the boundary.
+- **The failure sentinels swallowed by their own catch
+  (t31-ocr61-3, maintainability:low; tests/
+  SharedOAuthArchitectureTest.php)** — the $this->fail() sentinel
+  sat inside the try whose catch (AssertionFailedError) swallows
+  it, the file's own glm29-16 doctrine skipped at the offender
+  loop and its siblings: no false green today (every sentinel
+  message verified non-contained in the asserted fragments), but a
+  wrongly-passing gate degraded the sentinel's clear refusal into
+  the catch's shape. The recorded-message idiom (catch records,
+  assertNotNull carries the sentinel text outside) now owns all
+  thirteen end-to-end legs — the reader pins, the namespace legs,
+  static-multiline, planted-clock, .PHP casing, both vtab legs,
+  wp-reach, provider-name, ref_array, class+trait. Construction-
+  evident: a deliberately-broken gate (once, by hand) answers the
+  sentinel's message, never a swallowed pass.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 60)
 
 Sixtieth OCR round (61/61 fully complete): 10 findings, driver
