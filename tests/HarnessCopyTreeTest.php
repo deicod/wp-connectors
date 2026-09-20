@@ -1270,31 +1270,46 @@ final class HarnessCopyTreeTest extends TestCase
         $this->assertTrue($reaped, 'The short-lived child must be reaped inside the bounded wait — a child init never reaps leaves the dead direction unconstructible on this host.');
         $this->assertFalse($this->killChildIfAlive($shortPid), 'A dead-and-reaped child is never signalled — the pid stays a positive number (HEAD\'s only guard, $childPid > 0, issued the kill over exactly this shape, the recycled-pid window the probe closes) while the kernel says the process is gone.');
 
-        // The LIVE direction: a sleeping child — the looping child's
-        // own shape — reads alive and dies by the same owner.
-        $spawned = array();
-        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('sleep(30);') . ' >/dev/null 2>&1 & echo $!', $spawned);
-        $livePid = (int) trim((string) ($spawned[0] ?? ''));
-        $this->assertGreaterThan(0, $livePid, 'The spawn must answer the sleeping child pid.');
-        $alive = false;
-        for ($wait = 0; $wait < 40; ++$wait) {
-            if ($this->childIsAlive($livePid)) {
-                $alive = true;
-                break;
+        /*
+         * The LIVE direction: a sleeping child — the looping child's
+         * own shape — reads alive and dies by the same owner. The
+         * leg owns its child through the file's try/finally idiom
+         * (t31-ocr62-4, the freeze-loop leg's own frame): the
+         * spawn-to-kill window once carried bare assertions, so a
+         * failed one aborted the leg and orphaned the sleeping child
+         * for up to its full 30s nap — the never-left-looping
+         * contract the finally keeps, applied here too.
+         */
+        $livePid = 0;
+        try {
+            $spawned = array();
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('sleep(30);') . ' >/dev/null 2>&1 & echo $!', $spawned);
+            $livePid = (int) trim((string) ($spawned[0] ?? ''));
+            $this->assertGreaterThan(0, $livePid, 'The spawn must answer the sleeping child pid.');
+            $alive = false;
+            for ($wait = 0; $wait < 40; ++$wait) {
+                if ($this->childIsAlive($livePid)) {
+                    $alive = true;
+                    break;
+                }
+                usleep(50000);
             }
-            usleep(50000);
-        }
-        $this->assertTrue($alive, 'The sleeping child must read alive — the live direction premises it.');
-        $this->assertTrue($this->killChildIfAlive($livePid), 'A live child is signalled — the never-left-looping contract the finally keeps.');
-        $died = false;
-        for ($wait = 0; $wait < 40; ++$wait) {
-            usleep(50000);
-            if (! $this->childIsAlive($livePid)) {
-                $died = true;
-                break;
+            $this->assertTrue($alive, 'The sleeping child must read alive — the live direction premises it.');
+            $this->assertTrue($this->killChildIfAlive($livePid), 'A live child is signalled — the never-left-looping contract the finally keeps.');
+            $died = false;
+            for ($wait = 0; $wait < 40; ++$wait) {
+                usleep(50000);
+                if (! $this->childIsAlive($livePid)) {
+                    $died = true;
+                    break;
+                }
+            }
+            $this->assertTrue($died, 'The signalled child is gone inside the bounded wait — live children still die.');
+        } finally {
+            if ($livePid > 0) {
+                $this->killChildIfAlive($livePid);
             }
         }
-        $this->assertTrue($died, 'The signalled child is gone inside the bounded wait — live children still die.');
     }
 
     /**
