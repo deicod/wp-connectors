@@ -116,7 +116,32 @@ final class Url {
 		 * space-bearing host FAILS validation there rather than
 		 * contacting another host, so the two consumers never name
 		 * DIFFERENT hosts over it).
+		 *
+		 * §4.1 STEP 1 (OCR round 56, t31-ocr56-2 — the step the
+		 * tab pass below rode without): the Standard strips
+		 * leading/trailing C0-control-or-space from the WHOLE input
+		 * BEFORE the tab/newline pass — at the trailing edge
+		 * 'https://device.example/verify ' is '/verify' in every
+		 * WHATWG consumer while this parse kept the space verbatim
+		 * (driven: the trailing edge constructed green at HEAD; the
+		 * leading edge refused as hostless, parse_url() handing the
+		 * space-stuck spelling back as a path) — the same
+		 * two-consumers divergence class the tab byte's refusal
+		 * exists to kill. The edge STRIPS where the interior
+		 * REFUSES: an edge byte names nothing (no client means to
+		 * send it — the browser's own verdict strips it), so both
+		 * readings agree on one URL; the interior keeps every
+		 * verdict above and below. Both steps ride the Standard's
+		 * order — an edge TAB strips here and never reaches the
+		 * refusal below (a browser never sees it either), the
+		 * interior C0/newline bytes still refuse at the entry
+		 * screen above (a refusal never silently diverges), and the
+		 * interior SPACE keeps its adjudicated verdict. The strip
+		 * set derives the class exactly — U+0000–U+001F + U+0020,
+		 * the contiguous byte run trim()'s list enumerates —
+		 * byte-wise and locale-free, no PCRE abort to guard.
 		 */
+		$url = trim( $url, "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F\x20" );
 		if ( false !== strpbrk( $url, "\t\n\r" ) ) {
 			throw new InvalidArgumentException( 'The URL must not carry tabs or newlines — the URL Standard strips those bytes from the whole input before parsing, so a browser sees a different URL ("https://id<TAB>p.example" reaches idp.example there; a tab in the path or query rides stripped) while this parse keeps them verbatim, and the two must agree: write the URL without them.' );
 		}

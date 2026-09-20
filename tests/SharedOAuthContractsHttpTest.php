@@ -598,6 +598,49 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-56 pin (t31-ocr56-2, the §4.1 step 1 the r44-1/45-2
+     * strip-set screen rode without): the URL Standard strips
+     * leading/trailing C0-control-or-space from the WHOLE input
+     * before the tab/newline pass — 'https://device.example/verify '
+     * is '/verify' in every WHATWG consumer while this parse kept
+     * the space verbatim (the trailing edge constructed green at
+     * HEAD; the leading edge refused hostless, parse_url() handing
+     * the space-stuck spelling back as a path), the same
+     * two-consumers divergence class the tab byte's refusal exists
+     * to kill. The edges strip to the browser's own spelling (an
+     * edge byte names nothing — both readings agree on one URL);
+     * the interior keeps its adjudicated verdicts: space legal,
+     * tab/newline refused.
+     */
+    public function testEdgeWhitespaceStripsToTheWhatwgSpellingTheInteriorKeepsItsVerdicts(): void
+    {
+        $edge_spellings = array(
+            'trailing space' => 'https://device.example/verify ',
+            'leading space' => ' https://device.example/verify',
+            "trailing tab (step 1 owns the tab's edge)" => "https://device.example/verify\t",
+            "leading tab (step 1 owns the tab's edge)" => "\thttps://device.example/verify",
+            'both edges at once' => " \thttps://device.example/verify\t ",
+        );
+
+        foreach ($edge_spellings as $label => $url) {
+            $this->assertSame('/verify', Url::parse_validated($url)['path'], "The edge strip is the browser's own verdict — the parse names the path every WHATWG consumer requests ({$label}; red at HEAD: the space edges kept or refused the space-stuck spelling, the tab edges refused).");
+            $this->assertSame('https://device.example/verify', (new HttpRequest('GET', $url))->redacted_url(), "The redacted form derives from the stripped parse ({$label}).");
+        }
+
+        // The interior keeps its verdicts — the boundary this round's
+        // strip draws: edge strips, interior refuses. The interior
+        // space stays legal (the adjudication's surviving half), the
+        // interior tab still rides the ocr45-2 refusal.
+        $this->assertSame('h st.example', Url::parse_validated('https://h st.example/token')['authority'], 'An interior space keeps its adjudicated verdict — the screen strips the Standard\'s edge set, never the interior.');
+        try {
+            Url::parse_validated("https://host.example/ver\tify");
+            $this->fail('An interior tab still refuses — the edge strip never widens into the interior.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('must not carry tabs or newlines', $e->getMessage(), 'The interior refusal keeps its strip-set class.');
+        }
+    }
+
+    /**
      * OCR-round-25 pin (t31-ocr25-3): the leading-zero port spelling
      * slips the raw digit screen — ':0443' IS digits — while
      * parse_url() normalizes the value to 443: the value object
