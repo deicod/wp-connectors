@@ -6,6 +6,58 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 59)
+
+Fifty-ninth OCR round (61/61 fully complete; main run partial 55/61,
+the fill-in r64b over the 7 compression-lost bin/ files CLEAN — 0
+findings): 2 findings. Driver accepts both. 2 numbered commits
+t31-ocr59-1..2, plus this docs record, the full offline check green
+after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2.
+Round 59 answered NEW findings, so the OCR phase continues per
+plan. Suite 1731 → 1734 tests, 46916 → 46931 assertions, 3 skipped
+unchanged (deltas +1/+7 and +2/+8, measured from output).
+
+- **The staging-time sidecar prune outside the by-construction window
+  (t31-ocr59-1, bug:low; bin/build.php)** — manifestLinesWithout()
+  unlinked stale entries' .sha256 sidecars at STAGING time, but
+  stageManifest() runs BEFORE the pre-flight loop and the
+  landArtifact() renames, so a run that refused at pre-flight (or
+  died at a landing rename) had already deleted sidecars while the
+  on-disk manifest still listed those entries — a destructive,
+  un-rolled-back write outside the 'every failure before the first
+  rename leaves the prior artifact set byte-untouched BY
+  CONSTRUCTION' window the publication seam's own docblock promises
+  (the deleted files already-orphaned descriptors; the damage to the
+  invariant, not to live artifacts). The staging merge records the
+  fenced sidecar set now and the caller replays the unlink only
+  after the LAST landing rename — inside the same merge lock, the
+  ocr35-2 guards re-judged at the moment of the unlink. Driven: a
+  pre-flight-refusing run leaves the stale sidecar on disk and the
+  manifest byte-identical (red at HEAD: sidecar gone); a succeeding
+  run still reclaims it.
+- **The ASCII-only label stragglers against the high-byte member
+  grammar (t31-ocr59-2, bug:low; bin/build.php, bin/lib/
+  plugin-tools.php, bin/check-conventions.php)** — the sub-segment
+  tail and alias classes (and the namespace-declaration tail's twin,
+  the alias-id extraction, and the member alias shape) were
+  ASCII-only while groupUseMemberGrammar() validated member names
+  with the full PHP label byte set — and the engine accepts the high
+  bytes in every position (php -l-verified first), so a legal 'use
+  …\Shared\Grüß as Grün;' failed the pattern, rode verbatim, and
+  refused at the postcondition with the anonymous-survivor message
+  while the identical member spelling validated through the group-use
+  seam; the unused-import scanner's \w classes left the same spelling
+  invisible to that gate. ONE label byte class at every grammar seam
+  now — WP_CONNECTORS_LABEL_HEAD_BYTES / WP_CONNECTORS_LABEL_BYTES
+  in bin/lib/plugin-tools.php, the census comment there listing every
+  aligned seam (and the boundary lookarounds staying the r46/r49
+  word-byte census on purpose). Driven: the high-byte spellings
+  construct and re-emit through the rewrite (red at HEAD: refused at
+  the ASCII-only seams), the reserved vocabulary keeps refusing, a
+  legal 'as Grüself' is judged by its full bytes, and the scanner's
+  unused high-byte import flags (red at HEAD: invisible).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 58)
 
 Fifty-eighth OCR round (61/61 fully complete): 1 finding — TIES THE
