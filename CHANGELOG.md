@@ -6,6 +6,47 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 69)
+
+Sixty-ninth OCR round (61/61 fully complete): 3 findings, driver
+accepts all — three numbered commits t31-ocr69-1..3 (one per finding,
+no refutations this round), plus this docs record, the full offline
+check green after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10→3→6→3→5→4→5→5→3→3.
+Round 69 answered NEW findings, so the OCR phase continues per plan.
+Suite 1779 → 1781 tests, 47124 → 47131 assertions, 3 skipped
+unchanged (deltas +1/+5, +0/+0, +1/+2, every one measured from
+output). The round's shape: the drive-anchor clamp — the '..'-collapse
+never pops past the anchor into the vacuous empty spelling; the r68-2
+claim made true at the import-position fence; the HeaderMap rejection
+message names the formatting classes.
+
+- **The '..'-collapse clamping at the drive anchor
+  (t31-ocr69-1, bug:medium; tests/harness/WpHarness.php, tests/
+  HarnessCopyTreeTest.php)** — a relative target whose '..' count
+  exceeded the cwd's depth beneath the drive root popped the 'C:'
+  anchor itself and composed '' — the vacuous spelling that passes
+  every downstream guard while the landing resolves at the drive
+  root. A pop that would consume the anchor stops there now (driven:
+  the collapse composes the drive root, never '', through the
+  reflection seam; the POSIX '/' root clamp verified unchanged).
+- **The open-tag probe's keyword fold riding the ONE ASCII owner
+  (t31-ocr69-2, bug:medium — claim-vs-code drift; bin/
+  check-conventions.php)** — the r68-2 refutation's sweep claimed
+  this seam for the locale-fold census while the compare still
+  consulted strtolower(); the fold rides wp_connectors_ascii_lower()
+  now (no observable behavior change — p/h are locale-invariant
+  bytes, the r68-2 refutation's own leg), the claim true of the seam.
+- **The control-byte rejection naming the formatting classes
+  (t31-ocr69-3, documentation:low; shared/src/Http/HeaderMap.php,
+  tests/SharedOAuthContractsHttpTest.php)** — the message named only
+  'control characters or line breaks' while the pattern also bans
+  the bidi/zero-width classes, so a value dying on a ZWJ or a soft
+  hyphen gave the operator no hint of the cause. The sentence names
+  the classes now (driven: both probes reject with the formatting
+  class in the sentence; the pinned prefix rides byte-stable, every
+  existing control-byte leg unchanged).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 68)
 
 Sixty-eighth OCR round (61/61 fully complete): 3 findings, driver
