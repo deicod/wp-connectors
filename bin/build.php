@@ -3058,7 +3058,31 @@ final class WpConnectorsBuild
                 fclose($manifestLock);
                 throw new RuntimeException("build: cannot lock the checksum manifest for {$zipName} — a failed lock never merges blindly");
             }
-            $manifestTemp = self::stageManifest($distDir, $manifestPath, $zipName, $checksum);
+            /*
+             * The pruned-sidecar set (OCR round 59, t31-ocr59-1): the
+             * staging merge RECORDS the stale entries' sidecars here
+             * and the destructive half — the unlink — runs only after
+             * the last landing rename below. The prune once fired at
+             * STAGING time, but this stage call runs BEFORE the
+             * pre-flight loop and the landings, so a run that refused
+             * at the pre-flight (or died at a landing rename) had
+             * already deleted sidecars while the on-disk manifest
+             * still listed those entries — a destructive,
+             * un-rolled-back write outside the 'every failure this run
+             * can construct before the first rename leaves the prior
+             * artifact set byte-untouched BY CONSTRUCTION' window the
+             * publication seam above promises (the deleted files were
+             * already-orphaned descriptors — their zips gone — so the
+             * damage was to the invariant, not to live artifacts;
+             * still a broken promise). Recording at staging and
+             * replaying after the LAST landing keeps that window
+             * honest AND keeps the prune's purpose: at the replay
+             * point the new manifest has landed, so the manifest no
+             * longer lists what the unlink removes — the reclaim and
+             * the inventory it enforces move as one.
+             */
+            $prunedSidecars = array();
+            $manifestTemp = self::stageManifest($distDir, $manifestPath, $zipName, $checksum, $prunedSidecars);
 
             // Pre-flight every landing target before anything lands: the
             // constructible rename blockers are a non-file at a
@@ -3116,6 +3140,29 @@ final class WpConnectorsBuild
             self::landArtifact($zipTemp, $zipPath, "the archive {$zipName}");
             self::landArtifact($sidecarTemp, $zipPath . '.sha256', "the checksum sidecar for {$zipName}");
             self::landArtifact($manifestTemp, $manifestPath, "the checksum manifest for {$zipName}");
+
+            /*
+             * The deferred sidecar reclaim (OCR round 59, t31-ocr59-1 —
+             * the destructive half of the set staged above): the last
+             * landing rename has landed, so destructive writes are
+             * legal at this seam's own doctrine and the on-disk
+             * manifest no longer lists the pruned entries — the
+             * reclaim the staging merge recorded replays HERE, inside
+             * the same merge lock it was judged under (a concurrent
+             * run only ever prunes against the LANDED artifact set),
+             * with the reclaim's own guards re-judged at the moment of
+             * the unlink: a plain FILE beside the manifest, never a
+             * link (unlink removes the entry itself — the sweep's
+             * no-symlinks doctrine). A sidecar the unlink cannot
+             * remove stays standing beside a dropped line — the
+             * manifest's contract (names standing artifacts) holds
+             * regardless; the sweep owns the rest.
+             */
+            foreach ($prunedSidecars as $prunedSidecar) {
+                if (is_file($prunedSidecar) && ! is_link($prunedSidecar)) {
+                    @unlink($prunedSidecar);
+                }
+            }
         } finally {
             if (is_resource($manifestLock)) {
                 @flock($manifestLock, LOCK_UN);
@@ -3166,12 +3213,16 @@ final class WpConnectorsBuild
      * @param string $manifestPath Absolute checksums.txt path.
      * @param string $zipName      Zip basename the new entry names.
      * @param string $checksum     The staged archive's SHA-256.
+     * @param array  $prunedSidecars Out-parameter: the stale entries' sidecar
+     *                               paths the merge judged prunable — recorded
+     *                               here, unlinked by the caller only after
+     *                               the last landing rename (t31-ocr59-1).
      * @return string The staging path (caller lands it by rename).
      * @throws RuntimeException When the manifest cannot be staged.
      */
-    private static function stageManifest($distDir, $manifestPath, $zipName, $checksum)
+    private static function stageManifest($distDir, $manifestPath, $zipName, $checksum, array &$prunedSidecars)
     {
-        $manifest = self::manifestLinesWithout($manifestPath, $zipName);
+        $manifest = self::manifestLinesWithout($manifestPath, $zipName, $prunedSidecars);
         $manifest[] = $zipName . '  ' . $checksum;
         sort($manifest, SORT_STRING);
         // @: the diagnostic is suppressed, the failed return owned below
@@ -3235,9 +3286,14 @@ final class WpConnectorsBuild
      *
      * @param string $manifestPath Absolute checksums.txt path.
      * @param string $zipName      Zip basename the entry names.
+     * @param array  $prunedSidecars Out-parameter: the stale entries' sidecar
+     *                               paths, recorded for the caller's deferred
+     *                               reclaim (t31-ocr59-1 — the destructive
+     *                               half runs only after the last landing
+     *                               rename, never here at staging time).
      * @return list<string> The surviving lines.
      */
-    private static function manifestLinesWithout($manifestPath, $zipName)
+    private static function manifestLinesWithout($manifestPath, $zipName, array &$prunedSidecars)
     {
         $manifest = array();
         if (is_file($manifestPath)) {
@@ -3311,13 +3367,25 @@ final class WpConnectorsBuild
                      * stays standing beside a dropped line — the
                      * manifest's contract (names standing artifacts)
                      * holds regardless; the sweep owns the rest.
+                     *
+                     * The unlink itself is DEFERRED (OCR round 59,
+                     * t31-ocr59-1): this method runs at STAGING time,
+                     * before the pre-flight loop and the landing
+                     * renames, and a run that refuses after this point
+                     * must leave the prior artifact set byte-untouched
+                     * — so the merge RECORDS each fenced sidecar here
+                     * and the caller replays the unlink only after the
+                     * LAST landing rename, where destructive writes are
+                     * already legal and the landed manifest no longer
+                     * lists what it removes.
                      */
                     if (false !== $entry_name && '' !== $entry_name && $entry_name === basename((string) $entry_name)) {
                         $sidecar = dirname($manifestPath) . '/' . $entry_name . '.sha256';
                         if (is_file($sidecar) && ! is_link($sidecar)) {
-                            // A FILE, never a link (the guard above):
-                            // unlink removes the entry itself.
-                            @unlink($sidecar);
+                            // Recorded, never unlinked here — the
+                            // caller's deferred reclaim owns the
+                            // destructive half.
+                            $prunedSidecars[] = $sidecar;
                         }
                     }
 

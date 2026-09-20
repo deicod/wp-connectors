@@ -4901,7 +4901,11 @@ FIXTURE;
              * rename, so the name is only observable at the seam).
              */
             $stage_manifest = new ReflectionMethod(WpConnectorsBuild::class, 'stageManifest');
-            $staged_manifest = $stage_manifest->invoke(null, $scratch . '/dist', $scratch . '/dist/checksums.txt', 'connectors-stage-demo-1.0.0.zip', str_repeat('a', 64));
+            $pruned_sidecars = array();
+            // The out-parameter rides the invokeArgs reference idiom —
+            // invoke() cannot pass by reference.
+            $stage_args = array( $scratch . '/dist', $scratch . '/dist/checksums.txt', 'connectors-stage-demo-1.0.0.zip', str_repeat('a', 64), &$pruned_sidecars );
+            $staged_manifest = $stage_manifest->invokeArgs(null, $stage_args);
             $this->assertMatchesRegularExpression(
                 '/^\.checksums-' . getmypid() . '-[A-Za-z0-9]{1,}$/',
                 basename((string) $staged_manifest),
@@ -10108,7 +10112,11 @@ FIXTURE;
             );
 
             $merge = new \ReflectionMethod(WpConnectorsBuild::class, 'manifestLinesWithout');
-            $lines = $merge->invoke(null, $scratch . '/checksums.txt', 'unrelated.zip');
+            $pruned_sidecars = array();
+            // The out-parameter rides the invokeArgs reference idiom —
+            // invoke() cannot pass by reference.
+            $merge_args = array( $scratch . '/checksums.txt', 'unrelated.zip', &$pruned_sidecars );
+            $lines = $merge->invokeArgs(null, $merge_args);
 
             $this->assertSame(
                 array("double  space.zip  {$digest}"),
@@ -10199,6 +10207,82 @@ FIXTURE;
             file_put_contents($damaged, $source);
             $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'A failed run lands no manifest change, prune included.');
         } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
+     * OCR-round-59 pin (t31-ocr59-1): the staging-time sidecar prune
+     * unlinked stale entries' .sha256 sidecars BEFORE the pre-flight loop
+     * and the landing renames, so a run that refused at the pre-flight
+     * had already deleted sidecars while the on-disk manifest still
+     * listed those entries — a destructive, un-rolled-back write outside
+     * the 'every failure before the first rename leaves the prior
+     * artifact set byte-untouched BY CONSTRUCTION' window the
+     * publication seam promises (driven red at HEAD: the stale sidecar
+     * was gone after the refusal). The prune's destructive half is
+     * DEFERRED past the last landing rename now: a refusing run leaves
+     * the stale sidecar standing, a succeeding run still reclaims it.
+     */
+    public function testAPreFlightRefusalLeavesTheStaleSidecarsThePruneWouldReclaim(): void
+    {
+        $scratch = self::distDir() . '/.prune-deferred-' . getmypid();
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        mkdir($scratch . '/dist', 0755, true);
+        try {
+            $plugins = array();
+            foreach (array('alpha-demo', 'beta-demo') as $slug) {
+                $plugins[$slug] = $this->makeMinimalPlugin($scratch . '/plugins', $slug);
+            }
+
+            $zipAlpha = WpConnectorsBuild::buildPlugin($plugins['alpha-demo'], $scratch . '/dist');
+            $zipBeta = WpConnectorsBuild::buildPlugin($plugins['beta-demo'], $scratch . '/dist');
+            $manifestPath = $scratch . '/dist/checksums.txt';
+            $manifestBefore = (string) file_get_contents($manifestPath);
+
+            // The stale shape the reclaim answers: beta's zip vanishes
+            // out-of-band, its sidecar and manifest entry standing on.
+            unlink($zipBeta);
+            $this->assertFileExists($zipBeta . '.sha256', 'The stale sidecar stands beside the gone zip before the run.');
+
+            // The refusal the staging prune once outran: a directory at
+            // the SIDECAR landing target answers the pre-flight AFTER
+            // stageManifest has merged (and, at HEAD, pruned).
+            unlink($zipAlpha . '.sha256');
+            mkdir($zipAlpha . '.sha256', 0755);
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::buildPlugin($plugins['alpha-demo'], $scratch . '/dist'),
+                'The landing pre-flight must refuse the run over the directory at the sidecar target.', \RuntimeException::class
+            );
+            $this->assertStringContainsString('is not a regular file', $refusal->getMessage());
+
+            /*
+             * The pin: the refused run leaves the stale sidecar on disk
+             * (red at HEAD: staging had already unlinked it) and the
+             * manifest byte-identical — the prior artifact set whole
+             * through the refusal, exactly as the by-construction
+             * window promises.
+             */
+            $this->assertFileExists($zipBeta . '.sha256', 'A pre-flight refusal leaves the stale sidecar the prune would reclaim — the destructive half is deferred past the last landing rename.');
+            $this->assertSame($manifestBefore, (string) file_get_contents($manifestPath), 'A pre-flight refusal leaves the manifest byte-identical, stale entry included.');
+
+            // The prune's purpose is preserved: a SUCCEEDING run still
+            // reclaims the stale sidecar with its dropped entry.
+            rmdir($zipAlpha . '.sha256');
+            WpConnectorsBuild::buildPlugin($plugins['alpha-demo'], $scratch . '/dist');
+            $this->assertFileDoesNotExist($zipBeta . '.sha256', 'A succeeding run still reclaims the stale sidecar — the deferred prune fires once the landings stand.');
+            $this->assertStringNotContainsString(
+                basename($zipBeta),
+                (string) file_get_contents($manifestPath),
+                'The succeeding run\'s landed manifest drops the vanished artifact\'s entry.'
+            );
+            $this->assertFileExists($zipAlpha . '.sha256', 'The rebuilt plugin\'s sidecar stands.');
+        } finally {
+            if (isset($zipAlpha) && is_dir($zipAlpha . '.sha256')) {
+                rmdir($zipAlpha . '.sha256');
+            }
             WpHarness::releaseScratch($scratch);
         }
     }
