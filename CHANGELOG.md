@@ -6,7 +6,72 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
-### Fixed (shared — M3 Task 3.1, OCR round 65)
+### Fixed (shared — M3 Task 3.1, OCR round 66)
+
+Sixty-sixth OCR round (61/61 fully complete): 5 findings, driver
+accepts all — three numbered commits t31-ocr66-1, -3, -5, and TWO
+findings REFUTED on execution evidence with no commit (the
+whitespace-free keyword-follower sweep — the round-65 refutation
+re-driven PER SEAM at the finding's own demand — and the
+close-tag-in-comment HTML arm, whose tokenizing premise this
+engine's lexer refutes; see the ledger round), plus this docs
+record, the full offline check green after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10→3→6→3→5→4→5.
+Round 66 answered NEW findings, so the OCR phase continues per
+plan. Suite 1776 → 1777 tests, 47075 → 47101 assertions, 3 skipped
+unchanged (deltas +1/+9, +0/+3, +0/+14, measured from output).
+The round's shape: the embed leg owning the stream-separator class
+at its own collection seam (one class, three owners now), the
+kind-exemption probe owning the fully-qualified separator tail,
+'password' joining the credential suffix tier — and two findings
+that did not survive their own mandated verification steps (every
+engine-legal whitespace-free import spelling already flags at HEAD
+by the keyword arm's fallthrough; the close tag after a one-line
+comment is a DISTINCT token that survives both masked views).
+
+- **The embed leg composing stream-separator entry names
+  (t31-ocr66-1, bug:medium; bin/build.php, tests/
+  BuildArtifactsTest.php)** — the t31-ocr63-3 screen answers only
+  the plugin tree's collectFiles() walk, while the EMBED leg
+  composes its entry names from the shared tree's own relatives
+  (a collector carrying the symlink, near-source, extension-casing,
+  and PSR-4 fences — never the separator), so a POSIX-legal
+  'shared/src/Policy:Draft.php' published as
+  '<slug>/src/Shared/Policy:Draft.php' at exit 0 while the
+  inspector refused the same entry: the one-verdict drift one
+  collection seam over (driven end-to-end at HEAD). The embed loop
+  refuses the same per-segment ':' class at ITS seam now, before
+  any destination is composed — one class, three owners
+  (collectFiles, embed, inspector), one verdict; pinned with the
+  colon-free twin building and inspecting green.
+- **The kind-exemption probe missing the fully-qualified tail
+  (t31-ocr66-3, bug:low; bin/build.php, tests/
+  BuildArtifactsTest.php)** — group 1 of the shared-namespace use
+  pattern admits the optional leading backslash of a
+  fully-qualified import INSIDE the capture, so 'use function
+  \…\Shared\true;' captures '…function \' and the r47-2 probe's
+  kind-at-the-very-END requirement failed over the trailing
+  separator: the special-class refusal fired for engine-legal
+  fully-qualified kind-led spellings (php -l clean, driven), a
+  false refusal the whitespace twin never hit. The probe rides
+  '(?i:function|const)\s*\\\\?\z' now — the kind, optional
+  whitespace, optional separator — and the kind-less
+  fully-qualified twin keeps the refusal (the class import binds
+  the special leaf), pinned unchanged.
+- **'password' missing from the credential suffix tier
+  (t31-ocr66-5, security:low; shared/src/Support/SecretMask.php,
+  tests/SharedOAuthContractsHttpTest.php)** — the tier named
+  'token'/'secret'/'authorization' (r24), 'key' (r52), and
+  'authentication' (r55) while omitting the plainest credential
+  word: 'X-Password' and the 'X-Api-Password'/'X-User-Password'
+  family folded to a final segment matching neither catalog nor
+  suffix and rendered VERBATIM through every safe debug form
+  (driven at HEAD). 'password' joins the single-word tier, one
+  member speaking every delimiter spelling per the r50-1 fold; the
+  boundary unchanged ('x-password-policy', 'x-passport' stay
+  verbatim), pinned with both debug channels and the neighbors.
+
+
 
 Sixty-fifth OCR round (61/61 fully complete): 4 findings, driver
 accepts all — three numbered commits t31-ocr65-2, -3, -4, and ONE
