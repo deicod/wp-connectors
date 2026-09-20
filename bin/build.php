@@ -234,7 +234,7 @@ final class WpConnectorsBuild
          */
         $rewritten = self::replaceOrThrow(
             preg_replace(
-                '/((?<![A-Za-z0-9_\\\\])(?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[A-Za-z_][A-Za-z0-9_]*)*\s*;)/',
+                '/((?<![A-Za-z0-9_\\\\])(?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*\s*;)/',
                 '$1' . $target_escaped . '$2',
                 $rewritten
             ),
@@ -309,6 +309,26 @@ final class WpConnectorsBuild
          * the illegal spelling fails the pattern, rides verbatim, and
          * refuses at the postcondition's family-reference verdict,
          * never a rewrite that ships it.
+         *
+         * The HIGH-BYTE half rides the round-59 census (t31-ocr59-2):
+         * the r46 anchor kept these classes ASCII-only while the
+         * group-use member grammar below already validated the FULL
+         * label byte set (PHP labels admit \x80-\xff — 'Grüß' is a
+         * legal class name, php -l-verified in every position), so a
+         * legal import whose sub-segment or alias carried a high-byte
+         * label ('use …\Shared\Grüß as Grün;') failed the ASCII-only
+         * pattern, rode verbatim, and refused at the postcondition
+         * with the anonymous-survivor message — while the identical
+         * member-name spelling validated through the group-use seam.
+         * Every label position in these patterns now spells the ONE
+         * byte class the member grammar derives (the
+         * WP_CONNECTORS_LABEL_* constants, bin/lib/plugin-tools.php —
+         * the census comment there lists every seam aligned, the
+         * member grammar and this file's tail/alias/extraction seams
+         * among them), and the alias-id extraction below rides the
+         * same set so the oracle judges the FULL alias (an ASCII-only
+         * extraction would hand it 'self' out of the legal
+         * 'Grüself').
          */
         $rewritten = self::replaceOrThrow(
             preg_replace_callback(
@@ -325,7 +345,7 @@ final class WpConnectorsBuild
                  * exit 0 (driven at HEAD, the plain and brace-tail
                  * spellings alike).
                  */
-                '/(?<![A-Za-z0-9_\\\\])((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[A-Za-z_][A-Za-z0-9_]*)*)(\s+(?i:as)\s+[A-Za-z_][A-Za-z0-9_]*)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
+                '/(?<![A-Za-z0-9_\\\\])((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*)(\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
                 static function ($matches) use ($sourceVersion, $vendor, $pluginSuffix, $family_leaf) {
                     // The optional groups are ABSENT keys (never
                     // null/'' — no PREG_UNMATCHED_AS_NULL here), the
@@ -350,7 +370,7 @@ final class WpConnectorsBuild
                     if ('' !== $alias_group && '' !== (string) ($matches[4] ?? '')) {
                         throw new RuntimeException("build: the use statement importing the shared namespace in {$sourceVersion} carries both an alias and a brace-group tail — an aliased import opens no group, the composition is a parse error the engine rejects at compile time, and the rewrite once re-emitted both verbatim beside the rewritten name at exit 0; write the aliased import or the group, never both");
                     }
-                    if ('' !== $alias_group && 1 === preg_match('/[A-Za-z0-9_]+\z/', $alias_group, $alias_id)) {
+                    if ('' !== $alias_group && 1 === preg_match('/[' . WP_CONNECTORS_LABEL_BYTES . ']+\z/', $alias_group, $alias_id)) {
                         if (self::aliasIdentifierIsEngineIllegal($alias_id[0])) {
                             throw new RuntimeException("build: the alias of a use statement importing the shared namespace in {$sourceVersion} must be one plain identifier — '{$alias_id[0]}' is a reserved spelling the engine forbids in the slot, case-insensitively (every keyword the lexer does not spell a name), and the rewrite re-emits the alias verbatim, so the zip would ship the compile-error bytes at exit 0; write a plain identifier the engine accepts");
                         }
@@ -2155,8 +2175,15 @@ final class WpConnectorsBuild
              * shape (the t31-ocr46-2 comment names why it stays
              * loose), and the use callback's tail extraction slices
              * bytes the pattern's own label grammar already judged.
+             *
+             * The HIGH-BYTE half (OCR round 59, t31-ocr59-2): the
+             * shape speaks the ONE label byte class now — the high
+             * bytes the member-NAME arm below always admitted and the
+             * engine accepts in the alias slot ('as Grün', php
+             * -l-verified) — never an ASCII-only straggler one seam
+             * over from the member grammar it rides beside.
              */
-            if (1 !== preg_match('/\A[A-Za-z_][A-Za-z0-9_]*\z/', $alias_parts[2])) {
+            if (1 !== preg_match('/\A[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*\z/', $alias_parts[2])) {
                 throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: an 'as' whose tail ('{$alias_parts[2]}') is not one plain identifier (a label begins with a letter or underscore, never a digit): the engine accepts only a bare label identifier in the alias slot, and the reassembly once re-emitted the tail verbatim beside the rewritten name at exit 0; write 'Name as Alias' with a plain identifier");
             }
             if (self::aliasIdentifierIsEngineIllegal($alias_parts[2])) {
@@ -2192,7 +2219,7 @@ final class WpConnectorsBuild
          * both shapes through: compile-error bytes in the zip at
          * exit 0.
          */
-        if (1 !== preg_match('/\A[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*(?:\\\\[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)*\z/', $member)) {
+        if (1 !== preg_match('/\A[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*(?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*\z/', $member)) {
             throw new RuntimeException("build: the group-use member grammar refuses the statement (member: '{$member}') in {$sourceVersion} — here: a member that is not a NAME: the engine accepts only label segments (never digit-initial, never a bare separator or mid-name space/hyphen — php -l refuses every spelling below), and both re-emit seams once re-emitted the bytes verbatim beside rewritten output — compile-error bytes in the zip at exit 0; write each member as relative label segments, the group's prefix carrying the rest");
         }
         /*

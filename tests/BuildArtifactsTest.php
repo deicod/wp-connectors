@@ -7385,6 +7385,45 @@ FIXTURE;
         $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
         $this->assertStringContainsString('ClockStore.php', $refusal->getMessage());
 
+        /*
+         * OCR round 59 (t31-ocr59-2): the HIGH-BYTE label half. PHP
+         * labels admit \x80-\xff in every position (php -l accepts
+         * 'Grüß' as a class name, a sub-segment, and an alias alike —
+         * the engine verdict the member grammar already spoke), while
+         * the sub-segment tail, the alias group, and the
+         * namespace-declaration tail spelled ASCII-only classes: a
+         * legal high-byte import failed the pattern, rode verbatim,
+         * and refused at the postcondition with the
+         * anonymous-survivor message (driven red at HEAD) while the
+         * identical member spelling validated through the group-use
+         * seam. One label byte class at every seam now (the
+         * WP_CONNECTORS_LABEL_* constants, bin/lib/plugin-tools.php):
+         * the high-byte spellings CONSTRUCT and re-emit through the
+         * rewrite, the declaration tail's twin among them, and the
+         * oracle judges the FULL alias — a legal 'as Grüself' is not
+         * the reserved 'self' its ASCII tail spells (an ASCII-only
+         * extraction would have refused it). The reserved vocabulary
+         * still refuses beside the legal bytes.
+         */
+        $high_byte = "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Gr\xc3\xbc\xc3\x9f;\nuse Deicod\\WpConnectors\\Shared\\Support\\Gr\xc3\xbc\xc3\x9f as Gr\xc3\xbcn;\nuse Deicod\\WpConnectors\\Shared\\Clock as Gr\xc3\xbcself;\nuse Deicod\\WpConnectors\\Shared\\Http\\{Gr\xc3\xbc\xc3\x9f as Gr\xc3\xbcn};\nclass HighByteStore\n{\n}\n";
+        $high_byte_battery = WpConnectorsBuild::rewriteSharedNamespace($high_byte, 'OpenAiOauth', 'shared/src/Storage/HighByteStore.php');
+        $this->assertStringContainsString("namespace Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Gr\xc3\xbc\xc3\x9f;", $high_byte_battery, 'The namespace-declaration tail rides a high-byte segment (red at HEAD: the ASCII-only tail refused the declaration at the anonymous seam).');
+        $this->assertStringContainsString("use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Support\\Gr\xc3\xbc\xc3\x9f as Gr\xc3\xbcn;", $high_byte_battery, 'A high-byte sub-segment and alias re-emits through the rewrite (red at HEAD: anonymous-survivor refusal).');
+        $this->assertStringContainsString("use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Clock as Gr\xc3\xbcself;", $high_byte_battery, "A legal alias whose ASCII TAIL spells a reserved word is judged by its FULL bytes — 'Grüself' is one label, never the reserved 'self'.");
+        $this->assertStringContainsString("use Deicod\\WpConnectors\\OpenAiOauth\\Shared\\Http\\{Gr\xc3\xbc\xc3\x9f as Gr\xc3\xbcn};", $high_byte_battery, 'A high-byte group-use member and alias ride the same byte class.');
+        // The reserved vocabulary refuses beside the legal high bytes:
+        // the ASCII spellings' verdicts are unchanged at every seam.
+        foreach (array(
+            "<?php\nuse Deicod\\WpConnectors\\Shared\\Clock as self;\n",
+            "<?php\nuse Deicod\\WpConnectors\\Shared\\{Clock as self};\n",
+        ) as $reserved_alias) {
+            $refusal = $this->refusalOf(
+                fn() => WpConnectorsBuild::rewriteSharedNamespace($reserved_alias, 'OpenAiOauth', 'shared/src/Storage/HighByteStore.php'),
+                'A reserved alias must keep refusing: ' . var_export($reserved_alias, true), \RuntimeException::class
+            );
+            $this->assertStringContainsString('reserved', $refusal->getMessage());
+        }
+
         // The rewritten file must be valid PHP (provenance placement must not
         // precede the open tag / strict_types) and must load without output.
         // Scratch hygiene (t31-r3-11): the lint/load scratch matches no

@@ -285,9 +285,23 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              * must strip what the widened patterns now match), and
              * the member kind/alias parses in the group unroller.
              */
+            /*
+             * The LABEL byte class rides the ONE owner (OCR round 59,
+             * t31-ocr59-2): the \w classes below are ASCII-only in
+             * PCRE's byte mode, while PHP labels admit the high bytes
+             * — so a legal high-byte import ('use Foo\Grüß;') failed
+             * the class mid-name, matched nothing, and was INVISIBLE
+             * to this gate (the exact silent-false-negative class the
+             * r46-9 keyword census closed, one grammar member over).
+             * Every class that matches identifier bytes here — the
+             * statement pair, the group opening, and the member alias
+             * parse below — spells WP_CONNECTORS_LABEL_BYTES (bin/lib/
+             * plugin-tools.php, the census comment there listing every
+             * seam aligned).
+             */
             $matches = array();
             preg_match_all(
-                '/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[\w\\\\]+(?:\s+(?i:as)\s+(\w+))?\s*;/m',
+                '/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+([' . WP_CONNECTORS_LABEL_BYTES . ']+))?\s*;/m',
                 $code_view,
                 $matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -309,7 +323,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              */
             $group_matches = array();
             preg_match_all(
-                '/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[\w\\\\]+\s*\{/m',
+                '/^(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+\s*\{/m',
                 $code_view,
                 $group_matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -533,7 +547,7 @@ function wp_connectors_group_use_imports(string $prefix, string $body): array
         }
 
         $alias = '';
-        if (1 === preg_match('/^([\w\\\\]+)\s+(?i:as)\s+(\w+)$/', $member, $parts)) {
+        if (1 === preg_match('/^([' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+)\s+(?i:as)\s+([' . WP_CONNECTORS_LABEL_BYTES . ']+)$/', $member, $parts)) {
             $alias = $parts[2];
             $member = $parts[1];
         } elseif (1 !== preg_match('/^[\w\\\\]+$/', $member)) {

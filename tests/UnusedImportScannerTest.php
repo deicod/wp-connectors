@@ -481,6 +481,24 @@ FIXTURE
                 "<?php\nuse # hash\n Vendor\\Pkg\\DeadThree;\n",
                 1,
             ),
+            /*
+             * OCR round 59 (t31-ocr59-2): the label byte class rides
+             * the ONE owner. The \w classes are ASCII-only in PCRE's
+             * byte mode while PHP labels admit the high bytes, so a
+             * legal high-byte import failed the class mid-name and was
+             * INVISIBLE to the gate — a dead one silently passing
+             * (red at HEAD: the unused row answered 0), the exact
+             * silent-false-negative class the r46-9 keyword census
+             * closed, one grammar member over.
+             */
+            'unused high-byte import flags (t31-ocr59-2)' => array(
+                "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f;\n",
+                1,
+            ),
+            'used high-byte import does not flag (t31-ocr59-2)' => array(
+                "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f as Gr\xc3\xbcn;\n\$x = new Gr\xc3\xbcn();\n",
+                0,
+            ),
         );
     }
 

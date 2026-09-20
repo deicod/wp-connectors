@@ -11,6 +11,41 @@
 
 declare(strict_types=1);
 
+/*
+ * The PHP LABEL byte classes — the ONE owner of the label grammar every
+ * pattern seam that matches an identifier spells (OCR round 59,
+ * t31-ocr59-2): PHP labels admit the high bytes \x80-\xff in every
+ * position ('Grüß' is a legal class name — php -l accepts it in a name,
+ * a sub-segment, and an alias slot alike, verified on this engine), and
+ * the member-name grammar of bin/build.php's groupUseMemberGrammar()
+ * already spoke the full set while sibling seams of the same grammar
+ * spelled ASCII-only classes — a legal high-byte import failed those
+ * patterns, rode verbatim, and refused at the postcondition with the
+ * anonymous-survivor message instead of the rewrite the engine accepts
+ * it for. Every seam that matches label BYTES references these classes
+ * now — the census of aligned seams:
+ *
+ * - bin/build.php: the namespace-declaration tail, the use-statement
+ *   pattern's sub-segment tail and alias group, the alias-id extraction
+ *   the reserved-vocab oracle consults, the group-use member grammar's
+ *   alias shape and member NAME (the derivation source);
+ * - bin/check-conventions.php: the unused-import scanner's statement
+ *   patterns and member alias parse (the \w classes — ASCII in PCRE's
+ *   byte mode — that once left a high-byte import INVISIBLE to the
+ *   gate, the r46-9 silent-false-negative class);
+ * - here: the sibling pattern's continuation segment.
+ *
+ * bin/inspect-artifact.php, bin/lib/secret-scanner.php,
+ * bin/lint-php.php, and bin/scan-secrets.php carry NO label-class seam
+ * of this grammar (census-verified — their byte classes are slug, path,
+ * and token-literal spellings). The BOUNDARY lookarounds
+ * ((?<![A-Za-z0-9_]) / (?![A-Za-z0-9_])) stay the r46/r49 word-byte
+ * census on purpose: they guard where an ASCII family spelling ENDS, a
+ * different question from what a label may contain.
+ */
+const WP_CONNECTORS_LABEL_HEAD_BYTES = 'A-Za-z_\x80-\xff';
+const WP_CONNECTORS_LABEL_BYTES = 'A-Za-z0-9_\x80-\xff';
+
 /**
  * Strips docblock and line comments so checks only see functional code.
  *
@@ -345,7 +380,15 @@ function wp_connectors_family_sibling_pattern(array $excluded_tails)
      */
     $exclusion_lookahead = array() === $excluded ? '' : '(?!' . $separator . '(?:' . implode('|', $excluded) . '))';
 
-    return '/(?<![A-Za-z0-9_])' . $stem . '(?![A-Za-z0-9_])' . $exclusion_lookahead . '(?:' . $separator . '[A-Za-z_][A-Za-z0-9_]*)?/i';
+    /*
+     * The continuation segment spells the ONE label byte class (OCR
+     * round 59, t31-ocr59-2 — the census comment at
+     * WP_CONNECTORS_LABEL_* lists this seam): a sibling's next segment
+     * is a PHP label, and a high-byte one ('…\WpConnectors\Grüß') once
+     * truncated at the first high byte, reporting a name no segment
+     * spells.
+     */
+    return '/(?<![A-Za-z0-9_])' . $stem . '(?![A-Za-z0-9_])' . $exclusion_lookahead . '(?:' . $separator . '[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)?/i';
 }
 
 /**
