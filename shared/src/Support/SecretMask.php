@@ -267,11 +267,31 @@ final class SecretMask {
 	 * token merely precedes it ('x-authentication-scheme') stays
 	 * verbatim, the suffix bytes never spanning the segment.
 	 *
+	 * OCR round 57 (t31-ocr57-2, security — the flattened 'csrftoken'
+	 * twin): 'X-CSRFToken' — Django's canonical CSRF header spelling
+	 * (CSRF_HEADER_NAME, documented in Django's own CSRF chapter;
+	 * the cookie default is the bare 'csrftoken') — folds to judged
+	 * 'x-csrftoken', which matched no catalog entry and no suffix
+	 * ('csrftoken' ends in no listed suffix — its final segment is
+	 * the whole flattened token), so the session credential rendered
+	 * verbatim through every safe debug form while the hyphenated
+	 * twin 'X-Csrf-Token' masked via 'token' (driven at HEAD): the
+	 * exact covered-hyphenated/verbatim-flattened inconsistency
+	 * t31-ocr50-1 closed for 'X-ApiKey'. One member speaks every
+	 * delimiter spelling per the r50-1 boundary doctrine (the bare
+	 * token and every segment tail judge the same). The round's
+	 * sweep for other vendor-canonical flattened spellings found no
+	 * second member that meets the vendor-documented bar: the .NET
+	 * twin was considered and SKIPPED as spelled — 'antiforgerytoken'
+	 * is no vendor's header name, and the spelling .NET documents
+	 * ('__RequestVerificationToken') carries delimiters whose fold
+	 * judges the 'token' segment, already covered.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.

@@ -2482,6 +2482,39 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $this->assertStringContainsString('req-55', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
         }
         $this->assertFalse(SecretMask::is_sensitive_header_name('x-authentication-scheme'), 'The boundary twin stays verbatim — the suffix bytes never span the segment the class judges, the sibling included.');
+
+        /*
+         * OCR-round-57 pin (t31-ocr57-2 — the flattened 'csrftoken'
+         * twin): 'X-CSRFToken' is Django's canonical CSRF header
+         * spelling (CSRF_HEADER_NAME; the cookie default is the bare
+         * 'csrftoken'), and it folded to judged 'x-csrftoken' — no
+         * catalog entry, no suffix, the final segment the whole
+         * flattened token — so the session credential rendered
+         * verbatim through every safe debug form (red at HEAD)
+         * while the hyphenated twin 'X-Csrf-Token' masked via
+         * 'token': the exact inconsistency t31-ocr50-1 closed for
+         * 'X-ApiKey'. One member speaks every delimiter spelling
+         * (the r50-1 fold); the census names the .NET twin
+         * considered-and-skipped ('antiforgerytoken' is no vendor's
+         * header name; the documented '__RequestVerificationToken'
+         * spelling judges the 'token' segment, already covered).
+         */
+        $csrf_secret = FakeSecrets::accessToken();
+        foreach (array('X-CSRFToken', 'x-csrftoken', 'X_CsrfToken', 'x.csrftoken', 'CSRFToken', 'csrftoken') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — Django's own canonical CSRF header spelling, over every delimiter (red at HEAD: unmasked).");
+        }
+        $this->assertTrue(SecretMask::is_sensitive_header_name('X-Csrf-Token'), 'The hyphenated twin stays masked through the token suffix — the covered and flattened spellings answer one verdict now.');
+        $csrf_map = new HeaderMap(array(
+            'X-CSRFToken' => $csrf_secret,
+            'x-request-id' => 'req-57',
+        ));
+        foreach (array('dump' => print_r($csrf_map, true), 'serialize' => serialize($csrf_map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($csrf_secret, $rendered, "Django's 'X-CSRFToken' renders masked in the {$channel} channel — the covered twin cannot be the one CSRF spelling that leaks.");
+            $this->assertStringContainsString('req-57', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
+        }
+        foreach (array('X-Token-Count', 'x-csrftokenlog') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — a non-credential tail and bytes spanning the segment boundary are both outside the class.");
+        }
     }
 
     /* ---------------------------------------------------------------
