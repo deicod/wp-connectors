@@ -694,19 +694,34 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
          * VERBATIM, so any mechanical reformat — a line wrap, a
          * spacing change — reddened it with no behavioral defect,
          * the source-shape pin brittle to the layout it never owned.
-         * The pin owns the guarded spelling's TOKENS: every
-         * whitespace run collapses to one space on the haystack's
-         * side (the needle already spells single spaces), so a wrap
-         * or respacing stays green while a reorder, a rename, or a
-         * dropped guard still reddens. An aborted collapse answers
-         * '' and the contains-check fails loud — never a vacuous
-         * pass.
+         * The pin owns the guarded spelling's TOKENS. Since OCR
+         * round 60 (t31-ocr60-7) the tolerance rides the \s*-class
+         * PATTERN this repo's layout-tolerant pins already own (the
+         * BuildArtifactsTest t31-ocr16-15d idiom), never the
+         * collapse-to-one-space half measure: the collapse kept ONE
+         * space per run, so the zero-space needle failed against
+         * 'defined( 'ZipArchive::RDONLY' )' — this repo's own
+         * prevailing style (bootstrap.php writes 'is_dir(
+         * $shared_src )') — and a mechanical formatting pass would
+         * have reddened the pin over a behaviorally-neutral
+         * reformat, the exact brittleness t31-ocr29-10 set out to
+         * retire. The \s* classes tolerate ANY spacing (zero, one,
+         * a wrap) while a reorder, a rename, or a dropped guard
+         * still reddens; an aborted match answers 0 and the
+         * preg_match pin fails loud — never a vacuous pass.
          */
-        $normalized = (string) preg_replace('/\s+/', ' ', $source);
-        $this->assertStringContainsString(
-            "defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0",
-            $normalized,
-            'The zip reader must spell the open flag through the guard: RDONLY where the engine defines it, 0 on the libzip < 1.0.0 build corner — the bare constant fatals exactly those engines, no PHP version boundary (t31-ocr21-1; whitespace-insensitive per t31-ocr29-10).'
+        $guarded = "/defined\(\s*'ZipArchive::RDONLY'\s*\)\s*\?\s*ZipArchive::RDONLY\s*:\s*0/";
+        $this->assertSame(
+            1,
+            preg_match($guarded, $source),
+            'The zip reader must spell the open flag through the guard: RDONLY where the engine defines it, 0 on the libzip < 1.0.0 build corner — the bare constant fatals exactly those engines, no PHP version boundary (t31-ocr21-1; whitespace-insensitive per t31-ocr29-10, any spacing per t31-ocr60-7).'
+        );
+        // Construction-evident, the respaced leg: the repo-style
+        // spelling matches the same pattern the real source does.
+        $this->assertSame(
+            1,
+            preg_match($guarded, "defined( 'ZipArchive::RDONLY' ) ? ZipArchive::RDONLY : 0"),
+            'The pin tolerates the repo\'s own prevailing spacing — a mechanical reformat never reddens it (red at HEAD: the collapsed haystack kept one space per run and the zero-space needle failed this spelling).'
         );
     }
 }
