@@ -931,8 +931,22 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          */
         // Soundness: every PHP entry parses after independent
         // extraction (the extension judgment rides the one owner).
+        /*
+         * The extraction tree's mkdir owns its own verdict (OCR round
+         * 55, t31-ocr55-8 — the asserted-staging doctrine in the
+         * classifier's own row-channel shape): a failed mkdir once
+         * surfaces one line down as 'the independent extraction
+         * returned failure' — a SOUNDNESS misattribution over a
+         * staging failure, the exact class the reopen/extractTo/
+         * statIndex gates beside it exist to close. The staging
+         * refusal answers the row's FAIL naming its own channel,
+         * never the extraction verdict (the @ owns the engine's
+         * warning so the return is the only signal).
+         */
         $extract = $scratch['root'] . '/.extract';
-        mkdir($extract, 0755, true);
+        if (! is_dir($extract) && ! @mkdir($extract, 0755, true)) {
+            return array('class' => 'FAIL', 'why' => "the independent extraction tree {$extract} cannot be created — a staging failure, never a soundness verdict over a tree that never existed");
+        }
         try {
             $zip = new ZipArchive();
             /*
@@ -1086,7 +1100,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * the row under the WRONG owner — 'does not describe the
          * shipped zip' — never as the read's own staging failure.
          */
+        /*
+         * The checksum read owns its own verdict (OCR round 55,
+         * t31-ocr55-8 — the marker/owned-read shape the reads one
+         * line below ride): hash_file()'s false return once rode
+         * unchecked, an empty checksum FAILed the row as 'the
+         * sidecar does not describe the shipped zip' — the
+         * laundering class readMemberOrMarker() exists to close,
+         * answered at the read the row never owned. A false is the
+         * row's own FAIL naming the observation read, never a
+         * half-described-artifact verdict over bytes never hashed.
+         */
         $checksum = hash_file('sha256', $zipPath);
+        if (false === $checksum) {
+            return array('class' => 'FAIL', 'why' => "the shipped zip {$zipPath} cannot be hashed — a staging failure of the observation read, never the row's own verdict");
+        }
         $sidecar = $this->readMemberOrMarker($zipPath . '.sha256');
         if (null === $sidecar || '__UNREADABLE__' === $sidecar) {
             return array('class' => 'FAIL', 'why' => 'the shipped sidecar ' . (null === $sidecar ? 'is absent' : 'cannot be read') . ' — a staging failure of the observation read, never the row\'s own verdict');
