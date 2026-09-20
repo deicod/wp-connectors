@@ -986,7 +986,19 @@ final class HarnessCopyTreeTest extends TestCase
              * mid-loop): the heartbeat lands before the loop starts.
              */
             $spawn = array();
-            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' >' . escapeshellarg($heartbeat) . ' 2>&1 & echo $!', $spawn, $spawnExit);
+            /*
+             * The spawn sites carry NO dead result_code binding (OCR
+             * round 55, t31-ocr55-9, ONE census comment for this
+             * file's five spawn sites — here, the reap pin's two, the
+             * freeze pin's two): \$spawnExit was bound by reference
+             * and never read at any of them, a failed spawn already
+             * caught downstream by the assertGreaterThan(0) on the
+             * pid (the t31-ocr27-9 doctrine names the PID the
+             * staging verdict). The chosen shape is DROP — exec()'s
+             * &\$result_code is optional — applied at every site, so
+             * new spawn sites copy the binding-free spelling.
+             */
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' >' . escapeshellarg($heartbeat) . ' 2>&1 & echo $!', $spawn);
             $childPid = (int) trim((string) ($spawn[0] ?? ''));
             $this->assertGreaterThan(0, $childPid, 'The spawn must answer the child pid — a failed spawn is a staging failure, never a residue verdict (the t31-ocr27-9 doctrine).');
             /*
@@ -1244,7 +1256,7 @@ final class HarnessCopyTreeTest extends TestCase
         // failure's own shape — orphaned at spawn and reaped by init,
         // exactly the child the heartbeat assertSame path leaves.
         $spawned = array();
-        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('exit(0);') . ' >/dev/null 2>&1 & echo $!', $spawned, $spawnExit);
+        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('exit(0);') . ' >/dev/null 2>&1 & echo $!', $spawned);
         $shortPid = (int) trim((string) ($spawned[0] ?? ''));
         $this->assertGreaterThan(0, $shortPid, 'The spawn must answer the short-lived child pid — a failed spawn is a staging failure, never a reap verdict (the t31-ocr27-9 doctrine).');
         $reaped = false;
@@ -1261,7 +1273,7 @@ final class HarnessCopyTreeTest extends TestCase
         // The LIVE direction: a sleeping child — the looping child's
         // own shape — reads alive and dies by the same owner.
         $spawned = array();
-        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('sleep(30);') . ' >/dev/null 2>&1 & echo $!', $spawned, $spawnExit);
+        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('sleep(30);') . ' >/dev/null 2>&1 & echo $!', $spawned);
         $livePid = (int) trim((string) ($spawned[0] ?? ''));
         $this->assertGreaterThan(0, $livePid, 'The spawn must answer the sleeping child pid.');
         $alive = false;
@@ -1329,7 +1341,7 @@ final class HarnessCopyTreeTest extends TestCase
         $heartbeat = (string) tempnam(sys_get_temp_dir(), 'wpct-freeze-pin-');
         try {
             $spawned = array();
-            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('fwrite(STDOUT, "looping\n"); exit(70);') . ' >' . escapeshellarg($heartbeat) . ' 2>&1 & echo $!', $spawned, $spawnExit);
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('fwrite(STDOUT, "looping\n"); exit(70);') . ' >' . escapeshellarg($heartbeat) . ' 2>&1 & echo $!', $spawned);
             $diedPid = (int) trim((string) ($spawned[0] ?? ''));
             $this->assertGreaterThan(0, $diedPid, 'The spawn must answer the dying child pid — a failed spawn is a staging failure, never a freeze verdict (the t31-ocr27-9 doctrine).');
             $beat = '';
@@ -1364,7 +1376,7 @@ final class HarnessCopyTreeTest extends TestCase
         try {
             $script = '$log = ' . var_export($log, true) . '; while (true) { file_put_contents($log, ".", FILE_APPEND); usleep(50000); }';
             $spawned = array();
-            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' >/dev/null 2>&1 & echo $!', $spawned, $spawnExit);
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' >/dev/null 2>&1 & echo $!', $spawned);
             $livePid = (int) trim((string) ($spawned[0] ?? ''));
             $this->assertGreaterThan(0, $livePid, 'The spawn must answer the looping child pid.');
             $reached = false;
