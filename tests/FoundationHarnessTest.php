@@ -724,4 +724,74 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
             'The pin tolerates the repo\'s own prevailing spacing — a mechanical reformat never reddens it (red at HEAD: the collapsed haystack kept one space per run and the zero-space needle failed this spelling).'
         );
     }
+
+    /**
+     * OCR-round-65 pin (t31-ocr65-4): the bootstrap's Shared-fixture
+     * guard covers the PARTIAL checkout. The t31-ocr57-5 guard
+     * modeled two states — shared/src fully absent, fully present —
+     * but a sparse checkout or a mid-rebase worktree carries the
+     * DIRECTORY with one contract file missing: the autoloader
+     * registers, the unconditional requires run, and the fixture's
+     * implements clause resolves its interface at LOAD time through
+     * an autoloader that maps it to exactly the missing file — a
+     * whole-suite BOOTSTRAP fatal (every connector suite down) over
+     * the one checkout shape between the guard's two states. The
+     * requires gate on the INTERFACE FILES now (bootstrap.php's own
+     * census); this sim drives the REAL bootstrap in a child over a
+     * scratch checkout whose shared/src is copied MINUS
+     * Clock/ClockInterface.php — vendor/bin/harness symlinked to
+     * the real tree (the sim never copies the vendored SDK), the
+     * bootstrap itself copied as a real file so __DIR__ resolves
+     * INSIDE the scratch, no connectors/ directory (the glob's own
+     * empty answer). The probe script reads the degradation shape
+     * from WITHIN the booted engine: the missing piece's fixture
+     * class simply ABSENT (its require skipped — the per-test
+     * missing-fixture shape the guard documents) while the PRESENT
+     * half still loads through its own interface — per-file
+     * degradation, never all-or-nothing, never the fatal (red at
+     * HEAD: 'Interface ClockInterface not found', exit 255,
+     * driven).
+     */
+    public function testTheBootstrapSurvivesAPartialSharedCheckout()
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host cannot spawn child processes (exec/escapeshellarg in disable_functions) — the partial-checkout sim runs the real bootstrap in a child engine.');
+        }
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the sim links vendor/bin/harness into the scratch checkout instead of copying the vendored SDK.');
+        }
+        $repo = dirname(__DIR__);
+        $scratch = sys_get_temp_dir() . '/wpct-bootstrap-partial-' . uniqid('', true);
+        try {
+            /*
+             * The staging asserts its own landing (the t31-ocr53-9
+             * doctrine): a failed stage fails as staging, never as
+             * the boot verdict the child exists to answer.
+             */
+            $this->assertTrue(mkdir($scratch . '/tests', 0755, true), "staging: the scratch tests tree must create — a staging failure fails as staging, never as the boot verdict.");
+            $this->assertTrue(symlink($repo . '/vendor', $scratch . '/vendor'), "staging: the vendored SDK must link into the scratch — a staging failure fails as staging, never as the boot verdict.");
+            $this->assertTrue(symlink($repo . '/bin', $scratch . '/bin'), "staging: bin/ must link into the scratch (the bootstrap requires plugin-tools.php through it) — a staging failure fails as staging, never as the boot verdict.");
+            $this->assertTrue(symlink($repo . '/tests/harness', $scratch . '/tests/harness'), "staging: harness/ must link into the scratch — a staging failure fails as staging, never as the boot verdict.");
+            $this->assertTrue(copy($repo . '/tests/bootstrap.php', $scratch . '/tests/bootstrap.php'), "staging: the bootstrap must copy as a real file (a symlinked copy would resolve __DIR__ back into the live tree) — a staging failure fails as staging, never as the boot verdict.");
+            // The PARTIAL shared/src: the real tree's files, minus
+            // exactly the one interface the Clock fixture
+            // implements (copyTree is files-only — the shape's own
+            // owner, no link ever rides the real tree).
+            WpHarness::copyTree($repo . '/shared/src', $scratch . '/shared/src');
+            $this->assertFileExists($scratch . '/shared/src/Clock/ClockInterface.php', 'staging: the interface copy must land before the partial shape removes it — a failed copy is staging, never the boot verdict.');
+            $this->assertTrue(unlink($scratch . '/shared/src/Clock/ClockInterface.php'), 'staging: the interface file must remove — the partial-checkout shape is the staging this leg pins, and a failed removal answers as staging.');
+            $this->assertNotFalse(file_put_contents($scratch . '/tests/probe.php', '<?php
+require __DIR__ . "/bootstrap.php";
+echo class_exists("DeterministicClock") ? "CLOCK-PRESENT\n" : "CLOCK-ABSENT\n";
+echo class_exists("InMemoryTokenStorage") ? "TOKEN-PRESENT\n" : "TOKEN-ABSENT\n";
+'), 'staging: the probe script must write — a staging failure fails as staging, never as the boot verdict.');
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/tests/probe.php') . ' 2>&1', $output, $exit);
+            $rendered = implode("\n", $output);
+            $this->assertSame(0, $exit, "A PARTIAL shared/src boots the bootstrap clean — the missing interface degrades per-test, never a whole-suite bootstrap fatal (red at HEAD: 'Interface ClockInterface not found'). The child said: {$rendered}");
+            $this->assertStringContainsString('CLOCK-ABSENT', $rendered, 'The missing piece\'s fixture class is absent — its require skipped, the documented per-test missing-fixture shape for exactly the missing piece.');
+            $this->assertStringContainsString('TOKEN-PRESENT', $rendered, 'The PRESENT half still loads through its own present interface — the degradation is per-file, never all-or-nothing.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
 }

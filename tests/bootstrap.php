@@ -90,9 +90,39 @@ if ( is_dir( $shared_src ) ) {
 	 * predicted 'Interface ClockInterface not found' and boots
 	 * clean (exit 0) after the fix; the normal path guards true
 	 * and requires as before (suite green through the full check).
+	 *
+	 * The gates name the INTERFACE FILES, not the directory alone
+	 * (OCR round 65, t31-ocr65-4): the guard once modeled only the
+	 * two states fully-absent and fully-present shared/src, but a
+	 * PARTIAL checkout — directory present, one contract file
+	 * missing (a sparse checkout, a mid-rebase worktree) —
+	 * registered the autoloader and executed the requires anyway:
+	 * the fixtures' implements clauses resolve their interfaces at
+	 * LOAD time, the autoloader maps them to exactly the missing
+	 * files, and the bootstrap FATALED — a whole-suite fatal over
+	 * the one checkout shape between the two modeled states,
+	 * defeating the guard's purpose (the fixtures' remaining Shared
+	 * references — InstantArithmetic, StoredGrant, HeaderMap,
+	 * AccessTokenSet — ride method bodies, resolved lazily at call
+	 * time, so the implements clauses ARE the load-time closure;
+	 * census-verified). Each require gates on its own interface
+	 * file now: a partial checkout degrades to the documented
+	 * per-test missing-fixture shape for exactly the missing
+	 * pieces, never all-or-nothing and never a bootstrap fatal.
+	 * Regression: driven END-TO-END and pinned in
+	 * FoundationHarnessTest — a scratch checkout whose shared/src
+	 * is copied MINUS Clock/ClockInterface.php runs this bootstrap
+	 * in a child and boots clean (exit 0, the Clock fixture
+	 * skipped, the Token fixture loading through its PRESENT
+	 * interface); red at HEAD with the 'Interface ClockInterface
+	 * not found' fatal.
 	 */
-	require_once __DIR__ . '/harness/DeterministicClock.php';
-	require_once __DIR__ . '/harness/InMemoryTokenStorage.php';
+	if ( file_exists( $shared_src . '/Clock/ClockInterface.php' ) ) {
+		require_once __DIR__ . '/harness/DeterministicClock.php';
+	}
+	if ( file_exists( $shared_src . '/Grant/TokenStorageInterface.php' ) ) {
+		require_once __DIR__ . '/harness/InMemoryTokenStorage.php';
+	}
 }
 
 require_once __DIR__ . '/harness/wp-stubs.php';
