@@ -367,24 +367,28 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $path = realpath(__DIR__ . '/fixtures/sweep-corruption/invalid-utf8-byte.txt');
         $this->assertNotFalse($path, 'The corruption fixture must exist.');
 
+        $failed = null;
         try {
             (new \ReflectionMethod($this, 'numberedLines'))->invoke($this, $path);
-            $this->fail('A file the line reader cannot decode must fail loudly, never sweep as zero lines.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString('invalid-utf8-byte.txt', $e->getMessage());
-            $this->assertStringContainsString('PCRE abort', $e->getMessage());
+            $failed = $e->getMessage();
         }
+        $this->assertNotNull($failed, 'A file the line reader cannot decode must fail loudly, never sweep as zero lines.');
+        $this->assertStringContainsString('invalid-utf8-byte.txt', $failed);
+        $this->assertStringContainsString('PCRE abort', $failed);
     }
 
     public function testAnUnreadableFileFailsTheLineReaderLoudly(): void
     {
+        $failed = null;
         try {
             (new \ReflectionMethod($this, 'numberedLines'))->invoke($this, __DIR__ . '/fixtures/sweep-corruption/vanished-file.php');
-            $this->fail('A file the reader cannot open must fail loudly, never sweep as one contentless line.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString('cannot read', $e->getMessage());
-            $this->assertStringContainsString('vanished-file.php', $e->getMessage());
+            $failed = $e->getMessage();
         }
+        $this->assertNotNull($failed, 'A file the reader cannot open must fail loudly, never sweep as one contentless line.');
+        $this->assertStringContainsString('cannot read', $failed);
+        $this->assertStringContainsString('vanished-file.php', $failed);
     }
 
     /**
@@ -675,13 +679,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $fixture = realpath(__DIR__ . '/fixtures/sweep-corruption/namespace-multiline.php');
         $this->assertNotFalse($fixture, 'The namespace-multiline fixture must exist.');
 
+        $failed = null;
         try {
             $gate->invoke($this, $fixture);
-            $this->fail('A namespace spelling broken across lines outside a rewritable statement must fail the gate.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString('namespace-multiline.php:24', $e->getMessage());
-            $this->assertStringContainsString("return 'Deicod\\WpConnectors\\", $e->getMessage());
+            $failed = $e->getMessage();
         }
+        $this->assertNotNull($failed, 'A namespace spelling broken across lines outside a rewritable statement must fail the gate.');
+        $this->assertStringContainsString('namespace-multiline.php:24', $failed);
+        $this->assertStringContainsString("return 'Deicod\\WpConnectors\\", $failed);
 
         $offenders = array(
             'comment-interrupted use' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod/* pick one */\\WpConnectors\\Shared\\Clock;\ninterface InterruptedFixture\n{\n}\n",
@@ -730,13 +736,37 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                     file_put_contents($scratch, $source),
                     "The offender fixture ({$label}) must land at {$scratch} — a failed write runs the gate over EMPTY content and the leg fails misleadingly, never over the write that failed."
                 );
+                /*
+                 * The failure sentinel records OUTSIDE the catch (the
+                 * glm29-16 discipline, applied file-wide by
+                 * t31-ocr61-3): a fail() sentinel inside a try whose
+                 * catch swallows AssertionFailedError degrades — a
+                 * gate that wrongly PASSES never reaches the catch,
+                 * the sentinel's own throw is caught by the very
+                 * catch meant for the gate, and a wrongly-failing
+                 * gate reports the catch's shape instead of the
+                 * sentinel's clear refusal. Every end-to-end leg that
+                 * drives a gate expecting failure now records the
+                 * caught message and asserts it outside the catch —
+                 * this loop and its multiline sibling above, the two
+                 * reader-failure pins, the static-multiline,
+                 * planted-clock, .PHP-casing, vtab (environment and
+                 * family), wp-reach, provider-name, ref_array, and
+                 * class+trait legs; the file's earlier
+                 * correctly-shaped legs
+                 * (testAReadableButUnreadablePathFailsTheLineReaderLoudly,
+                 * the PCRE burner, the CR-lines and bad-UTF-8
+                 * diagnostic pins) already owned the idiom.
+                 */
+                $failed = null;
                 try {
                     $gate->invoke($this, $scratch);
-                    $this->fail("A family reference the rewrite does not own ({$label}) must fail the gate, never ride the old every-use-statement whitelist.");
                 } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-                    $this->assertStringContainsString('Deicod\\WpConnectors', $e->getMessage(), "The refusal must name the reference ({$label}).");
-                    $this->assertStringContainsString(basename($scratch), $e->getMessage(), "The refusal must name the file ({$label}).");
+                    $failed = $e->getMessage();
                 }
+                $this->assertNotNull($failed, "A family reference the rewrite does not own ({$label}) must fail the gate, never ride the old every-use-statement whitelist.");
+                $this->assertStringContainsString('Deicod\\WpConnectors', $failed, "The refusal must name the reference ({$label}).");
+                $this->assertStringContainsString(basename($scratch), $failed, "The refusal must name the file ({$label}).");
             } finally {
                 unlink($scratch);
             }
@@ -1120,13 +1150,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $fixture = realpath(__DIR__ . '/fixtures/sweep-corruption/static-multiline.php');
         $this->assertNotFalse($fixture, 'The multiline-static fixture must exist.');
 
+        $failed = null;
         try {
             $gate->invoke($this, $fixture);
-            $this->fail('A multiline static-property spelling must fail the actual gate, never pass line-by-line.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString('static-multiline.php:14', $e->getMessage());
-            $this->assertStringContainsString('private static', $e->getMessage());
+            $failed = $e->getMessage();
         }
+        $this->assertNotNull($failed, 'A multiline static-property spelling must fail the actual gate, never pass line-by-line.');
+        $this->assertStringContainsString('static-multiline.php:14', $failed);
+        $this->assertStringContainsString('private static', $failed);
 
         // The legal statics of a real swept file stay clean through the
         // same code path (Url.php spells no statics at all; HeaderMap's
@@ -1235,13 +1267,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $fixture = realpath(__DIR__ . '/fixtures/sweep-corruption/planted-clock.php');
         $this->assertNotFalse($fixture, 'The planted-clock fixture must exist.');
 
+        $failed = null;
         try {
             $gate->invoke($this, $fixture);
-            $this->fail('A direct time() call inside a swept file must fail the gate with file:line.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString('planted-clock.php:14', $e->getMessage());
-            $this->assertStringContainsString('time()', $e->getMessage());
+            $failed = $e->getMessage();
         }
+        $this->assertNotNull($failed, 'A direct time() call inside a swept file must fail the gate with file:line.');
+        $this->assertStringContainsString('planted-clock.php:14', $failed);
+        $this->assertStringContainsString('time()', $failed);
 
         $gate->invoke($this, realpath(__DIR__ . '/../shared/src/Clock/SystemClock.php'));
     }
@@ -1463,13 +1497,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
             // the plugin-tree walkers drive it): a planted clock read
             // inside the .PHP-spelled file still fails the gate.
             $gate = new \ReflectionMethod($this, 'assertNoDirectEnvironmentAccess');
+            $failed = null;
             try {
                 $gate->invoke($this, $scratch . '/ClockMath.PHP');
-                $this->fail('A direct clock read inside a .PHP-spelled file must fail the gate — the refusal doctrine never blinds the classifier.');
             } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-                $this->assertStringContainsString('ClockMath.PHP', $e->getMessage());
-                $this->assertStringContainsString('time()', $e->getMessage());
+                $failed = $e->getMessage();
             }
+            $this->assertNotNull($failed, 'A direct clock read inside a .PHP-spelled file must fail the gate — the refusal doctrine never blinds the classifier.');
+            $this->assertStringContainsString('ClockMath.PHP', $failed);
+            $this->assertStringContainsString('time()', $failed);
 
             // Clean direction through the same gate, and the canonical
             // spelling collects normally beside the note (t31-r2-18).
@@ -1847,13 +1883,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
          * as a terminator and the diagnostic named line 4).
          */
         $env_gate = new \ReflectionMethod($this, 'assertNoDirectEnvironmentAccess');
+        $failed = null;
         try {
             $env_gate->invoke($this, $fixture);
-            $this->fail('The planted clock read must fail the environment gate at all.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString('vtab-line-drift.php:3', $e->getMessage(), 'The diagnostic counts only the terminators the tokenizer counts — the \\v byte on line 2 is whitespace, never a line break (red at HEAD: line 4).');
-            $this->assertStringContainsString('time()', $e->getMessage(), 'The excerpt is the match\'s own line.');
+            $failed = $e->getMessage();
         }
+        $this->assertNotNull($failed, 'The planted clock read must fail the environment gate at all.');
+        $this->assertStringContainsString('vtab-line-drift.php:3', $failed, 'The diagnostic counts only the terminators the tokenizer counts — the \\v byte on line 2 is whitespace, never a line break (red at HEAD: line 4).');
+        $this->assertStringContainsString('time()', $failed, 'The excerpt is the match\'s own line.');
 
         /*
          * The reader twin: the \v byte stays INSIDE line 2 (the
@@ -1875,13 +1913,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
          * wore text from the middle of line 2.
          */
         $family_gate = new \ReflectionMethod($this, 'assertFamilyReferencesStayRewritable');
+        $failed = null;
         try {
             $family_gate->invoke($this, $fixture);
-            $this->fail('The sibling docblock reference must fail the family gate at all.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString('vtab-line-drift.php:4', $e->getMessage(), 'The family gate reports the token-derived line.');
-            $this->assertStringContainsString('Deicod\\WpConnectors\\Zai\\Api', $e->getMessage(), 'The excerpt is the docblock the line names — never the post-\\v fragment the \\R reader once handed the lookup (red at HEAD).');
+            $failed = $e->getMessage();
         }
+        $this->assertNotNull($failed, 'The sibling docblock reference must fail the family gate at all.');
+        $this->assertStringContainsString('vtab-line-drift.php:4', $failed, 'The family gate reports the token-derived line.');
+        $this->assertStringContainsString('Deicod\\WpConnectors\\Zai\\Api', $failed, 'The excerpt is the docblock the line names — never the post-\\v fragment the \\R reader once handed the lookup (red at HEAD).');
     }
 
     /**
@@ -2081,17 +2121,19 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $wpFixture = realpath(__DIR__ . '/fixtures/sweep-corruption/wp-reach-multiline.php');
         $this->assertNotFalse($wpFixture, 'The multiline WP-reach fixture must exist.');
 
+        $failed = null;
         try {
             $this->assertPatternAbsentWholeFile(
                 $wpFixture,
                 self::WP_TOKEN_PATTERN,
                 'WordPress reach inside shared/ (WordPress is reached only through the ports)'
             );
-            $this->fail('A WordPress reach spelled across lines must fail the actual gate, never pass line-by-line.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString('wp-reach-multiline.php:16', $e->getMessage());
-            $this->assertStringContainsString('$saved = __', $e->getMessage());
+            $failed = $e->getMessage();
         }
+        $this->assertNotNull($failed, 'A WordPress reach spelled across lines must fail the actual gate, never pass line-by-line.');
+        $this->assertStringContainsString('wp-reach-multiline.php:16', $failed);
+        $this->assertStringContainsString('$saved = __', $failed);
 
         // Clean direction through the same gate: a real swept source
         // with no WordPress reach passes.
@@ -2104,17 +2146,19 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
         $providerFixture = realpath(__DIR__ . '/fixtures/sweep-corruption/provider-name.php');
         $this->assertNotFalse($providerFixture, 'The provider-name fixture must exist.');
 
+        $failed = null;
         try {
             $this->assertPatternAbsentWholeFile(
                 $providerFixture,
                 $this->providerNamePattern(),
                 'Provider name in the provider-neutral shared source (provider config belongs to the per-plugin directories)'
             );
-            $this->fail('A planted provider name must fail the provider gate.');
         } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-            $this->assertStringContainsString('provider-name.php:15', $e->getMessage());
-            $this->assertStringContainsString('claude', $e->getMessage());
+            $failed = $e->getMessage();
         }
+        $this->assertNotNull($failed, 'A planted provider name must fail the provider gate.');
+        $this->assertStringContainsString('provider-name.php:15', $failed);
+        $this->assertStringContainsString('claude', $failed);
 
         // Clean direction: the provider-neutral real source passes the
         // same gate.
@@ -2179,17 +2223,19 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 file_put_contents($scratch, "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class RefArrayFixture\n{\n    public function fan_out(): void\n    {\n        apply_filters_ref_array( 'shared_hook', array( 1 ) );\n    }\n}\n"),
                 "The ref_array twin fixture must land at {$scratch} — an empty file never trips the gate and the leg fails as 'must fail', never over the write."
             );
+            $failed = null;
             try {
                 $this->assertPatternAbsentWholeFile(
                     $scratch,
                     self::WP_TOKEN_PATTERN,
                     'WordPress reach inside shared/ (WordPress is reached only through the ports)'
                 );
-                $this->fail('A _-suffixed twin of a banned stem must fail the actual gate, never ride the \\b boundary past it.');
             } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-                $this->assertStringContainsString('apply_filters_ref_array', $e->getMessage());
-                $this->assertStringContainsString(basename($scratch), $e->getMessage());
+                $failed = $e->getMessage();
             }
+            $this->assertNotNull($failed, 'A _-suffixed twin of a banned stem must fail the actual gate, never ride the \\b boundary past it.');
+            $this->assertStringContainsString('apply_filters_ref_array', $failed);
+            $this->assertStringContainsString(basename($scratch), $failed);
         } finally {
             unlink($scratch);
         }
@@ -2334,13 +2380,15 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
                 file_put_contents($scratch . '/Mate.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass Mate\n{\n}\ntrait MateHelpers\n{\n}\n"),
                 "The class+trait fixture must land at {$scratch}/Mate.php — without both types the leg's 'exactly one type' refusal never fires."
             );
+            $failed = null;
             try {
                 $gate->invoke($this, $scratch . '/Mate.php', 'Mate.php');
-                $this->fail('A class+trait file must fail one-type-per-file now that the vocabulary sees traits.');
             } catch (\PHPUnit\Framework\AssertionFailedError $e) {
-                $this->assertStringContainsString('exactly one type', $e->getMessage());
-                $this->assertStringContainsString('Mate.php', $e->getMessage());
+                $failed = $e->getMessage();
             }
+            $this->assertNotNull($failed, 'A class+trait file must fail one-type-per-file now that the vocabulary sees traits.');
+            $this->assertStringContainsString('exactly one type', $failed);
+            $this->assertStringContainsString('Mate.php', $failed);
         } finally {
             WpHarness::releaseScratch($scratch);
         }
