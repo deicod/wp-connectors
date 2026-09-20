@@ -6,6 +6,44 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 68)
+
+Sixty-eighth OCR round (61/61 fully complete): 3 findings, driver
+accepts all — two numbered commits t31-ocr68-1 and t31-ocr68-3 (one
+per accepted finding) and ONE REFUTED AT HEAD with no commit
+(t31-ocr68-2, the number preserved per the r42 shape), plus this docs
+record, the full offline check green after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10→3→6→3→5→4→5→5→3.
+Round 68 answered NEW findings, so the OCR phase continues per plan.
+Suite 1779 → 1779 tests, 47120 → 47124 assertions, 3 skipped
+unchanged (deltas +0/+3, +0/+1, every one measured from output). The
+round's shape: three doctrine stragglers — the \b label-class
+straggler at the dangling-alias probe (fixed), the strtolower locale
+fold at the open-tag probe (REFUTED: the folded 'php' vocabulary
+carries no dotted-I byte for any tr_* fold to touch), and the
+root-relative Windows-absolute spelling the platform gate missed.
+
+- **The dangling-alias probe riding PCRE's ASCII \b
+  (t31-ocr68-1, bug:medium; bin/build.php, tests/
+  BuildArtifactsTest.php)** — in byte mode every high byte is a
+  non-word byte, so a legal label byte before an 'as' tail
+  ('{Shared\Grüas}', php -l-legal input) matched /\bas\s*$/i and the
+  build falsely refused it as a dangling alias (driven red at HEAD).
+  The boundary rides the label-class lookbehind now (the t31-ocr60-1
+  doctrine's straggler); every non-label byte before the tail still
+  refuses, and the high-byte spelling constructs and rewrites.
+- **The Windows-absolute gate missing the root-relative spelling
+  (t31-ocr68-3, bug:low; tests/harness/WpHarness.php, tests/
+  HarnessCopyTreeTest.php)** — a single leading backslash
+  ('\Temp\dst') is absolute on the host it names (resolved against
+  the current drive's root) and matched neither the drive-letter
+  shape nor the UNC double-backslash, so the non-POSIX walk judged
+  '<cwd>/Temp/dst' while the landing resolved at the drive root. The
+  gate owns the leading-backslash class of any count now, the
+  refusal naming all three spellings; the POSIX host keeps the
+  spelling relative (driven: it lands under the cwd, never a false
+  platform refusal).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 67)
 
 Sixty-seventh OCR round (61/61 fully complete): 5 findings, driver
