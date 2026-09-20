@@ -6,6 +6,76 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 57)
+
+Fifty-seventh OCR round (61/61 fully complete): 5 findings. Driver
+accepts all. 5 numbered commits t31-ocr57-1..5 (one per finding),
+plus this docs record, the full offline check green after every
+commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5.
+Round 57 answered NEW findings, so the OCR phase continues per
+plan. Suite 1730 → 1731 tests, 46880 → 46916 assertions, 3 skipped
+unchanged.
+
+- **The dot-segment gap (t31-ocr57-1, bug:medium;
+  shared/src/Http/Url.php)** — the WHATWG-differential screen family
+  had no path-state dot-segment member: '/a/./b' and '/a/../b'
+  stored verbatim while every WHATWG consumer resolves them ('..'
+  clamping at the root, a trailing dot segment appending '/'), the
+  r46-5 census claim falsified by its own uncovered member. The
+  Standard's exact algorithm verified at the source first (both %2e
+  spellings included; the opaque-path carve-out unreachable here —
+  every admitted scheme is special). Dot segments refuse with the
+  family's own vocabulary, never resolve silently. Driven: nine
+  spellings through both VOs, the dots-inside-segments and no-path
+  controls green.
+- **The flattened 'csrftoken' credential twin (t31-ocr57-2,
+  security:medium; shared/src/Support/SecretMask.php)** —
+  'X-CSRFToken', Django's canonical CSRF header spelling, folded to
+  a judged name matching no screen while the hyphenated twin masked
+  via 'token' — the exact ocr50-1 covered-hyphenated/
+  verbatim-flattened inconsistency. One member speaks every
+  delimiter spelling; the sweep found no second vendor-canonical
+  member ('antiforgerytoken' considered-and-skipped as spelled, the
+  census names it). Driven: six spellings masked (red at HEAD),
+  both render channels, the neighbors verbatim.
+- **The symlink diagnostic's own uncaught fatal (t31-ocr57-3,
+  bug:low; bin/lint-php.php)** — the no-symlinks refusal row read
+  its target through a bare getLinkTarget(), whose RuntimeException
+  (link gone between yield and readlink, NFS ESTALE) escaped the
+  walk's UnexpectedValueException-only fence as an uncaught fatal —
+  the exact class the r30-3 fence converts into a counted refusal —
+  and whose false return degraded the target to ''. The read owns
+  its shapes: both degrade to the counted refusal naming the
+  unreadable target. Construction-evident (the race window owned
+  end-to-end by the spawned child — the census states it); the
+  readable-link battery stays the green control.
+- **The stored-vs-validated spelling divergence (t31-ocr57-4,
+  maintainability:low; shared/src/Http/HttpRequest.php,
+  shared/src/Http/Url.php)** — HttpRequest stored the caller's
+  bytes while parse_validated() judges the r56-2 edge-stripped
+  spelling, so an accepted edge-spaced URL carried url() bytes no
+  screen judged with redacted_url() derived from a different
+  spelling — the raw/derived divergence the agreement doctrine
+  refuses. The stored spelling is the validated spelling: the §4.1
+  step-1 strip rides its ONE owner (Url::
+  strip_edge_control_or_space()) and HttpRequest normalizes before
+  storing, the docblock stating the stored-form contract. Driven:
+  url() returns the stripped spelling (red at HEAD), agreement
+  holds, clean URLs store byte-exact.
+- **The bootstrap guard's modeled-but-fatal shape (t31-ocr57-5,
+  maintainability:low; tests/bootstrap.php)** — the Shared
+  autoloader's is_dir() guard models a checkout without shared/src,
+  but the two harness fixtures implementing that namespace's
+  interfaces (DeterministicClock, InMemoryTokenStorage) loaded
+  unconditionally — in exactly the modeled scenario the require
+  fatals ('Interface not found') instead of degrading. The two
+  requires ride the guard (the absent-checkout shape stays
+  bootable, PHPUnit reporting the missing fixtures per-test); the
+  rest stay unconditional by census. Driven out-of-band: the
+  modeled scratch checkout fatals at the pre-fix line 79 and boots
+  clean after.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 56)
 
 Fifty-sixth OCR round (61/61 fully complete): 3 findings — the NEW
