@@ -287,11 +287,41 @@ final class SecretMask {
 	 * ('__RequestVerificationToken') carries delimiters whose fold
 	 * judges the 'token' segment, already covered.
 	 *
+	 * OCR round 61 (t31-ocr61-2, security — the HMAC-material
+	 * suffix): 'signature' is the final token of the webhooks' own
+	 * credential-material headers — Stripe's 'Stripe-Signature'
+	 * (webhook signing), GitHub's 'X-Hub-Signature' and its SHA-256
+	 * variant 'X-Hub-Signature-256', the generic 'X-Signature',
+	 * Google's 'X-Goog-Signature' — and it matched neither catalog
+	 * nor suffix, so the credential-derived HMAC material rendered
+	 * verbatim through every safe debug form (driven at HEAD): the
+	 * r12-4/ocr15-1 leak class under spellings the vendors document
+	 * themselves. One member speaks every delimiter spelling per the
+	 * r50-1 boundary doctrine (the bare token and every segment tail
+	 * judge the same); the 'signature-key' shapes need no member of
+	 * their own (every '…-signature-key' ends '-key', the generic
+	 * tier owns them); no flattened glued twin joins (no vendor
+	 * spells 'XSignature' — every motivating header hyphenates, the
+	 * r55-1 'authentication' treatment). The '-256' VARIANT rides
+	 * its own two-token entry: its fold leaves the judged final
+	 * segment '256', a token no credential name spells, so the tail
+	 * WITH the variant is judged whole — the same final-segment
+	 * boundary, one entry longer. The round's sweep for adjacent
+	 * vendor-documented credential material considered the
+	 * HTTP-signatures 'Digest' twin and SKIPPED it: RFC 3230's
+	 * value is an integrity digest of the body it rides WITH
+	 * (computable from that body, secret-free), not
+	 * credential-DERIVED material — the bar every member above
+	 * meets. No non-credential '-signature' final token is known
+	 * (a name-final token PRECEDING the member — 'x-signature-count'
+	 * — stays verbatim by the boundary, the suffix bytes never
+	 * spanning the segment).
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'signature', 'signature-256' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.

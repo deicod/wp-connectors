@@ -2580,6 +2580,43 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         foreach (array('X-Token-Count', 'x-csrftokenlog') as $spelling) {
             $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — a non-credential tail and bytes spanning the segment boundary are both outside the class.");
         }
+
+        /*
+         * OCR-round-61 pin (t31-ocr61-2 — the HMAC-material suffix):
+         * 'signature' is the final token of the webhooks' own
+         * credential-material headers — Stripe's 'Stripe-Signature',
+         * GitHub's 'X-Hub-Signature' and its SHA-256 variant
+         * 'X-Hub-Signature-256', the generic 'X-Signature', Google's
+         * 'X-Goog-Signature' — and it matched neither catalog nor
+         * suffix, so the credential-derived HMAC material rendered
+         * verbatim through every safe debug form (red at HEAD). One
+         * member speaks every delimiter spelling (the r50-1 fold);
+         * the '-256' variant rides its own two-token entry (its
+         * judged final segment is '256', a token no credential name
+         * spells — the tail-with-variant is judged whole, the same
+         * final-segment boundary one entry longer); the round's sweep
+         * considered the HTTP-signatures 'Digest' twin and SKIPPED it
+         * (an integrity digest of the body it rides with is
+         * secret-free — not credential-derived material, the bar
+         * every member meets); no flattened glued twin joins (every
+         * motivating header hyphenates); and the boundary keeps its
+         * charge below.
+         */
+        $signature_secret = FakeSecrets::accessToken();
+        foreach (array('Stripe-Signature', 'X-Hub-Signature', 'X-Hub-Signature-256', 'X-Signature', 'X-Goog-Signature', 'signature', 'x_signature', 'stripe.signature') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — the webhooks' own documented HMAC-material headers, over every delimiter (red at HEAD: verbatim).");
+        }
+        $signature_map = new HeaderMap(array(
+            'Stripe-Signature' => $signature_secret,
+            'x-request-id' => 'req-61',
+        ));
+        foreach (array('dump' => print_r($signature_map, true), 'serialize' => serialize($signature_map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($signature_secret, $rendered, "The 'Stripe-Signature' HMAC material renders masked in the {$channel} channel (red at HEAD: verbatim) — a webhook's signing material is credential-derived, the r12-4 leak class under the vendors' own spelling.");
+            $this->assertStringContainsString('req-61', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
+        }
+        foreach (array('x-signature-count', 'x-signature-timestamp') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — a name-final non-credential token PRECEDES the member, never rides it, and the suffix bytes never span the segment the class judges.");
+        }
     }
 
     /* ---------------------------------------------------------------
