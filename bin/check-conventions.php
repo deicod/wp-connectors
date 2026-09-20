@@ -361,10 +361,21 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              * spelling the rewriter's own class names, the fence the
              * one errand keeper (a one-line 'class C { use T; }' is
              * matched AND fenced, never anchor-blinded).
+             *
+             * The class carries the SEPARATOR too (OCR round 64,
+             * t31-ocr64-2): the shared statement-start anchor this
+             * census claims to ride — build.php's own one-owner
+             * spelling, t31-ocr49-3 over the t31-ocr60-3 byte class —
+             * refuses label byte AND namespace separator, and the
+             * patterns above spelled only the label half, so 'use
+             * Foo\use Bar;' matched at the SECOND use (a backslash
+             * runs into it) and raised a phantom for Bar. All three
+             * statement patterns ride the FULL class now — the
+             * premise this comment already stated, made true.
              */
             $matches = array();
             preg_match_all(
-                '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+([' . WP_CONNECTORS_LABEL_BYTES . ']+))?\s*(?:;|\?>)/',
+                '/(?<![\\\\' . WP_CONNECTORS_LABEL_BYTES . '\\\\])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+([' . WP_CONNECTORS_LABEL_BYTES . ']+))?\s*(?:;|\?>)/',
                 $code_view,
                 $matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -386,7 +397,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              */
             $group_matches = array();
             preg_match_all(
-                '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+\s*\{/',
+                '/(?<![\\\\' . WP_CONNECTORS_LABEL_BYTES . '\\\\])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+\s*\{/',
                 $code_view,
                 $group_matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE
@@ -404,7 +415,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              */
             $comma_matches = array();
             preg_match_all(
-                '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_BYTES . ']+)?\s*,/',
+                '/(?<![\\\\' . WP_CONNECTORS_LABEL_BYTES . '\\\\])(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]+(?:\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_BYTES . ']+)?\s*,/',
                 $code_view,
                 $comma_matches,
                 PREG_SET_ORDER | PREG_OFFSET_CAPTURE

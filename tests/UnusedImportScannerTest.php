@@ -737,6 +737,32 @@ FIXTURE
                 "<?php//note\nuse Vendor\\Glued\\Widget;\n",
                 0,
             ),
+            /*
+             * OCR round 64 (t31-ocr64-2): the r63-1 lookbehind guarded
+             * label bytes only, but the shared statement-start anchor
+             * these patterns' census comments claim to ride (build.
+             * php's own spelling since t31-ocr49-3, the byte class
+             * the LABEL_BYTES owner derived at t31-ocr60-3) includes
+             * the namespace separator — 'use Foo\use Bar;' matched at
+             * the SECOND use (a backslash precedes it) and raised a
+             * phantom for Bar (red at HEAD: 1 plain, 2 comma — both
+             * members unrolled from the phantom opening — 1 group).
+             * All three statement patterns ride the FULL shared class
+             * now — the premise the r63-1 comment already stated,
+             * made true.
+             */
+            'glued "use Foo\\use Bar;" names no import, no phantom (t31-ocr64-2)' => array(
+                "<?php\nuse Vendor\\Live\\use Bar;\n",
+                0,
+            ),
+            'glued comma-list "use Foo\\use Bar, Baz;" names no import (t31-ocr64-2)' => array(
+                "<?php\nuse Vendor\\Live\\use Bar, Baz;\n",
+                0,
+            ),
+            'glued group "use Foo\\use Bar\\{X};" names no import (t31-ocr64-2)' => array(
+                "<?php\nuse Vendor\\Live\\use Bar\\{X};\n",
+                0,
+            ),
         );
     }
 
