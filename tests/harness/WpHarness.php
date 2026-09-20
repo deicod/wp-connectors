@@ -904,8 +904,31 @@ final class WpHarness
          * belongs in scratch or nowhere.
          */
         $plant_base = $base;
-        $temp_real = self::posix_comparison_vocabulary((string) realpath(sys_get_temp_dir()));
-        $base_real = self::posix_comparison_vocabulary((string) realpath($base));
+        /*
+         * realpath()'s false is FALSE, never '' (OCR round 55,
+         * t31-ocr55-2 — the unmeasured doctrine's own bypass): the
+         * fence once read (string) realpath(), and a failed realpath
+         * of the TEMP ROOT (open_basedir excluding temp, a removed
+         * TMPDIR) cast to '' made the prefix '$temp_real . '/' read
+         * as '/' — strpos($base_real, '/') === 0 for EVERY absolute
+         * base, the outer condition short-circuited false, and the
+         * inner @stat guard (the conservative unmeasured arm, never
+         * reached) was bypassed entirely: the probe planted at $base
+         * — OUTSIDE scratch, the exact r40-5 judged-tree residue this
+         * fence exists to prevent, opened through the fence's own
+         * vocabulary. A realpath that cannot resolve answers the
+         * conservative UNMEASURED verdict now (uncached, the r38-2
+         * doctrine), the temp root and the base alike: an
+         * unresolvable spelling names no place the scratch
+         * representative derivation can trust.
+         */
+        $temp_resolved = realpath(sys_get_temp_dir());
+        $base_resolved = realpath($base);
+        if (false === $temp_resolved || false === $base_resolved) {
+            return false;
+        }
+        $temp_real = self::posix_comparison_vocabulary((string) $temp_resolved);
+        $base_real = self::posix_comparison_vocabulary((string) $base_resolved);
         if ($base_real !== $temp_real && 0 !== strpos($base_real, $temp_real . '/')) {
             $temp_stat = @stat(sys_get_temp_dir());
             if (false === $temp_stat || (string) $temp_stat['dev'] !== $volume) {

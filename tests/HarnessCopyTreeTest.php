@@ -672,6 +672,101 @@ final class HarnessCopyTreeTest extends TestCase
     }
 
     /**
+     * OCR-round-55 pin (t31-ocr55-2): the representative fence reads
+     * realpath()'s FALSE as false, never as ''. The fence once cast
+     * (string) realpath(sys_get_temp_dir()), and a temp root that
+     * cannot resolve (open_basedir excluding temp, a removed TMPDIR)
+     * cast to '' made the prefix '$temp_real . '/' read as '/' —
+     * strpos($base_real, '/') === 0 for EVERY absolute base, the
+     * outer condition short-circuited false, and the @stat guard it
+     * guards (the conservative unmeasured arm) was bypassed entirely:
+     * the probe planted at $base, OUTSIDE scratch — the exact r40-5
+     * judged-tree residue shape the fence exists to prevent, opened
+     * through the fence's own vocabulary, and the measured answer
+     * rode into the per-volume cache over a derivation that never
+     * found its scratch representative. Driven through the
+     * redirected-TMPDIR child (the r19-2 fresh-engine sim: the parent
+     * cache is warm, the redirect answers only inside a fresh engine
+     * with the putenv before the first read), and the observable is
+     * the CACHE the r38-2 doctrine owns: a probe that never found its
+     * representative answers the conservative case-sensitive verdict
+     * UNMEASURED — nothing enters the per-volume cache (red at HEAD:
+     * cache:measured, the escaped plant's own answer riding in).
+     */
+    public function testAnUnresolvableTempRootAnswersUnmeasuredNeverTheEscapedPlant(): void
+    {
+        /*
+         * The platform gate (the t31-ocr28-8 doctrine): the child's
+         * premise is POSIX temp resolution — a fresh engine honoring
+         * the TMPDIR spelling — and the escaped-plant trace rides the
+         * '/'-rooted strpos the empty prefix spells.
+         */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The redirected-TMPDIR sim premises POSIX temp resolution (a fresh engine honoring the TMPDIR spelling) — this host\'s platform separator is not the POSIX one.');
+        }
+        /*
+         * The declaring TRIPLE (the t31-ocr22-4 doctrine): the child's
+         * premise-critical FIRST statement is a putenv() — the TMPDIR
+         * redirect must land before any temp-dir read warms the
+         * engine's cache.
+         */
+        if (! WpHarness::canSpawnChildren('putenv')) {
+            $this->markTestSkipped('This host has exec/escapeshellarg/putenv in disable_functions — the redirected-TMPDIR sim cannot run (the child\'s first statement is a putenv).');
+        }
+
+        /*
+         * The judged base sits under the REAL temp root (the parent's
+         * spelling, absolute and resolvable inside the child), and the
+         * child's own redirected temp root names a REMOVED directory
+         * — the removed-TMPDIR shape the finding spells.
+         */
+        $holder = sys_get_temp_dir() . '/wpct-caseprobe-tmpdir-' . uniqid('', true);
+        $gone = $holder . '/removed-tmp-root';
+        try {
+            /*
+             * The harness path is asserted resolved BEFORE the child
+             * embeds it (the t31-ocr25-8 class census): a realpath()
+             * false once embedded `require false;` into the child.
+             */
+            $harnessPath = realpath(__DIR__ . '/harness/WpHarness.php');
+            $this->assertNotFalse($harnessPath, 'The harness path must resolve before the child embed — a realpath() false is an environment problem, never the harness defect the child would fatal as.');
+            $this->assertTrue(mkdir($holder, 0755, true), "Staging {$holder} must land — a failed stage is the leg's own verdict, never a misleading downstream one.");
+
+            /*
+             * The child: putenv FIRST (the fresh-engine premise), the
+             * harness, then the seam the r39-7 pin owns — the volume's
+             * cache key UNSET so the plant path is the only path — and
+             * the probe over the base, with the answer and the cache
+             * state reported for the parent's pins. The ocr39-7
+             * control half (re-measure and restore) does not ride
+             * here: on the fixed seam the plant path never runs at
+             * all, and there is no host truth to restore — the child
+             * process dies with its own cache.
+             */
+            $script = 'putenv("TMPDIR=" . ' . var_export($gone, true) . ');'
+                . ' require ' . var_export($harnessPath, true) . ';'
+                . ' $p = new ReflectionMethod("WpHarness", "caseProbeAnswer");'
+                . ' $c = new ReflectionProperty("WpHarness", "case_insensitive_volumes");'
+                . ' $base = ' . var_export($holder, true) . ';'
+                . ' $dev = (string) stat($base)["dev"];'
+                . ' $cache = $c->getValue(null); unset($cache[$dev]); $c->setValue(null, $cache);'
+                . ' $answer = $p->invoke(null, $base);'
+                . ' $cache = $c->getValue(null);'
+                . ' echo ($answer ? "answer:true" : "answer:false"), "\n";'
+                . ' echo (array_key_exists($dev, $cache) ? "cache:measured" : "cache:unmeasured"), "\n";';
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+            $child = implode("\n", $output);
+
+            $this->assertSame(0, $exit, "The child must answer the removed-TMPDIR probe, never fatal — it said: {$child}");
+            $this->assertStringContainsString('answer:false', $child, 'An unresolvable temp root answers the CONSERVATIVE case-sensitive verdict — never a measurement the fence never made.');
+            $this->assertStringContainsString('cache:unmeasured', $child, 'The unresolvable-temp-root derivation writes NOTHING to the per-volume cache (red at HEAD: cache:measured — the (string) realpath() cast turned the false into an empty prefix, every absolute base passed the fence, and the probe planted at the judged base OUTSIDE scratch, its measured answer riding into the cache).');
+            $this->assertStringNotContainsString('cache:measured', $child, 'No measured spelling appears — the escaped plant is the only arm that could answer one.');
+        } finally {
+            WpHarness::releaseScratch($holder);
+        }
+    }
+
+    /**
      * OCR-round-40 pin (t31-ocr40-5): the case probe plants its probe
      * file in the volume's SCRATCH representative, never in the
      * judged tree itself. caseProbeAnswer() planted wpct-pathcase-*
