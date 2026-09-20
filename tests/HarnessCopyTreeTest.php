@@ -2430,26 +2430,65 @@ final class HarnessCopyTreeTest extends TestCase
      * environmental teardown failure (NFS/quota/antivirus lock,
      * stranded permission bits) once superseded the test's REAL
      * verdict at the finally line. The planted shape drives the
-     * guard itself: the release throws the deterministic root
-     * refusal (rrmdir over '/' refuses loudly on every host) while a
-     * verdict is in flight — the guarded release surfaces it on
-     * STDERR and the VERDICT is what surfaces to the catch. The
-     * guard lives at the ONE shared owner now (t31-ocr34-4 —
-     * WpHarness::releaseScratch(), this battery's former private
+     * guard itself: the release throws a deterministic rrmdir
+     * refusal while a verdict is in flight — the guarded release
+     * surfaces it on STDERR and the VERDICT is what surfaces to the
+     * catch. The guard lives at the ONE shared owner now (t31-ocr34-4
+     * — WpHarness::releaseScratch(), this battery's former private
      * twin deleted in the same sweep); this leg drives that owner.
+     *
+     * OCR round 65 (t31-ocr65-2 — the '/' vehicle retired): the
+     * refusal once rode releaseScratch('/'), whose safety rested
+     * ENTIRELY on resolvesToUniversalContainer()'s '/'=== arm — the
+     * one guard between the planted finally and a CHILD_FIRST
+     * unlink/rmdir walk over the filesystem root. A regressed root
+     * check turns this LEG into the destructive walk itself on a
+     * root CI container (uid 0: every process-writable entry beneath
+     * / deleted mid-test), and the sibling root-landing legs' own
+     * is_writable('/') gate does not close it (a non-root walk still
+     * trashes the process-writable trees beneath it, /tmp's own
+     * scratch among them) — probe-before-fire doctrine, never
+     * answered by firing at '/'. ANY rrmdir refusal serves the
+     * assertion (the leg pins only that the guard catches \Throwable
+     * without throwing from its own diagnostic), so the vehicle is a
+     * chmod-0000 scratch tree staged and released instead — the
+     * recursion-boundary fence's refusal ('Failed to open
+     * directory', the t31-ocr30-3/33-6 vocabulary) fires
+     * deterministically on an unprivileged host (driven, uid 1000
+     * here). On a host whose process OPENS chmod-0000 directories
+     * (uid 0 — the t31-ocr4-1 doctrine) the vehicle releases
+     * cleanly and the leg stays green through the same
+     * verdict-surfaces assertion with the guard's catch arm unpinned
+     * there — the price of never firing a destructive-capacity leg
+     * at the root; the assertion itself never needed the change
+     * (green before and after, driven: the refusal fires, the
+     * verdict surfaces, the tree reclaims through the restore).
      */
     public function testTheGuardedReleaseNeverReplacesTheVerdictInFlight(): void
     {
+        $base = sys_get_temp_dir() . '/wpct-release-guard-' . uniqid('', true);
         try {
+            // The staging asserts its own landing (t31-ocr53-9): a
+            // failed mkdir fails as staging, never as the release
+            // verdict the leg exists to drive.
+            $this->assertTrue(mkdir($base, 0755, true), 'staging: the scratch tree must create — a staging failure fails as staging, never as the release verdict.');
+            chmod($base, 0000);
             try {
                 throw new RuntimeException('the real verdict');
             } finally {
-                WpHarness::releaseScratch('/');
+                WpHarness::releaseScratch($base);
             }
         } catch (\Throwable $surfaced) {
             $this->assertSame('the real verdict', $surfaced->getMessage(), 'The guarded release surfaces the environmental failure on STDERR and never replaces the verdict in flight (unguarded, PHP would surface the rrmdir refusal instead).');
 
             return;
+        } finally {
+            // The @ owns the restore (the t31-ocr42-8 class, the
+            // t31-ocr64-4 twin): the fence refusal strands the locked
+            // tree for THIS finally — a failed restore must never
+            // replace the verdict the catch just surfaced.
+            @chmod($base, 0755);
+            WpHarness::releaseScratch($base);
         }
         $this->fail('The planted in-flight verdict must surface.');
     }
