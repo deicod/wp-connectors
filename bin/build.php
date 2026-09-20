@@ -552,9 +552,22 @@ final class WpConnectorsBuild
                          * prefix already ending in the family).
                          */
                         $grammar = self::groupUseMemberGrammar(trim($member_piece), $matches[3], $member_index, count($member_pieces), $sourceVersion);
+                        /*
+                         * The leaf-rewrite boundary rides the ONE
+                         * label byte class (OCR round 60, t31-ocr60-4
+                         * — the r24-4 mid-segment doctrine, high-byte
+                         * arm): the ASCII lookahead passed at a
+                         * member segment's high byte ('Sharedü' is a
+                         * DIFFERENT segment), the leaf matched
+                         * MID-SEGMENT, and the rewrite spliced the
+                         * suffix into it — never a rewrite that
+                         * splices mid-name; the member rides verbatim
+                         * and the postcondition names the high-byte
+                         * sibling precisely.
+                         */
                         $members[] = $grammar[0] . self::replaceOrThrow(
                             preg_replace(
-                                '/^' . $shared_leaf . '(?![A-Za-z0-9_])/',
+                                '/^' . $shared_leaf . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])/',
                                 $pluginSuffix . '\\\\' . $shared_leaf,
                                 $grammar[1]
                             ),

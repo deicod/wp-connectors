@@ -7470,6 +7470,35 @@ FIXTURE;
             $this->assertStringContainsString($verbatim_spelling, $refusal->getMessage(), "The refusal names the verbatim family spelling ({$label}; red at HEAD for the plain and declaration legs: the message named the target-SPLICED 'Deicod\\WpConnectors\\OpenAiOauth\\Shared…' the rewrite had manufactured — the splice itself, one verdict late).");
         }
 
+        /*
+         * OCR round 60 (t31-ocr60-4 — the member-leaf rewrite
+         * boundary, the r24-4 mid-segment doctrine's high-byte arm):
+         * groupUseMemberGrammar() admits \x80-\xff segments while the
+         * leaf boundary spelled (?![A-Za-z0-9_]), so a member segment
+         * 'Sharedü' (a DIFFERENT segment) passed the ASCII lookahead
+         * at its high byte, the leaf matched MID-SEGMENT, and the
+         * rewrite spliced '<Suffix>\\Shared' into it — a mid-name
+         * splice the postcondition refused one verdict late with a
+         * MISLEADING survivor diagnostic (driven at HEAD: the message
+         * named 'Deicod\WpConnectors\OpenAiOauth\Sharedü', the splice
+         * itself). The boundary rides the ONE label byte class now:
+         * the member rides verbatim and the refusal names the
+         * high-byte sibling precisely, 'SharedStorage' beside it.
+         */
+        $high_byte_member = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\xc3\xbc};\nclass A {}\n";
+        $refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace($high_byte_member, 'OpenAiOauth', 'shared/src/Storage/HighByteMemberStore.php'),
+            'A high-byte member segment (a DIFFERENT segment) must answer the named sibling refusal, never a mid-segment splice.', \RuntimeException::class
+        );
+        $this->assertStringContainsString("Deicod\\WpConnectors\\Shared\xc3\xbc", $refusal->getMessage(), 'The refusal names the high-byte sibling precisely (red at HEAD: the anonymous survivor named the SPLICED Deicod\WpConnectors\OpenAiOauth\Sharedü the rewrite had manufactured).');
+        // The ASCII sibling keeps its named refusal byte-identically.
+        $ascii_member = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{SharedStorage};\nclass A {}\n";
+        $refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace($ascii_member, 'OpenAiOauth', 'shared/src/Storage/HighByteMemberStore.php'),
+            'The ASCII mid-segment sibling keeps refusing by name.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('Deicod\\WpConnectors\\SharedStorage', $refusal->getMessage());
+
         // The rewritten file must be valid PHP (provenance placement must not
         // precede the open tag / strict_types) and must load without output.
         // Scratch hygiene (t31-r3-11): the lint/load scratch matches no
