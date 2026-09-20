@@ -438,7 +438,25 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     // '../payload.php'-style entries make $workDir . '/..' point at HOST
     // paths outside the extraction dir, so every check below would traverse
     // (and extraction would write) outside the work dir.
-    if ($slug === '.' || $slug === '..' || ! preg_match('/^[A-Za-z0-9_.-]+$/', $slug)) {
+    /*
+     * The anchor is D-anchored (OCR round 67, t31-ocr67-1): without
+     * D, PCRE's '$' also asserts immediately BEFORE a final newline,
+     * so a top-level directory spelled 'slug\n' PASSED the grammar
+     * and every fence below it — the fold owners strip the \n to a
+     * harmless 'slug', the traversal fold is dots-only, the tail
+     * lens sees '.php', no ':' or dev vocabulary anywhere — and
+     * extractTo() landed a REAL directory named 'slug\n' (a newline
+     * is a legal filename byte), the tree every later walk then
+     * read through \n-bearing relatives (driven: the run answered
+     * a header verdict, never the slug refusal). D pins the '$' to
+     * the very end; the drive-letter twin (the C: spelling) keeps
+     * its own refusal below unchanged. The round's census of this
+     * file's grammar anchors: ONE '$' rider existed — this screen;
+     * the other anchors are \A/\z-spelled (the rrmdir owner's two
+     * drive/root fences), immune to the pre-newline fold by
+     * construction.
+     */
+    if ($slug === '.' || $slug === '..' || ! preg_match('/^[A-Za-z0-9_.-]+$/D', $slug)) {
         // The name that FAILED the grammar prints through the seam (see
         // the dev-entry site): pre-grammar, its bytes are unjudged.
         $violations[] = sprintf('inspect: invalid top-level plugin directory name "%s".', wp_connectors_printable($slug));

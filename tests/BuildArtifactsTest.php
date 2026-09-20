@@ -1751,6 +1751,67 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-streams')), 'A colon-free tree of the same shape inspects green — the fence owns exactly the stream-separator class.');
     }
 
+    /*
+     * OCR-round-67 pin (t31-ocr67-1 — the slug grammar screen's
+     * anchor): without D, PCRE's '$' also asserts immediately BEFORE
+     * a final newline, so a zip whose every entry sits under a
+     * top-level directory spelled 'slug\n' PASSED the screen and
+     * every fence below it (the fold owners strip the \n to a
+     * harmless 'slug'; traversal is dots-only; the tail lens sees
+     * '.php'; no ':' or dev vocabulary) — extractTo() then landed a
+     * REAL directory named 'slug\n' (a newline is a legal filename
+     * byte) and the whole run judged the tree through \n-bearing
+     * relatives (driven red at HEAD: the run answered a header
+     * verdict, never the slug refusal). The D modifier pins '$' to
+     * the very end; the refusal names the hostile spelling through
+     * the printable seam, and the clean-slug twin of the same zip
+     * keeps proceeding past the screen (the grammar owns exactly
+     * the final-newline class).
+     */
+    public function testTheSlugGrammarScreenRefusesAFinalNewlineSpelling(): void
+    {
+        $slug = 'slugnl-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'SLUGNL_DEMO_VERSION', '1.0.0' );\nrequire_once __DIR__ . '/src/autoload.php';\n";
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\SlugnlDemo\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+
+        // The UTF-8 flag bit rides the stored bytes so this engine's
+        // libzip hands the control byte back BYTE-EXACT through
+        // getNameIndex() (the t31-ocr20-1 note: without it the name
+        // decodes as CP437 and the \n arrives remapped).
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.0.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}\n/{$slug}.php", $main),
+            array("{$slug}\n/src/autoload.php", $autoload),
+        ), 0x0800));
+        $violations = wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-slugnl'));
+        $this->assertCount(1, $violations, 'The final-newline spelling answers the slug screen ALONE — every later fence stays unreached: ' . implode("\n", $violations));
+        $this->assertStringContainsString('invalid top-level plugin directory name', $violations[0], 'The newline-bearing top-level name fails the D-anchored grammar (red at HEAD: the spelling passed the screen and the run judged the landed slug\n tree through \n-bearing relatives).');
+        $this->assertStringContainsString('"' . wp_connectors_printable("{$slug}\n") . '"', $violations[0], 'The refusal names the hostile spelling through the printable seam — the newline neutralized, never raw.');
+        unlink($zipPath);
+
+        // Control: the CLEAN slug of the same tree proceeds PAST the
+        // screen (a header verdict here, the screen's own vocabulary
+        // below it) — the grammar owns exactly the final-newline class.
+        /*
+         * The exec-capability guard (t31-ocr26-9, the ocr20-5 doctrine):
+         * the clean control leg extracts real PHP sources and rides the
+         * inspector's internal php -l sweep; the refusal leg above
+         * refuses PRE-extraction and already passed on any host.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the clean-slug control leg (the inspector\'s internal php -l spawn) cannot run; the refusal leg above already passed.');
+        }
+        $zipPath = self::distDir() . "/connectors-{$slug}-1.0.1.zip";
+        file_put_contents($zipPath, self::storedZipBytes(array(
+            array("{$slug}/{$slug}.php", $main),
+            array("{$slug}/src/autoload.php", $autoload),
+        ), 0x0800));
+        $flat = implode("\n", wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-slugnl')));
+        $this->assertStringNotContainsString('invalid top-level plugin directory name', $flat, 'The clean slug keeps passing the screen — the D anchor owns exactly the final-newline class.');
+        unlink($zipPath);
+    }
+
     /**
      * OCR-round-63 pin (t31-ocr63-3 — the builder side of the r62
      * stream fence, the one-verdict drift the inspector's own fence
