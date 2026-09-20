@@ -1816,6 +1816,81 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-66 pin (t31-ocr66-1 — the r63-3 stream screen's EMBED
+     * twin, the one-verdict drift one collection seam over): the
+     * t31-ocr63-3 screen answers only the plugin tree's collectFiles()
+     * walk, while the EMBED leg composes its entry names from the
+     * SHARED tree's own relatives (wp_connectors_php_source_files()
+     * — symlink, near-source, extension-casing, and PSR-4 fences
+     * alone; the PSR-4 check compares DIRECTORY segments, never the
+     * basename), so a POSIX-legal 'shared/src/Policy:Draft.php'
+     * rewrote, staged, and published as
+     * '<slug>/src/Shared/Policy:Draft.php' at exit 0 while the
+     * inspector's stream fence refused the same entry over the same
+     * bytes (red at HEAD, driven: build green, inspect REJECTED —
+     * no CI run satisfiable). The embed leg owns the same class at
+     * ITS collection seam now — one class, three owners
+     * (collectFiles, embed, inspector), one verdict.
+     */
+    public function testTheEmbedLegRefusesStreamSeparatorNamesSoBothFencesAnswerOneVerdict(): void
+    {
+        $scratch = self::scratchPath('streams-embed');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        mkdir($scratch . '/shared/src', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        mkdir($scratch . '/plugin', 0755, true);
+        /*
+         * The staging asserts its own landing (the t31-ocr53-9
+         * doctrine): the refusal leg must redden over a tree that
+         * actually carries the separator-bearing source.
+         */
+        $this->assertNotFalse(file_put_contents(
+            $scratch . '/shared/src/Policy:Draft.php',
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface PolicyDraft {}\n"
+        ), 'staging: the stream-named shared source must write — a staging failure fails as staging, never as the refusal verdict.');
+        $this->assertNotFalse(file_put_contents(
+            $scratch . '/shared/src/ClockInterface.php',
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface ClockInterface {}\n"
+        ), 'staging: the colon-free shared source must write beside it.');
+
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n");
+
+        try {
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A shared tree carrying a stream-separator name must REFUSE the embed build (red at HEAD: the build returned a zip path whose entry the inspector refused over the same bytes).');
+            } catch (RuntimeException $refusal) {
+                $this->assertStringContainsString('stream separator', $refusal->getMessage(), 'The refusal names the stream-separator class.');
+                $this->assertStringContainsString('Policy:Draft.php', $refusal->getMessage(), 'The refusal names the offending separator-bearing shared source.');
+                $this->assertStringContainsString('src/Shared', $refusal->getMessage(), 'The refusal names the embed leg — the entry vocabulary this seam composes.');
+            }
+
+            // Control: the colon-FREE twin of the same tree builds and
+            // inspects green — the refusal owns exactly the ':'-bearing
+            // class at the embed seam (at HEAD this leg WAS the drift).
+            unlink($scratch . '/shared/src/Policy:Draft.php');
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertIsString($zipPath, 'The colon-free twin builds — the refusal owns exactly the stream-separator class.');
+            $this->assertContains('example-connector/src/Shared/ClockInterface.php', $this->zipEntryNames($zipPath), 'The embed still ships the colon-free shared source.');
+            /*
+             * The exec-capability guard (the ocr26-9 doctrine): the
+             * green inspector verdict rides the internal php -l spawn
+             * over the extracted tree — the refusal leg above already
+             * passed on any host.
+             */
+            if (! self::canSpawnChildren()) {
+                $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the one-verdict inspect leg (the inspector\'s internal php -l spawn) cannot run; the refusal leg above already passed.');
+            }
+            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/.inspect-streams-embed'), 'Build and inspect answer one verdict over the shared tree\'s stream-separator names too — never build-ships-what-inspect-rejects.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * OCR-round-23 pin (t31-ocr23-8): the BUILDER side of the
      * near-source fence — the residual the r20 round itself named and
      * carried (the ledger's builder-side name fence): collectFiles()

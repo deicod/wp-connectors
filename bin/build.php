@@ -2998,6 +2998,46 @@ final class WpConnectorsBuild
             if ($embedShared) {
                 foreach ($sharedSources as $relative) {
                     /*
+                     * THE STREAM-SEPARATOR CLASS AT THE EMBED SEAM (OCR
+                     * round 66, t31-ocr66-1 — the r63-3 collection
+                     * screen's embed twin, the one-verdict drift one
+                     * leg over): the t31-ocr63-3 screen answers only
+                     * the PLUGIN tree's collectFiles() walk, while the
+                     * EMBED leg composes its entry names from the
+                     * SHARED tree's own relatives
+                     * (wp_connectors_php_source_files() — a collector
+                     * whose fences are the symlink, near-source edge
+                     * bytes, extension casing, and PSR-4 directory
+                     * agreement; its PSR-4 check compares DIRECTORY
+                     * segments, never the basename), so a POSIX-legal
+                     * 'shared/src/Policy:Draft.php' rewrote, staged,
+                     * and published as '<slug>/src/Shared/
+                     * Policy:Draft.php' at exit 0 while the
+                     * inspector's stream fence refused the same entry
+                     * over the same bytes (driven at HEAD — build
+                     * green, inspect REJECTED, no CI run satisfiable).
+                     * ONE class, THREE owners now (collectFiles, the
+                     * embed seam, the inspector's defense-in-depth
+                     * fence): the embed leg refuses at ITS collection
+                     * seam, before any destination is composed,
+                     * staged, or published — the same per-segment ':'
+                     * judgment over the '/'-normalized entry
+                     * vocabulary (zipEntryPath, the serialized-
+                     * boundary owner; the disk-relative beside it
+                     * keeps the native separator the engine resolves).
+                     */
+                    foreach (explode('/', self::zipEntryPath($relative)) as $segment) {
+                        if (strpos($segment, ':') !== false) {
+                            throw new RuntimeException(sprintf(
+                                'build: the shared source tree carries a stream separator in the name shared/src/%s (segment \'%s\') — the embed leg composes %s/src/Shared/%s from it, and on a Windows/NTFS extraction target the zip entry resolves into an alternate data stream of the colon-free file (the \':$DATA\' spelling its MAIN stream), plugin-reachable bytes no content gate judges under the separator-bearing spelling; the collector refuses at collection what bin/inspect-artifact.php refuses at extraction — one class, three owners, one verdict; write the colon-free name.',
+                                $relative,
+                                $segment,
+                                $slug,
+                                self::zipEntryPath($relative)
+                            ));
+                        }
+                    }
+                    /*
                      * Destination collision REFUSES the build (review
                      * round t31-r5-1): a plugin that owns a file at an
                      * embed destination had its copy silently REPLACED
