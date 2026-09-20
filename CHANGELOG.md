@@ -6,6 +6,74 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 67)
+
+Sixty-seventh OCR round (61/61 fully complete): 5 findings, driver
+accepts all — five numbered commits t31-ocr67-1..5 (one per finding,
+no refutations this round), plus this docs record, the full offline
+check green after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3→5→1→2→10→3→6→3→5→4→5→5.
+Round 67 answered NEW findings, so the OCR phase continues per plan.
+Suite 1777 → 1779 tests, 47101 → 47120 assertions, 3 skipped
+unchanged (deltas +1/+4, +0/+10, +0/+0, +0/+0, +1/+5, every one
+measured from output). The round's shape: the PCRE-D modifier sweep
+('$' also matches before a final newline — the 'slug\n' tree landed
+and was judged through \n-bearing relatives), the duplicate/traversal
+census agreement on the junk-dot class (the wrong-premise case-fold
+line beside its traversal rejection), the recursive-mkdir premise
+made true, the extractTo-throw close discipline, and the comma-arm
+display parity.
+
+- **The slug grammar screen without its D modifier
+  (t31-ocr67-1, bug:medium; bin/inspect-artifact.php, tests/
+  BuildArtifactsTest.php)** — PCRE's '$' also asserts immediately
+  before a final newline, so a zip whose entries sat under a
+  top-level directory spelled 'slug\n' passed the screen and every
+  downstream fence, extractTo() landed a REAL 'slug\n' directory,
+  and the run judged the tree through \n-bearing relatives (driven:
+  header verdicts over the landed tree, never the slug refusal).
+  The screen rides '/^[A-Za-z0-9_.-]+$/D' now — '$' asserts only at
+  the very end — and the round's census of the file's grammar
+  anchors found exactly ONE '$' rider (this screen; the others are
+  \A/\z-spelled, immune by construction). Pinned with the
+  clean-slug twin proceeding past the screen.
+- **The duplicate-fold exclusion missing the traversal-junk class
+  (t31-ocr67-2, bug:low; bin/inspect-artifact.php, tests/
+  BuildArtifactsTest.php)** — the fold's verbatim branch tested
+  trim($segment, '.'), so any edge-junk byte blocked the exclusion:
+  '.. ', "..\t", '. .' fell to the rtrim (which strips junk AND
+  dots) down to '', the filter dropped them, and 'p/.. /x.php'
+  folded onto 'p/x.php' — a case-fold-duplicate line whose premise
+  is factually wrong (the spelling ESCAPES the tree on a
+  normalizing host) beside its real traversal rejection (driven).
+  The exclusion rides the traversal predicate's own spelling now
+  (junk stripped anywhere, then dots-only ≥2): one class, both
+  censuses agree. Pinned with the junk-dot limbs and the
+  trailing-junk CONTENT control still folding.
+- **The recursive-mkdir premise (t31-ocr67-3, documentation:low;
+  bin/inspect-artifact.php)** — the t31-ocr10-2 census comment
+  claimed "a pre-existing name of any kind fails" mkdir(), but the
+  recursive flag returns TRUE over a pre-existing directory; only
+  the CSPRNG suffix kept the shape unreachable. The flag is
+  dropped — the parent exists by construction, and the stated
+  premise becomes true.
+- **The extractTo-throw path never closing its ZipArchive
+  (t31-ocr67-4, maintainability:low; bin/inspect-artifact.php)** —
+  the t31-ocr39-1 catch returned before $zip->close(), the one
+  path on the resource that freed at scope teardown while every
+  sibling closes explicitly. The catch closes before returning.
+- **The comma arm stripping every leading separator
+  (t31-ocr67-5, style:low; bin/check-conventions.php, tests/
+  UnusedImportScannerTest.php)** — the comma-list handler unrolls
+  through the group unroller under an empty prefix (one artifact
+  separator prepended per member), but the FAIL print rode ltrim
+  over ALL separators: a fully-qualified member ('use \A\B, \C\D;')
+  printed as 'C\D', losing the marker the single arm prints for
+  the same import spelled alone. The display strips exactly the
+  one artifact separator — the FAIL vocabulary agrees across all
+  three arms. Pinned through the real STDERR channel with the
+  single-arm control beside it.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 66)
 
 Sixty-sixth OCR round (61/61 fully complete): 5 findings, driver
