@@ -245,11 +245,33 @@ final class SecretMask {
 	 * unchanged: 'x-keychain' and 'x-monkey' stay outside — the
 	 * suffix bytes never span the segment the class judges.
 	 *
+	 * OCR round 55 (t31-ocr55-1, security — the suffix tier's own
+	 * sibling): 'authorization' rode the class since round 24 while
+	 * 'authentication' — the SAME tier's sibling spelling, the final
+	 * token of 'X-Authentication'/'Proxy-Authentication'/
+	 * 'Client-Authentication' — matched neither the catalog (which
+	 * carries only the '-info' exchange spellings) nor the suffix
+	 * screens ('x-authentication' ends in no listed suffix), so the
+	 * credential value rendered verbatim through every safe debug
+	 * form, the r12-4/ocr15-1 leak class under a vendor spelling the
+	 * file's own doctrine treats as credential material. One member
+	 * speaks every delimiter spelling per the r50-1 boundary doctrine
+	 * (the fold normalizes the whole tchar delimiter class to the
+	 * hyphen once, so the bare token and every segment tail judge the
+	 * same); the catalog's 'authentication-info'/
+	 * 'proxy-authentication-info' entries stay exact-match arms of
+	 * their own (their final token is 'info', never subsumed). No
+	 * non-credential '-authentication' neighbor is known to exist —
+	 * every header carrying the suffix names an authentication
+	 * credential — and the boundary is unchanged: a name whose final
+	 * token merely precedes it ('x-authentication-scheme') stays
+	 * verbatim, the suffix bytes never spanning the segment.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'token', 'secret', 'key', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.

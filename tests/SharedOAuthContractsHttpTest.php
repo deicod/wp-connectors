@@ -2352,6 +2352,35 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         foreach (array('x-keychain', 'x-monkey', 'x.keychain') as $spelling) {
             $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling stays verbatim — the suffix bytes never span the segment the class judges, the generic tier included.");
         }
+
+        /*
+         * OCR-round-55 pin (t31-ocr55-1 — the suffix tier's own
+         * sibling): 'authorization' rode the class since round 24
+         * while 'authentication' matched neither catalog (only the
+         * '-info' exchange spellings) nor suffix screens — so
+         * 'X-Authentication', 'Proxy-Authentication', and
+         * 'Client-Authentication' rendered their credential verbatim
+         * through every safe debug form (red at HEAD: unmasked), the
+         * r12-4 leak class under the vendor spelling the doctrine
+         * itself treats as credential material. One member speaks
+         * every delimiter per the r50-1 fold; no non-credential
+         * '-authentication' neighbor is known to exist (the census
+         * names that), and the boundary twin keeps its charge: a
+         * final token merely PRECEDING the suffix stays verbatim.
+         */
+        $authentication_secret = FakeSecrets::accessToken();
+        foreach (array('X-Authentication', 'Proxy-Authentication', 'Client-Authentication', 'x-authentication', 'authentication', 'x_authentication', 'proxy.authentication') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — the 'authorization' tier's own sibling, over every delimiter spelling (red at HEAD: unmasked).");
+        }
+        $authentication_map = new HeaderMap(array(
+            'X-Authentication' => $authentication_secret,
+            'x-request-id' => 'req-55',
+        ));
+        foreach (array('dump' => print_r($authentication_map, true), 'serialize' => serialize($authentication_map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($authentication_secret, $rendered, "The 'X-Authentication' value renders masked in the {$channel} channel — its tier's sibling cannot be the one credential suffix outside the class.");
+            $this->assertStringContainsString('req-55', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
+        }
+        $this->assertFalse(SecretMask::is_sensitive_header_name('x-authentication-scheme'), 'The boundary twin stays verbatim — the suffix bytes never span the segment the class judges, the sibling included.');
     }
 
     /* ---------------------------------------------------------------
