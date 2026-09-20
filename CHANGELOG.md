@@ -6,6 +6,55 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, OCR round 56)
+
+Fifty-sixth OCR round (61/61 fully complete): 3 findings — the NEW
+LOOP MINIMUM (previous: 4, twice). Driver accepts all. 3 numbered
+commits t31-ocr56-1..3 (one per finding), plus this docs record, the
+full offline check green after every commit. Trajectory
+27→10→11→7→11→33→9→9→4→12→8→7→9→4→11→15→15→9→13→7→9→10→10→9→9→10→1→5→8→8→4→8→11→7→15→10→9→4→18→10→6→6→18→4→16→3.
+Round 56 answered NEW findings, so the OCR phase continues per
+plan. Suite 1729 → 1730 tests, 46868 → 46880 assertions, 3 skipped
+unchanged.
+
+- **The third strcasecmp→ASCII-owner straggler (t31-ocr56-1,
+  maintainability:medium; bin/build.php)** — the degenerate-
+  composition refusal compared the suffix against the family leaf
+  with strcasecmp() — a locale-consulting fold feeding a
+  build-refusing verdict, the exact class the same file's own
+  LICENSE/embed-collision doctrine prescribes against. The
+  comparison folds both sides through wp_connectors_ascii_lower
+  (the r11-6/ocr10-4/t31-ocr13-1 rule); the census comment records
+  the sweep — no other strcasecmp() call remains in the file. The
+  locale-divergence leg is not cheaply constructible on this host
+  (no tr_* locale generated — the t31-r2-14 fold-table hardening
+  precedent); the existing degenerate pin stays green.
+- **The strip-set's missing §4.1 step 1 (t31-ocr56-2, bug:low;
+  shared/src/Http/Url.php)** — the r44-1/45-2 WHATWG screen
+  implements Standard step 2 (tab/newline refusal) but not step 1:
+  leading/trailing C0-control-or-space strips from the WHOLE input
+  before it — 'https://device.example/verify ' is '/verify' in
+  every browser while this parse kept the space verbatim, the tab
+  byte's own divergence class. The edge strips where the interior
+  refuses (an edge byte names nothing; the interior space stays
+  legal, interior C0/newline still refuse at the entry screen); an
+  edge tab strips at step 1 and never reaches the refusal. The
+  strip set derives the class exactly (U+0000–U+001F + U+0020,
+  trim()'s enumerated charlist — byte-wise, locale-free, no PCRE
+  abort to guard); direction verified first (the parser did not
+  strip today). Driven: five edge spellings answer the browser's
+  parse (path '/verify', redacted form derived from the stripped
+  parse; red at HEAD), the interior boundary legs beside them.
+- **The productionSource census member that never rode (t31-ocr56-3,
+  test:low; tests/SharedOAuthContractsHttpTest.php)** — the lone
+  structural-pin read still using the silent `(string)
+  file_get_contents()` cast — the exact shape productionSource()
+  (t31-ocr45-8) exists to replace, whose docblock claims one census
+  over all four sites. The read rides the owner now (an unreadable
+  source answers a named environment verdict, never a late
+  needle-mismatch over the empty string) and the census claim comes
+  true at five sites.
+
 ### Fixed (shared — M3 Task 3.1, OCR round 55)
 
 Fifty-fifth OCR round (61/61 fully complete): 16 findings, driver
