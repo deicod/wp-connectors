@@ -630,8 +630,24 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // genuinely unusable staging path; no test can aim
                 // one at 2^64 fresh bytes, which is the fix's point).
                 'expect' => 'CLEAN',
-                'apply' => static function (array $scratch): void {
-                    mkdir($scratch['dist'] . '/.' . basename($scratch['zip']) . '.tmp-' . getmypid());
+                'apply' => function (array $scratch): void {
+                    /*
+                     * The plant asserts its own landing (t31-ocr54-1 —
+                     * the t31-ocr53-7 sweep completion, the
+                     * t31-ocr27-9 staging doctrine): this is the only
+                     * other CLEAN row planting filesystem state, and
+                     * the row's whole point is that the pid-only
+                     * blocker spelling is INERT — a silently failed
+                     * mkdir answered the same green verdict over a
+                     * plant that never landed, a vacuous pass with the
+                     * coverage gone. The assertion failure rides the
+                     * apply-throw channel as the row's own FAIL
+                     * (t31-ocr30-6), never a phantom CLEAN; the
+                     * closure drops its 'static' so $this binds (the
+                     * r53-7 rows' own shape).
+                     */
+                    $blocker = $scratch['dist'] . '/.' . basename($scratch['zip']) . '.tmp-' . getmypid();
+                    $this->assertTrue(mkdir($blocker, 0755, true), "staging: {$blocker} must create — a staging failure fails as staging, never the row's verdict.");
                 },
             ),
         );

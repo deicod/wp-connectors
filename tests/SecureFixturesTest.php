@@ -128,8 +128,19 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $githubToken = 'ghp_' . bin2hex(random_bytes(18));
 
         $tempDir = $this->scanScratchRoot('wp-connectors-scan');
-        mkdir($tempDir, 0755, true);
-        file_put_contents($tempDir . '/known-secret-fixture.conf', "api_key = {$zaiKey}\ntoken: {$githubToken}\n");
+        /*
+         * The staging-assert sweep completion (t31-ocr54-1 — the
+         * t31-ocr53-6 sweep asserted every OTHER scan site this file
+         * grew and walked past the file's own first one): the battery
+         * planted its fixture on bare mkdir()/file_put_contents(), so
+         * a failed stage (a read-only temp, ENOSPC) surfaced as a
+         * missing 'zai-key'/'github-token' verdict — scanner-shaped
+         * red over a staging failure, the misattribution class. Every
+         * staging write asserts its own landing now, naming its path
+         * (the r53-6 sweep's own idiom).
+         */
+        $this->assertTrue(mkdir($tempDir, 0755, true), "staging: {$tempDir} must create — a staging failure fails as staging, never as the maker verdict.");
+        $this->assertNotFalse(file_put_contents($tempDir . '/known-secret-fixture.conf', "api_key = {$zaiKey}\ntoken: {$githubToken}\n"), "staging: {$tempDir}/known-secret-fixture.conf must write — a staging failure fails as staging, never as the maker verdict.");
 
         $findings = wp_connectors_scan_paths(array( $tempDir ));
         WpHarness::releaseScratch($tempDir);
