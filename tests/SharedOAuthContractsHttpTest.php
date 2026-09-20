@@ -641,6 +641,64 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
+     * OCR-round-57 pin (t31-ocr57-1 — the DOT-SEGMENT member the
+     * WHATWG-differential screen family never owned): the Standard's
+     * path state resolves '.' and '..' segments in every WHATWG
+     * consumer while this parse stored them verbatim (driven: every
+     * spelling below constructed green at HEAD), so '/a/./b' and
+     * '/a/../b' named two paths over the same browser-facing channel
+     * the tab, backslash, percent, IPv4, and IDN screens already
+     * closed for their own bytes. The screen refuses the family's
+     * whole census — the trailing shapes (a trailing '/.' or '/..'
+     * appends '/' in a browser), the clamping shape ('..' past the
+     * root clamps at the root per the Standard's shorten step), the
+     * %2e spellings (the Standard's own §4.1 segment definitions are
+     * ASCII case-insensitive over them), and a dot segment before
+     * the query (the path state resolves it before '?' — the query
+     * region itself never resolves). Dots INSIDE segments are legal
+     * and untouched, and the opaque-path carve-out is unreachable
+     * here by construction (every scheme this VO admits is special,
+     * and a special URL's path is never opaque — the census names
+     * it).
+     */
+    public function testADotSegmentPathRefusesInsteadOfNamingTwoPaths(): void
+    {
+        $hostile_urls = array(
+            'single-dot mid-path' => 'https://device.example/a/./b',
+            'double-dot mid-path' => 'https://device.example/a/../b',
+            'trailing double-dot (a browser appends "/")' => 'https://device.example/a/b/..',
+            'trailing single-dot (a browser appends "/")' => 'https://device.example/a/b/.',
+            'the clamping shape (".." past the root clamps at the root)' => 'https://device.example/..',
+            'the percent single-dot spelling (§4.1 is case-insensitive over it)' => 'https://device.example/a/%2E/b',
+            'the percent double-dot spelling' => 'https://device.example/a/b/%2e%2e',
+            'a dot segment right before the query still resolves there' => 'https://device.example/a/..?next=/x',
+            'userinfo does not hide it' => 'https://user:pw@device.example/a/../b',
+        );
+
+        foreach ($hostile_urls as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A dot-segment-bearing path (%s) must be refused by the shared URL owner — every WHATWG consumer resolves it to a different path while this parse stores it verbatim.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry dot segments', $e->getMessage(), "The refusal names the dot-segment class ({$label}).");
+            }
+
+            try {
+                new HttpRequest('GET', $url);
+                $this->fail(sprintf('A dot-segment-bearing path (%s) must be refused by the request VO too — one verdict, no constructed VO ever carries the divergence.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('must not carry dot segments', $e->getMessage(), "The request VO rides the same screen ({$label}).");
+            }
+        }
+
+        // Dots INSIDE segments are legal and untouched — the Standard
+        // resolves whole segments, never bytes inside them; and the
+        // no-path spelling defaults to '/' with nothing to resolve.
+        $this->assertSame('/a.b/c', Url::parse_validated('https://device.example/a.b/c')['path'], 'A dot inside a segment is not a dot segment — the boundary is the whole segment.');
+        $this->assertSame('/', Url::parse_validated('https://device.example')['path'], 'The no-path spelling defaults to "/" — nothing to resolve, nothing to refuse.');
+    }
+
+    /**
      * OCR-round-25 pin (t31-ocr25-3): the leading-zero port spelling
      * slips the raw digit screen — ':0443' IS digits — while
      * parse_url() normalizes the value to 443: the value object

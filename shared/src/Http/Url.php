@@ -516,10 +516,57 @@ final class Url {
 
 		self::assert_authority_still_valid_utf8( $authority );
 
+		/*
+		 * The DOT-SEGMENT screen (OCR round 57, t31-ocr57-1 — the
+		 * r28-6/r44-1/r45-1/r49-4/r50-4 WHATWG-differential class,
+		 * the path-state member the r46-5 whole-input backslash
+		 * pass's own census claim ('every derived surface naming a
+		 * different path than the browser consumes') never covered):
+		 * the URL Standard resolves single-dot and double-dot path
+		 * segments in its path state (§4.4, over the §4.1 segment
+		 * definitions) — a browser loading
+		 * 'https://device.example/a/../b' requests '/b' while this
+		 * parse, url(), redacted_url(), and every derived surface
+		 * keep '/a/../b' verbatim (driven: every shape below
+		 * constructed green at HEAD): two paths named by one URL over
+		 * the same browser-facing channel (the device-flow
+		 * verification URI, passed through raw) the tab, backslash,
+		 * percent, IPv4, and IDN screens closed for their own bytes.
+		 * The Standard's exact algorithm was verified at the source
+		 * this round: a single-dot segment ('.' or its ASCII
+		 * case-insensitive '%2e' spelling) is dropped; a double-dot
+		 * segment ('..', '.%2e', '%2e.', '%2e%2e') shortens the path
+		 * by one segment, clamping at the root (shorten-a-url's-path
+		 * removes the last item 'if any' — '..' past the root removes
+		 * nothing); a TRAILING dot segment appends the empty string
+		 * ('/a/b/..' is '/a/b/', never '/a/b' — the Standard's own
+		 * '/usr/..' note); a dot segment right before '?' or '#'
+		 * resolves there too, while the query and fragment regions
+		 * themselves never resolve — parse_url()'s own path answer,
+		 * the region this screen judges, is exactly that territory.
+		 * Opaque paths never resolve (the opaque path state carries
+		 * no dot handling) and are UNREACHABLE here: every scheme
+		 * this VO admits is special (http/https only, two screens
+		 * above), and 'a special URL's path is always a list, i.e.,
+		 * it is never opaque' — the screen owns the whole path
+		 * surface with no carve-out to name. Dot segments REFUSE —
+		 * never resolved (the ocr44-1 doctrine: the resolution would
+		 * silently rewrite the caller's URL into a second path
+		 * derived by us): write the resolved path, where the
+		 * browser's request and this parse agree byte for byte.
+		 * Dots INSIDE segments are not dot segments ('/a.b/c' is
+		 * legal and untouched — the Standard resolves whole
+		 * segments, never bytes inside them).
+		 */
+		$path = isset( $parts['path'] ) && '' !== $parts['path'] ? $parts['path'] : '/';
+		if ( self::path_has_dot_segments( $path ) ) {
+			throw new InvalidArgumentException( 'The URL path must not carry dot segments ("." or "..", including their %2e spellings) — the URL Standard resolves them in every WHATWG consumer ("https://device.example/a/../b" requests /b there, a ".." past the root clamps at the root) while this parse keeps them verbatim, and the two must agree: write the resolved path, never a dot segment.' );
+		}
+
 		return array(
 			'scheme'    => $scheme,
 			'authority' => $authority,
-			'path'      => isset( $parts['path'] ) && '' !== $parts['path'] ? $parts['path'] : '/',
+			'path'      => $path,
 		);
 	}
 
@@ -637,5 +684,29 @@ final class Url {
 		}
 
 		return 1 === $probe;
+	}
+
+	/**
+	 * Whether the path region carries a URL Standard single- or
+	 * double-dot segment (t31-ocr57-1): '.', '..' plus their ASCII
+	 * case-insensitive percent spellings '%2e', '.%2e', '%2e.',
+	 * '%2e%2e' — the §4.1 segment definitions the path state of every
+	 * WHATWG consumer resolves. The fold rides the ONE ASCII owner
+	 * (t31-ocr1-4): the byte table, never the engine's
+	 * locale-consulting strtolower.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $path The path region (parse_url()'s own path answer).
+	 * @return bool True when any whole segment is a dot segment.
+	 */
+	private static function path_has_dot_segments( string $path ): bool {
+		foreach ( explode( '/', $path ) as $segment ) {
+			if ( \in_array( AsciiFold::lower( $segment ), array( '.', '..', '%2e', '.%2e', '%2e.', '%2e%2e' ), true ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }
