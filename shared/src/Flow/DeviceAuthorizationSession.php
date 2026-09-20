@@ -53,7 +53,8 @@ final class DeviceAuthorizationSession {
 	private readonly string $user_code;
 
 	/**
-	 * Verification page the admin opens.
+	 * Verification page the admin opens (the validated spelling — the
+	 * §4.1 step-1 edge strip applies before storing, t31-ocr61-1).
 	 *
 	 * @since 0.1.0
 	 *
@@ -86,7 +87,7 @@ final class DeviceAuthorizationSession {
 	 *
 	 * @param string            $device_code      Device code (non-empty).
 	 * @param string            $user_code        User code (non-empty).
-	 * @param string            $verification_uri Verification page (absolute http(s) URL).
+	 * @param string            $verification_uri Verification page (absolute http(s) URL; stored at its validated spelling — the §4.1 step-1 edge strip applies before storing).
 	 * @param int               $interval_seconds Minimum poll interval (at least 1 second).
 	 * @param DateTimeImmutable $expires_at       Absolute session expiry.
 	 * @throws InvalidArgumentException When any field violates the contract above.
@@ -111,6 +112,34 @@ final class DeviceAuthorizationSession {
 		 */
 		HeaderMap::assert_no_control_bytes( $device_code, 'The device code' );
 		HeaderMap::assert_no_control_bytes( $user_code, 'The user code' );
+
+		/*
+		 * The STORED spelling is the VALIDATED spelling (OCR round 61,
+		 * t31-ocr61-1 — the r57-4 class swept to this VO): the §4.1
+		 * step-1 edge strip inside Url::parse_validated() judged the
+		 * edge-STRIPPED spelling while $verification_uri kept the
+		 * caller's raw bytes, so an accepted
+		 * "https://device.example/verify\n" constructed with
+		 * verification_uri() — the RAW channel handed to the
+		 * authorization redirect — returning edge-control-bearing
+		 * bytes no screen ever judged (driven at HEAD): the exact
+		 * raw/validated divergence HttpRequest refused at
+		 * t31-ocr57-4, reopening the forged-log-line/
+		 * broken-redirect-header class. The strip rides the ONE owner
+		 * Url owns, BEFORE storing: the parse below judges exactly the
+		 * bytes stored, and a URI with no edge bytes stores
+		 * byte-exact.
+		 *
+		 * Census (the sweep this comment owes): verification_uri is
+		 * the ONE URI-bearing field this VO carries — RFC 8628 §3.2's
+		 * verification_uri_complete (the query-bearing twin) and any
+		 * other URI a provider may send belong to the future flow
+		 * parser, not this shape, and the masked view's
+		 * verification_uri derives through Url::redacted() from this
+		 * same stored spelling — no second stored URI channel exists
+		 * to sweep.
+		 */
+		$verification_uri = Url::strip_edge_control_or_space( $verification_uri );
 		Url::parse_validated( $verification_uri );
 
 		/*
@@ -162,7 +191,10 @@ final class DeviceAuthorizationSession {
 	}
 
 	/**
-	 * Verification page URI.
+	 * Verification page URI — the VALIDATED spelling (the stored-form
+	 * contract, t31-ocr61-1): exactly the bytes Url::parse_validated()
+	 * judged, so the authorization redirect channel never carries edge
+	 * control-or-space bytes no screen ever judged.
 	 *
 	 * @since 0.1.0
 	 *

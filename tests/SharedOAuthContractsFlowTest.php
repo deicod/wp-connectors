@@ -152,6 +152,51 @@ final class SharedOAuthContractsFlowTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString("\r", print_r($session, true), 'The legal dump carries no carriage return — no forged line material.');
     }
 
+    /**
+     * OCR-round-61 pin (t31-ocr61-1 — the r57-4 stored-spelling class,
+     * swept to the session): the constructor validated the §4.1 step-1
+     * edge-STRIPPED spelling while the property kept the caller's raw
+     * bytes, so an accepted "\rhttps://device.example/verify\n"
+     * constructed with verification_uri() — the RAW channel handed to
+     * the authorization redirect — returning edge-control-bearing
+     * bytes no screen ever judged (red at HEAD): the exact
+     * raw/validated divergence HttpRequest refused at t31-ocr57-4,
+     * reopening the forged-log-line/broken-redirect-header class. The
+     * stored spelling is the validated spelling now; a URI with no
+     * edge bytes stores byte-exact.
+     */
+    public function testTheStoredVerificationUriIsTheValidatedSpelling(): void
+    {
+        $edge_session = new DeviceAuthorizationSession(
+            FakeSecrets::deviceCode(),
+            'BCJK-3502',
+            "\r \thttps://device.example/verify\t \n",
+            5,
+            new \DateTimeImmutable('+10 minutes')
+        );
+        $this->assertSame(
+            'https://device.example/verify',
+            $edge_session->verification_uri(),
+            'verification_uri() names exactly the bytes the screen judged — the edge bytes strip BEFORE storing (red at HEAD: the raw edge bytes rode the redirect channel).'
+        );
+        foreach (array('dump' => print_r($edge_session, true), 'serialize' => serialize($edge_session)) as $channel => $rendered) {
+            $this->assertStringNotContainsString("\r", $rendered, "The {$channel} view carries no carriage return — no forged line material rides the safe forms.");
+        }
+
+        $clean_session = new DeviceAuthorizationSession(
+            FakeSecrets::deviceCode(),
+            'BCJK-3502',
+            'https://device.example/verify?user_code=BCJK-3502',
+            5,
+            new \DateTimeImmutable('+10 minutes')
+        );
+        $this->assertSame(
+            'https://device.example/verify?user_code=BCJK-3502',
+            $clean_session->verification_uri(),
+            'A URI with no edge bytes stores byte-exact — the query rides verbatim, the strip is the browser\'s own first verdict and touches nothing else.'
+        );
+    }
+
     /* ---------------------------------------------------------------
      * PKCE pair.
      * ---------------------------------------------------------------
