@@ -594,7 +594,21 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
     try {
         for ($attempt = 0; $attempt < 16 && '' === $extractDir; ++$attempt) {
             $candidate = $workDir . '-' . bin2hex(random_bytes(8));
-            if (mkdir($candidate, 0755, true)) {
+            /*
+             * NON-recursive by premise (OCR round 67, t31-ocr67-3 —
+             * comment-vs-behavior drift): the recursive flag once
+             * made mkdir() return TRUE over a pre-existing DIRECTORY
+             * (only files/links fail it), so $extractDir could bind
+             * to a tree that already stood at the suffixed name —
+             * only the CSPRNG suffix kept the shape unreachable,
+             * while the census comment above claimed "a pre-existing
+             * name of any kind fails it". Without the flag the claim
+             * is TRUE (any pre-existing name of any kind fails,
+             * retried on a fresh suffix); the parent dirname() of
+             * $workDir exists by construction (the temp root, dist/),
+             * so recursion bought nothing.
+             */
+            if (mkdir($candidate, 0755)) {
                 $extractDir = $candidate;
             }
         }
