@@ -145,11 +145,44 @@ if (wp_connectors_cli_entry(__FILE__)) {
                  * doctrine's charge either.
                  */
                 if ($file->isLink()) {
+                    /*
+                     * The read owns its Throwable shapes (OCR round 57,
+                     * t31-ocr57-3): getLinkTarget() throws
+                     * RuntimeException on error (the link removed
+                     * between the iterator's yield and this readlink,
+                     * NFS ESTALE, Windows directory-symlink shapes) and
+                     * answers false on some builds — while the walk's
+                     * fence below catches only UnexpectedValueException,
+                     * so the RuntimeException escaped as an uncaught
+                     * fatal (exit 255, no FAIL line, no summary) from
+                     * the diagnostic ITSELF: the exact uncaught-fatal
+                     * class the r30-3 fence converts into a counted
+                     * refusal ('never a stack trace'). The refusal now
+                     * names the unreadable target in the walk's own
+                     * FAIL vocabulary, the row stays counted, the exit
+                     * red — and the false return degrades to the same
+                     * named refusal instead of an empty '' target.
+                     * Construction-evident, not driven: the race window
+                     * (a link removed between the iterator's lstat and
+                     * this readlink) is owned end-to-end inside the
+                     * spawned child with no staging hook a battery can
+                     * plant deterministically; the readable-link
+                     * battery of t31-ocr50-7 stays the green control
+                     * over the surviving happy path.
+                     */
+                    try {
+                        $link_target = $file->getLinkTarget();
+                        if (false === $link_target) {
+                            $link_target = '(unreadable target: readlink answered false)';
+                        }
+                    } catch (RuntimeException $unreadable_target) {
+                        $link_target = '(unreadable target: ' . $unreadable_target->getMessage() . ')';
+                    }
                     fwrite(STDERR, sprintf(
                         "lint-php: FAIL %s: symlinked source (%s -> %s) — the no-symlinks doctrine refuses the charge instead of silently skipping a linked source that pre-change reached php -l\n",
                         $root,
                         $file->getPathname(),
-                        (string) $file->getLinkTarget()
+                        $link_target
                     ));
                     ++$walk_refusals;
                     continue;
