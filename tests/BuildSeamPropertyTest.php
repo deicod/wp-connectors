@@ -316,6 +316,22 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * reads through mode 0000, t31-ocr4-1 — the row skips itself on a
      * root runner instead of failing as a false silent third).
      *
+     * The table's staging plants are CLOSED (OCR round 55,
+     * t31-ocr55-5 — the r53-7/ocr54-1 doctrine swept to the last
+     * rows): every remaining plant returned its channel silently —
+     * the chmod pair (shared/plugin-source-unreadable), the
+     * near-source/whitespace/upper-.PHP/build.json writes, both
+     * collision mkdir+write pairs, all three landing-blocker
+     * unlink+mkdir pairs, the shared-tree-empty unlinks+write, the
+     * manifest lock, and the traversal mutation's write — so a plant
+     * that never landed made the LOUD row fail as 'the silent third'
+     * (the run succeeded over a state that never existed) or the row
+     * pass vacuously. Every plant asserts its own landing now through
+     * the table's own asserted-staging vocabulary (unlink/chmod/
+     * mkdir/file_put_contents/symlink), the assertion failure riding
+     * the apply-throw channel as the ROW's FAIL (t31-ocr30-6), and
+     * every row's verdict is unchanged when the plants land.
+     *
      * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable, seed_call?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool}>
      */
     private function states(): array
@@ -367,8 +383,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // is the fence's; readSharedSource's own loud read seam
                 // stays as defense in depth behind it.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    chmod($scratch['shared'] . '/Clock/ClockInterface.php', 0000);
+                'apply' => function (array $scratch): void {
+                    $this->assertTrue(chmod($scratch['shared'] . '/Clock/ClockInterface.php', 0000), "staging: {$scratch['shared']}/Clock/ClockInterface.php must lock — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'cannot be read',
                 'skip_on_root' => true,
@@ -381,8 +397,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // namespace fence refuses the declaration-less bytes at
                 // the config seam; the 'no bytes' seam stays behind it.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    file_put_contents($scratch['shared'] . '/GrantInterface.php', " \n\t\n");
+                'apply' => function (array $scratch): void {
+                    $this->assertNotFalse(file_put_contents($scratch['shared'] . '/GrantInterface.php', " \n\t\n"), "staging: {$scratch['shared']}/GrantInterface.php must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'declares no namespace',
             ),
@@ -390,8 +406,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // t31-r5-2's other collection point: an unreadable plugin
                 // file shipped a 0-byte zip entry at exit 0.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    chmod($scratch['plugin'] . '/src/Provider/ExampleProvider.php', 0000);
+                'apply' => function (array $scratch): void {
+                    $this->assertTrue(chmod($scratch['plugin'] . '/src/Provider/ExampleProvider.php', 0000), "staging: {$scratch['plugin']}/src/Provider/ExampleProvider.php must lock — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'cannot copy',
                 'skip_on_root' => true,
@@ -401,17 +417,17 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // t31-r5-4: is_dir() passed while the tree carried no PHP
                 // sources — a library-less zip at exit 0.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    unlink($scratch['shared'] . '/Clock/ClockInterface.php');
-                    unlink($scratch['shared'] . '/GrantInterface.php');
-                    file_put_contents($scratch['shared'] . '/README.md', "# empty of sources\n");
+                'apply' => function (array $scratch): void {
+                    $this->assertTrue(unlink($scratch['shared'] . '/Clock/ClockInterface.php'), "staging: {$scratch['shared']}/Clock/ClockInterface.php must unlink — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertTrue(unlink($scratch['shared'] . '/GrantInterface.php'), "staging: {$scratch['shared']}/GrantInterface.php must unlink — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertNotFalse(file_put_contents($scratch['shared'] . '/README.md', "# empty of sources\n"), "staging: {$scratch['shared']}/README.md must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'no PHP sources',
             ),
             'build-json-malformed' => array(
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    file_put_contents($scratch['plugin'] . '/build.json', "{\"embed_shared\": true,\n}\n");
+                'apply' => function (array $scratch): void {
+                    $this->assertNotFalse(file_put_contents($scratch['plugin'] . '/build.json', "{\"embed_shared\": true,\n}\n"), "staging: {$scratch['plugin']}/build.json must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'malformed',
             ),
@@ -420,15 +436,15 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // key; the raw-text fence counted quoted spellings and
                 // last-wins silently meant no-embed at exit 0.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    file_put_contents($scratch['plugin'] . '/build.json', "{\"embed_shared\": true, \"\\u0065mbed_shared\": false}\n");
+                'apply' => function (array $scratch): void {
+                    $this->assertNotFalse(file_put_contents($scratch['plugin'] . '/build.json', "{\"embed_shared\": true, \"\\u0065mbed_shared\": false}\n"), "staging: {$scratch['plugin']}/build.json must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => '2 times',
             ),
             'build-json-wrongly-typed' => array(
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    file_put_contents($scratch['plugin'] . '/build.json', "{\"embed_shared\": \"false\"}\n");
+                'apply' => function (array $scratch): void {
+                    $this->assertNotFalse(file_put_contents($scratch['plugin'] . '/build.json', "{\"embed_shared\": \"false\"}\n"), "staging: {$scratch['plugin']}/build.json must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'JSON boolean',
             ),
@@ -436,12 +452,12 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // t31-r5-1: the plugin's own src/Shared/<path> was
                 // silently REPLACED by the generated embed copy.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    mkdir($scratch['plugin'] . '/src/Shared/Clock', 0755, true);
-                    file_put_contents(
+                'apply' => function (array $scratch): void {
+                    $this->assertTrue(mkdir($scratch['plugin'] . '/src/Shared/Clock', 0755, true), "staging: {$scratch['plugin']}/src/Shared/Clock must create — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertNotFalse(file_put_contents(
                         $scratch['plugin'] . '/src/Shared/Clock/ClockInterface.php',
                         "<?php\n// the plugin author's own copy — silently overwritten pre-fix\n"
-                    );
+                    ), "staging: {$scratch['plugin']}/src/Shared/Clock/ClockInterface.php must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'collision',
             ),
@@ -451,11 +467,11 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // unreachable class on a case-sensitive filesystem with
                 // build AND inspect green.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    file_put_contents(
+                'apply' => function (array $scratch): void {
+                    $this->assertNotFalse(file_put_contents(
                         $scratch['shared'] . '/ClockMath.PHP',
                         "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n"
-                    );
+                    ), "staging: {$scratch['shared']}/ClockMath.PHP must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'non-canonical extension',
             ),
@@ -464,12 +480,12 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // shipped BOTH entries — on case-insensitive extraction
                 // the author's un-rewritten copy overwrote the embed.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    mkdir($scratch['plugin'] . '/src/shared/Clock', 0755, true);
-                    file_put_contents(
+                'apply' => function (array $scratch): void {
+                    $this->assertTrue(mkdir($scratch['plugin'] . '/src/shared/Clock', 0755, true), "staging: {$scratch['plugin']}/src/shared/Clock must create — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertNotFalse(file_put_contents(
                         $scratch['plugin'] . '/src/shared/Clock/ClockInterface.php',
                         "<?php\n// the plugin author's case-variant own copy\n"
-                    );
+                    ), "staging: {$scratch['plugin']}/src/shared/Clock/ClockInterface.php must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'case-insensitive collision',
             ),
@@ -479,8 +495,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // gate: built clean, shipped nowhere, its class a
                 // not-found fatal.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    file_put_contents($scratch['shared'] . '/ClockMath.php ', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
+                'apply' => function (array $scratch): void {
+                    $this->assertNotFalse(file_put_contents($scratch['shared'] . '/ClockMath.php ', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n"), "staging: {$scratch['shared']}/ClockMath.php (trailing-space spelling) must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'NEAR-SOURCE',
                 'needs_posix' => true,
@@ -492,8 +508,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // invisible to every gate, absent from every zip, its
                 // class a not-found fatal (reproduced).
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    file_put_contents($scratch['shared'] . "/ClockMath.php\n", "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
+                'apply' => function (array $scratch): void {
+                    $this->assertNotFalse(file_put_contents($scratch['shared'] . "/ClockMath.php\n", "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n"), "staging: {$scratch['shared']}/ClockMath.php (newline-tail spelling) must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'NEAR-SOURCE',
                 'needs_posix' => true,
@@ -503,8 +519,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // controls and DEL — 'ClockMath.php\x01' was STILL
                 // neither collected nor refused (verifier-confirmed).
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    file_put_contents($scratch['shared'] . "/ClockMath.php\x01", "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
+                'apply' => function (array $scratch): void {
+                    $this->assertNotFalse(file_put_contents($scratch['shared'] . "/ClockMath.php\x01", "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n"), "staging: {$scratch['shared']}/ClockMath.php (control-tail spelling) must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'NEAR-SOURCE',
                 'needs_posix' => true,
@@ -515,8 +531,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // names onto label-shaped paths: a dead entry, build and
                 // inspect green (reproduced).
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    file_put_contents($scratch['shared'] . '/ ClockMath.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n");
+                'apply' => function (array $scratch): void {
+                    $this->assertNotFalse(file_put_contents($scratch['shared'] . '/ ClockMath.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nfinal class ClockMath {}\n"), "staging: {$scratch['shared']}/ClockMath.php (leading-space spelling) must write — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'NEAR-SOURCE',
             ),
@@ -552,25 +568,25 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // t31-r5-S: the constructible landing blocker refuses at
                 // the pre-flight, before the first rename.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    unlink($scratch['zip'] . '.sha256');
-                    mkdir($scratch['zip'] . '.sha256');
+                'apply' => function (array $scratch): void {
+                    $this->assertTrue(unlink($scratch['zip'] . '.sha256'), "staging: {$scratch['zip']}.sha256 must unlink — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertTrue(mkdir($scratch['zip'] . '.sha256'), "staging: the sidecar blocker must create — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'not a regular file',
             ),
             'landing-manifest-blocked' => array(
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    unlink($scratch['dist'] . '/checksums.txt');
-                    mkdir($scratch['dist'] . '/checksums.txt');
+                'apply' => function (array $scratch): void {
+                    $this->assertTrue(unlink($scratch['dist'] . '/checksums.txt'), "staging: {$scratch['dist']}/checksums.txt must unlink — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertTrue(mkdir($scratch['dist'] . '/checksums.txt'), "staging: the manifest blocker must create — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'not a regular file',
             ),
             'landing-zip-blocked' => array(
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    unlink($scratch['zip']);
-                    mkdir($scratch['zip']);
+                'apply' => function (array $scratch): void {
+                    $this->assertTrue(unlink($scratch['zip']), "staging: {$scratch['zip']} must unlink — a staging failure fails as staging, never the row's verdict.");
+                    $this->assertTrue(mkdir($scratch['zip']), "staging: the zip blocker must create — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'not a regular file',
             ),
@@ -588,7 +604,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // miss now fails loudly AT THE MUTATION STEP, naming
                 // which spelling drifted.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
+                'apply' => function (array $scratch): void {
                     $mainPath = $scratch['plugin'] . '/example-connector.php';
                     $main = (string) file_get_contents($mainPath);
                     $traversal = '0.1/../../../vsec-precious';
@@ -600,7 +616,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                     if (1 > $headerCount || 1 > $quotedCount) {
                         throw new RuntimeException(sprintf('version-header-traversal: the mutation needle missed the fixture (header spelling matched %d, quoted spelling matched %d) — the fixture drifted; refusing to run a no-op mutation as a phantom build defect.', $headerCount, $quotedCount));
                     }
-                    file_put_contents($mainPath, $mutated);
+                    $this->assertNotFalse(file_put_contents($mainPath, $mutated), "staging: {$mainPath} must write the mutated main — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'version token',
             ),
@@ -610,8 +626,8 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 // manifest carried only this run's entry, every other
                 // plugin's checksum destroyed at exit 0.
                 'expect' => 'LOUD',
-                'apply' => static function (array $scratch): void {
-                    chmod($scratch['dist'] . '/checksums.txt', 0000);
+                'apply' => function (array $scratch): void {
+                    $this->assertTrue(chmod($scratch['dist'] . '/checksums.txt', 0000), "staging: {$scratch['dist']}/checksums.txt must lock — a staging failure fails as staging, never the row's verdict.");
                 },
                 'fragment' => 'cannot read the checksum manifest',
                 'skip_on_root' => true,
