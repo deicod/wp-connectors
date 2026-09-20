@@ -817,6 +817,62 @@ FIXTURE
     }
 
     /**
+     * OCR-round-67 pin (t31-ocr67-5 — the comma arm's display parity):
+     * the comma-list handler unrolls its members through the group
+     * unroller under an EMPTY prefix, and that composition prepends
+     * one artifact separator to every member — the print site once
+     * ltrim'd ALL leading separators, so a fully-qualified member
+     * ('use \A\B, \C\D;') printed as 'C\D', losing the marker the
+     * single arm prints for 'use \C\D;' (driven red at HEAD through
+     * the real STDERR channel). The display strips exactly the one
+     * artifact separator now; the FAIL vocabulary agrees across all
+     * three arms (display-only — the verdict rides the short name).
+     */
+    public function testTheFullyQualifiedCommaMemberFlagPrintsTheSingleArmMarker(): void
+    {
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this child-process consumer): the STDERR
+         * channel is captured through a spawned engine, and on a
+         * disable_functions host the first spawn was an
+         * undefined-function \Error instead of the visible skip.
+         */
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the STDERR-channel message leg cannot run (the marker-parity verdict rides a child process).');
+        }
+
+        file_put_contents($this->root . '/fixture.php', "<?php\nuse \\Vendor\\Alpha, \\Vendor\\Pkg\\DeadThing;\n\$x = new Alpha();\n");
+        file_put_contents($this->root . '/solo.php', "<?php\nuse \\Vendor\\Pkg\\DeadSolo;\n");
+
+        /*
+         * The gate path is asserted resolved BEFORE the embed (t31-ocr25
+         * rd-1, the ocr25-8 class census): a realpath() false once
+         * embedded `require false;` into the child — the fatal then
+         * read as the gate's own defect, an environment problem
+         * wearing the pin's subject.
+         */
+        $gateScript = realpath(__DIR__ . '/../bin/check-conventions.php');
+        $this->assertNotFalse($gateScript, 'The conventions-gate path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the gate defect the child would fatal as.');
+        $script = 'require ' . var_export($gateScript, true) . ';'
+            . ' wp_connectors_unused_import_violations(' . var_export($this->root, true) . ');';
+        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+        $message = implode("\n", $output);
+
+        $this->assertSame(0, $exit, 'The scanner helper must not exit non-zero; the CLI gate owns the exit code.');
+        $this->assertSame(2, wp_connectors_unused_import_violations($this->root), 'Both dead imports flag — the dead comma member beside the dead single-arm control.');
+        $this->assertStringContainsString(
+            "unused import '\\Vendor\\Pkg\\DeadThing' (comma-list member)",
+            $message,
+            'The fully-qualified comma member prints WITH its leading separator — the same marker the single arm prints (red at HEAD: the ltrim printed Vendor\\Pkg\\DeadThing).'
+        );
+        $this->assertStringContainsString(
+            "unused import '\\Vendor\\Pkg\\DeadSolo'",
+            $message,
+            'The single-arm control keeps its own fully-qualified marker — the parity the round pins.'
+        );
+    }
+
+    /**
      * Fix-round pin (t31-r9-7): the conventions gate's unused-import
      * scan covered only connectors/, so a dead import in shared/src
      * passed every gate and then shipped into EVERY embedding plugin —

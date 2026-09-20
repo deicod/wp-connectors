@@ -578,10 +578,27 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                         continue;
                     }
 
+                    /*
+                     * The display strips exactly the ONE artifact
+                     * separator the ''-prefix composition prepends
+                     * (OCR round 67, t31-ocr67-5): ltrim once stripped
+                     * ALL leading separators, so a fully-qualified
+                     * member ('use \A\B, \C\D;' composes '\C\D' to
+                     * '\\C\D') printed as 'C\D' — losing the
+                     * fully-qualified marker the single arm prints for
+                     * 'use \C\D;' and the group arm for its members.
+                     * One artifact separator in, one separator out;
+                     * the FAIL vocabulary agrees across all three
+                     * arms (display-only — the verdict rides the
+                     * short name).
+                     */
+                    $comma_display = '\\' === ($member_import['qualified'][0] ?? '')
+                        ? substr($member_import['qualified'], 1)
+                        : $member_import['qualified'];
                     fwrite(STDERR, sprintf(
                         "conventions: FAIL %s: unused import '%s' (comma-list member) — the short name appears nowhere else in the file.\n",
                         substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
-                        ltrim($member_import['qualified'], '\\')
+                        $comma_display
                     ));
                     ++$violations;
                 }
