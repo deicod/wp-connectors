@@ -428,10 +428,34 @@ final class WpConnectorsBuild
                      * prefix the members' own grammar judges.
                      */
                     $sub_segment_tail = (string) ($matches[2] ?? '');
+                    /*
+                     * The kind-exemption probe owns the FULLY-QUALIFIED
+                     * tail (OCR round 66, t31-ocr66-3): group 1 admits
+                     * the optional leading backslash of a fully-
+                     * qualified import INSIDE the capture ('use
+                     * function \…\Shared\true;' captures '…function
+                     * \'), and the probe once required the kind
+                     * keyword at the very END ('function\s+\z') — so
+                     * the capture's trailing separator broke the match
+                     * and the special-class refusal fired for the
+                     * engine-legal fully-qualified kind-led spellings
+                     * (php -l clean, driven; the fatal the census
+                     * exists for is a CLASS-name check, and the kind
+                     * dissolves it — the dissolver row's own doctrine
+                     * one spelling over). The probe rides
+                     * 'function|const' + optional whitespace +
+                     * optional separator at the end now: the
+                     * whitespace kind ('use function \…') and the
+                     * glued-to-separator kind ('use function \…')
+                     * exempt alike, while the kind-less capture ('use
+                     * \…' — a plain class import binding the special
+                     * leaf) still fails the probe and refuses, the
+                     * r47-2 verdict unchanged.
+                     */
                     if ('' !== $sub_segment_tail
                         && '' === $alias_group
                         && '' === (string) ($matches[4] ?? '')
-                        && 1 !== preg_match('/(?i:function|const)\s+\z/', $matches[1])
+                        && 1 !== preg_match('/(?i:function|const)\s*\\\\?\z/', $matches[1])
                         && self::nameLeafIsSpecialClass($sub_segment_tail)) {
                         $tail_leaf = (string) substr((string) strrchr($sub_segment_tail, '\\'), 1);
                         throw new RuntimeException("build: the use statement importing the shared namespace in {$sourceVersion} carries a sub-segment tail whose leaf ('{$tail_leaf}') is a special class name — the un-aliased class import binds it and the engine fatals at compile (\"Cannot use … as {$tail_leaf} because '{$tail_leaf}' is a special class name\"), case-insensitively, while the rewrite re-emits the tail verbatim beside the rewritten family, so the zip would ship the fatal bytes at exit 0; write a leaf the engine accepts as a class name, or dissolve the fatal with an alias or a function/const kind");

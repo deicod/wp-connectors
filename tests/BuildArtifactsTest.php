@@ -6852,6 +6852,34 @@ FIXTURE;
         $this->assertStringContainsString('use function Deicod\\WpConnectors\\OpenAiOauth\\Shared\\true;', $tail_dissolver_battery, 'A function-kind special-class leaf is exempt (the fatal is a class-name check) and rewrites.');
 
         /*
+         * OCR round 66 (t31-ocr66-3 — the kind-exemption probe's
+         * FULLY-QUALIFIED tail, the dissolver row's own doctrine one
+         * spelling over): group 1 of the use pattern admits the
+         * optional leading backslash of a fully-qualified import
+         * INSIDE the capture, so 'use function \…\Shared\true;'
+         * captures '…function \' — and the exemption probe once
+         * required the kind keyword at the very END ('function\s+\z'),
+         * failing over the trailing separator and refusing the
+         * engine-legal fully-qualified kind-led spellings (red at
+         * HEAD, driven: both rows below REFUSED with the
+         * special-class message; php -l clean on this engine — the
+         * fatal the r47-2 census exists for is a CLASS-name check,
+         * and the kind dissolves it exactly as the whitespace twin
+         * above already did). The probe owns the separator tail now.
+         */
+        $fq_kind_dissolvers = "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse function \\Deicod\\WpConnectors\\Shared\\true;\nuse const \\Deicod\\WpConnectors\\Shared\\null;\nclass FqKindDissolverStore\n{\n}\n";
+        $fq_kind_battery = WpConnectorsBuild::rewriteSharedNamespace($fq_kind_dissolvers, 'OpenAiOauth', 'shared/src/FqKindDissolverStore.php');
+        $this->assertStringContainsString('use function \Deicod\\WpConnectors\\OpenAiOauth\\Shared\\true;', $fq_kind_battery, 'A fully-qualified function-kind special-class leaf is exempt through the separator tail and rewrites.');
+        $this->assertStringContainsString('use const \Deicod\\WpConnectors\\OpenAiOauth\\Shared\null;', $fq_kind_battery, 'A fully-qualified const-kind special-class leaf is exempt through the separator tail and rewrites.');
+        // The kind-less fully-qualified twin keeps the r47-2 refusal
+        // (the class import binds the special leaf; driven unchanged).
+        $plain_fq_refusal = $this->refusalOf(
+            fn() => WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse \\Deicod\\WpConnectors\\Shared\\true;\nclass FqKindDissolverStore\n{\n}\n", 'OpenAiOauth', 'shared/src/FqKindDissolverStore.php'),
+            'A fully-qualified CLASS import binding a special-class leaf must keep refusing — the probe\'s separator tail exempts only the kind-led capture.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('sub-segment tail whose leaf', $plain_fq_refusal->getMessage(), 'The refusal stays the tail seam\'s own vocabulary over the fully-qualified spelling.');
+
+        /*
          * OCR round 49 (t31-ocr49-1/2/3 — the eleventh use-grammar
          * family): the LEFT-ANCHOR generation. The engine lexes
          * `Foo\namespace` and `Foo\use` as ONE qualified-name token
