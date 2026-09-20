@@ -4400,19 +4400,33 @@ function wp_connectors_ascii_lower($value)
  * sequence is pure non-ASCII bytes, so an ASCII-only diagnostic is
  * byte-identical under the new vocabulary.
  *
+ * The map is computed ONCE per process (OCR round 55, t31-ocr55-3 —
+ * the t31-ocr52-6 doctrine, this file's own hoisting idiom): the
+ * seam is called per entry in the archive walk and per violation
+ * line, so the per-call rebuild of the 43-entry substitution map
+ * (range + array_map + array_combine + array_fill + array_fill_keys
+ * + array_merge) was dozens of constant-map builds per hostile
+ * archive. The static cache is byte-identical to the rebuilt
+ * spelling by construction.
+ *
  * @param string $value The bytes about to interpolate into a diagnostic.
  * @return string The same bytes with every C0 control, DEL, and bidi/format control as a space.
  */
 function wp_connectors_printable($value)
 {
-    return (string) strtr((string) $value, array_merge(
-        array_combine(array_map('chr', array_merge(range(0, 31), array(127))), array_fill(0, 33, ' ')),
-        array_fill_keys(array(
-            "\u{200E}", "\u{200F}",
-            "\u{202A}", "\u{202B}", "\u{202C}", "\u{202D}", "\u{202E}",
-            "\u{2066}", "\u{2067}", "\u{2068}", "\u{2069}",
-        ), ' ')
-    ));
+    static $map = null;
+    if (null === $map) {
+        $map = array_merge(
+            array_combine(array_map('chr', array_merge(range(0, 31), array(127))), array_fill(0, 33, ' ')),
+            array_fill_keys(array(
+                "\u{200E}", "\u{200F}",
+                "\u{202A}", "\u{202B}", "\u{202C}", "\u{202D}", "\u{202E}",
+                "\u{2066}", "\u{2067}", "\u{2068}", "\u{2069}",
+            ), ' ')
+        );
+    }
+
+    return (string) strtr((string) $value, $map);
 }
 
 /**
