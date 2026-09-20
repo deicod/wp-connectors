@@ -2652,7 +2652,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         // the control-byte class replaced the line-break-only check;
         // the 'strtolower' fragment by t31-r2-14 when the fold became
         // the locale-independent AsciiFold::lower.)
-        $owner = (string) file_get_contents((new \ReflectionClass(HeaderMap::class))->getFileName());
+        $owner = $this->productionSource(HeaderMap::class);
         foreach (array('must not contain control characters', 'AsciiFold::lower', 'is_sensitive_header_name', 'rendered_lines') as $fragment) {
             $this->assertStringContainsString($fragment, $owner, 'HeaderMap must own the ' . $fragment . ' half.');
         }
@@ -2841,7 +2841,8 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
 
     /**
      * The production-source read behind the structural pins (OCR
-     * round 45, t31-ocr45-8, one census over all four sites): the
+     * round 45, t31-ocr45-8, one census over all five sites — the
+     * round-56 straggler the docblock's claim already named): the
      * pins read through silent `(string) file_get_contents()` casts,
      * so a failed read degraded to '' and the fragment assertions
      * failed LATE with misleading messages — a needle mismatch over
