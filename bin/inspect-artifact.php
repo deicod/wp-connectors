@@ -693,6 +693,16 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
                 wp_connectors_printable(basename($zipPath)),
                 wp_connectors_printable($extract_throw->getMessage())
             );
+            /*
+             * The handle closes on the THROW path too (OCR round 67,
+             * t31-ocr67-4): the return once ran before the close
+             * below, so the ZipArchive stayed open until scope
+             * teardown — every sibling path (the open refusal, the
+             * false-return path, the green walk) closes explicitly,
+             * and an open read handle holds the zip file past the
+             * verdict on filesystems that count such things.
+             */
+            $zip->close();
 
             return $violations;
         } finally {
