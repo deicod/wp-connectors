@@ -10969,6 +10969,53 @@ FIXTURE;
     }
 
     /**
+     * glm15-10: the autoloader and version-constant gate readers own
+     * their read failures — the (string) file_get_contents laundering
+     * pair this file's gates still carried after glm14-2 swept the
+     * scanner's reads. A chmod-0000 src/autoload.php became '' and the
+     * autoloader gate answered three MISATTRIBUTED verdicts (register
+     * a PSR-4 autoloader; exactly one; bind the prefix) over bytes
+     * nobody read; the version gate answered its own misattribution
+     * over the main file. One loud FAIL naming the unreadable file,
+     * the glm14-2 sibling vocabulary.
+     */
+    public function testUnreadableGateSourcesAnswerLoudFailuresNeverMisattributedVerdicts()
+    {
+        $this->skipChmod0000LegOnRootRunner('the chmod-0000 legs');
+
+        $plugin = self::scratchPath('glm15-unreadable-gates') . '/zai';
+        mkdir($plugin . '/src', 0755, true);
+        $autoload = "<?php\nspl_autoload_register( static function ( \$class ): void {\n    \$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\n    if ( 0 !== strncmp( \$class, \$prefix, strlen( \$prefix ) ) ) {\n        return;\n    }\n    \$file = __DIR__ . '/' . str_replace( '\\\\', '/', substr( \$class, strlen( \$prefix ) ) ) . '.php';\n    if ( is_file( \$file ) ) {\n        require \$file;\n    }\n} );\n";
+        $this->assertNotFalse(file_put_contents($plugin . '/src/autoload.php', $autoload), "staging: {$plugin}/src/autoload.php must write — a staging failure fails as staging, never the gate's verdict.");
+        $main = "<?php\n/**\n * Plugin Name: Zai\n * Version: 0.1.0\n */\ndefine('ZAI_VERSION', '0.1.0');\n";
+        $this->assertNotFalse(file_put_contents($plugin . '/zai.php', $main), "staging: {$plugin}/zai.php must write — a staging failure fails as staging, never the gate's verdict.");
+
+        // The healthy control: both gates green over readable files.
+        $this->assertSame(array(), wp_connectors_autoloader_violations($plugin));
+        $this->assertSame(array(), wp_connectors_version_constant_violations($plugin, array('version' => '0.1.0'), array( $plugin . '/zai.php' )));
+
+        try {
+            // The autoloader read owns its failure (red at HEAD: three misattributed verdicts over the laundered '' read).
+            $this->assertTrue(chmod($plugin . '/src/autoload.php', 0000), "staging: {$plugin}/src/autoload.php must lock — a staging failure fails as staging, never the gate's verdict.");
+            $violations = wp_connectors_autoloader_violations($plugin);
+            $this->assertCount(1, $violations, 'The unreadable autoloader answers ONE verdict, its own.');
+            $this->assertStringContainsString('src/autoload.php is unreadable', $violations[0]);
+            $this->assertStringContainsString('the autoloader check cannot run', $violations[0]);
+
+            // The main-file read owns its failure the same way (the pre-scanned main-file list is the production caller idiom).
+            $this->assertTrue(chmod($plugin . '/zai.php', 0000), "staging: {$plugin}/zai.php must lock — a staging failure fails as staging, never the gate's verdict.");
+            $violations = wp_connectors_version_constant_violations($plugin, array('version' => '0.1.0'), array( $plugin . '/zai.php' ));
+            $this->assertCount(1, $violations, 'The unreadable main file answers ONE verdict, its own.');
+            $this->assertStringContainsString('the main plugin file is unreadable', $violations[0]);
+            $this->assertStringContainsString('the version-constant check cannot run', $violations[0]);
+        } finally {
+            @chmod($plugin . '/src/autoload.php', 0644);
+            @chmod($plugin . '/zai.php', 0644);
+            WpHarness::releaseScratch(dirname($plugin));
+        }
+    }
+
+    /**
      * Verifier-round pin (t31-r4-16, superseding the master-era
      * leak-only pin): a symlink inside the PLUGIN tree refuses the
      * build loudly. The old silent skip pinned only the leak half

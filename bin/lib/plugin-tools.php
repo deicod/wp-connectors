@@ -3933,7 +3933,26 @@ function wp_connectors_autoloader_violations($pluginDir)
 
         return $violations;
     }
-    $code = wp_connectors_strip_comments((string) file_get_contents($autoload));
+    /*
+     * glm15-10: the read owns its failure (the glm14-2 doctrine,
+     * swept to the pair this round caught still laundering) — the
+     * (string) cast turned a chmod-0000 src/autoload.php into '' and
+     * the strip then answered three MISATTRIBUTED verdicts (must
+     * register a PSR-4 autoloader; exactly one; must bind the
+     * slug-derived prefix) over bytes nobody read. A false read is
+     * the gate's own loud FAIL naming the file; every consumer — the
+     * conventions gate, the build, the inspector — derives its
+     * refusal from this list. The @ suppresses only the engine's
+     * E_WARNING (the ocr30-4 doctrine): the loud refusal is the
+     * violation line.
+     */
+    $source = @file_get_contents($autoload);
+    if (false === $source) {
+        $violations[] = sprintf('%s: src/autoload.php is unreadable — the autoloader check cannot run', $slug);
+
+        return $violations;
+    }
+    $code = wp_connectors_strip_comments($source);
     if (strpos($code, 'spl_autoload_register') === false) {
         $violations[] = sprintf('%s: src/autoload.php must register a PSR-4 autoloader.', $slug);
     }
@@ -4777,7 +4796,18 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
     if (null === $mainFile) {
         return array( sprintf('%s: no main plugin file found.', $slug) );
     }
-    $source = (string) file_get_contents($mainFile);
+    /*
+     * glm15-10: the read owns its failure — the autoloader reader's
+     * own sibling (the (string) cast laundered a false read into ''
+     * and the constant probe below answered its misattributed
+     * 'must define constant' verdict over unread bytes).
+     */
+    $source = @file_get_contents($mainFile);
+    if (false === $source) {
+        $violations[] = sprintf('%s: the main plugin file is unreadable — the version-constant check cannot run', $slug);
+
+        return $violations;
+    }
     /*
      * The label agreement spans every slug spelling whose naive name is
      * not a legal identifier: '.' becomes '_' like '-' (t31-r5-12 —
