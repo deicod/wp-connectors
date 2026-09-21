@@ -6,6 +6,130 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 16)
+
+Second claude-glm pass over the round-15 fixes. The review: 15
+findings, every survivor driven; 3 reviewer hypotheses refuted in
+verification. Driver adjudication: all 15 accepted — THIRTEEN numbered
+commits t31-glm16-1..13 (the scanner family's three findings = one
+root-fix commit), the full offline check green after every commit; the
+refutations (including the reviewer's ledger-split note — pre-existing,
+verified at 3ebdf63, no action) go to the ledger only. Six findings
+indict round 15's own fixes. Suite 1809 → 1821 tests, 47350 → 47417
+assertions, 3 skipped unchanged (every delta measured from output).
+The round's shape: glm15-1's own fix failed open four ways — the
+census deleted, the nesting-aware mask ridden as the single owner, and
+the mask ride owning its memory bound; the core-parity cluster
+(5/8/10) resolved FOR core — the round-15 runs=1 spec was wrong; cron
+storage recurrence-blind replace plus core's dedupe window; the
+snapshot fires unconditionally; the defaulted method before the
+filter; two Url verdict-class adjudications; the serialized-digest
+args key; staging-inside-try.
+
+- **The heredoc census is deleted; the marker judge rides the ONE
+  token-masked view (t31-glm16-1, security:high; bin/lib/
+  secret-scanner.php, bin/lib/plugin-tools.php, tests/
+  SecureFixturesTest.php)** — glm15-1's census failed open four ways
+  (all driven): a NESTED heredoc clobbered its single-boolean state
+  machine (only the inner body marked; live keys on outer body lines
+  answered zero findings through the CLI gate); every other
+  token-visible data region laundered (multi-line quoted interiors,
+  __halt_compiler() tails, close-tag-bounded inline HTML,
+  lexer-refused openers); the EOF branch was off by one
+  (byte-identical contents ± one newline flipped the verdict). The
+  masker gains the one region class it lacked (T_INLINE_HTML blanks,
+  every consumer), scan_string() builds one length-preserving view per
+  PHP-bearing payload, and payloads with no '<?' keep the pinned
+  non-PHP tolerance (markers in .txt/.md fixtures stay honored).
+- **The mask ride owns its memory bound (t31-glm16-2, security:medium;
+  bin/lib/secret-scanner.php, tests/SecureFixturesTest.php)** — the
+  ride tokenizes every PHP-bearing payload, and token_get_all()
+  materializes the whole stream (~98× the source on dense input
+  measured): a ~1.9 MB entry under the walk's own 2 MB cap fataled at
+  128M with no verdict. The cost estimate rides the LARGEST PHP-mode
+  span (prose between tags is one T_INLINE_HTML token — a markdown
+  ledger tokenizes at its samples' cost, not its megabytes); an
+  over-bound span answers the loud refusal in the glm14-2 vocabulary,
+  never a silent fatal. Named ceiling: a '?>' woven inside strings
+  splits a span the lexer keeps whole (the pre-round fatal class, no
+  honest producer ships it).
+- **update_option() sanitizes at the head, then compares
+  (t31-glm16-3, bug:high; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — the raw-compare-first never consulted
+  the sanitizer over a raw-equal save, and a false-returning callback
+  completed an ADD core refuses (the sanitized false equals the
+  missing-row false: one refusal, no hooks, no write). Core's own
+  order; the glm23-8 unchanged-value contract keeps its outcome.
+- **add_option() over an existing row is core's duplicate-key silence
+  (t31-glm16-4, bug:medium; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — the stored-false ADD completed
+  observably (hooks fired, value wrote, autoload flipped) where
+  core's INSERT collides and answers a silent no-op false. One
+  exists-check for both stored shapes; the glm15-14 test rewritten to
+  the closed contract.
+- **A first save runs the sanitizer at BOTH heads
+  (t31-glm16-5, bug:medium; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — the round-15 runs=1 spec was wrong:
+  core sanitizes at update_option()'s head AND the add_option() it
+  delegates to (first save = 2 runs, structural through the
+  delegation, never a forced double call; subsequent saves 1). The
+  seam docblock and the glm15-3 pin carry the corrected spec.
+- **The keyed cron write is recurrence-blind (t31-glm16-6, bug:medium;
+  tests/harness/wp-stubs.php, tests/FoundationHarnessTest.php)** — a
+  single scheduled over an identical-key RECURRING entry appended and
+  double-fired in one tick where core's key replaces. The single's
+  keyed write replaces in place (the interval dies with the
+  overwritten row, the id staying for the by-id fire walk).
+- **The singles dedupe answers FALSE; the window is time()-anchored,
+  floored, inclusive (t31-glm16-7, bug:medium; tests/harness/
+  wp-stubs.php, tests/FoundationHarnessTest.php)** — the skip answered
+  true where core answers false, and the symmetric abs() window deduped
+  pairings core stacks: an identical single dedupes when the EXISTING
+  entry sits at or after now() − 10 minutes (the harness's
+  deterministic clock standing in for time()); past singles pile as
+  bursts. 9:59 old dedupes, 10:01 old stacks.
+- **A snapshot member fires unconditionally (t31-glm16-8, bug:medium;
+  tests/harness/WpHarness.php, tests/FoundationHarnessTest.php)** — a
+  handler's unschedule-then-reschedule of a not-yet-fired snapshot
+  member suppressed its fire; core's wp_cron() walks its captured copy
+  and never consults the live registry for permission. The by-id
+  re-location survives as registry bookkeeping (remove, re-arm); the
+  fire rides the snapshot's own args.
+- **The defaulted method lands BEFORE pre_http_request
+  (t31-glm16-9, bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — the round-15 GET fix computed the
+  default for the recorder only, handing mocks a method-less array;
+  core settles 'GET' in $args before the short-circuit hook. The
+  default now lands at the head — recorder, filter, and every
+  downstream consumer see one shape.
+- **The empty host wins the verdict over any port tail
+  (t31-glm16-10, bug:low; shared/src/Http/Url.php, tests/
+  SharedOAuthContractsHttpTest.php)** — 'https://:70000' answered the
+  out-of-range PORT sentence over a host of zero bytes (glm14-9's
+  pre-existing entry design, adjudicated this round: the authority
+  being absent is the primary defect). The port screen arms only
+  after a non-empty authority; empty-host shapes wear the host
+  sentence.
+- **The backslash screen outranks the port probe on failed parses
+  (t31-glm16-11, bug:low; shared/src/Http/Url.php, tests/
+  SharedOAuthContractsHttpTest.php)** — a backslash-bearing spelling
+  with a glued port tail answered the DIGITS sentence (driven),
+  splitting the backslash class across two sentences. One const owns
+  the sentence; the entry screen's probe rides first, before the
+  empty-host arm and the port probes.
+- **The cron args identity rides the serialized digest
+  (t31-glm16-12, bug:medium; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — every args comparison rode PHP's
+  identity (===) where core's key is md5(serialize($args)): two
+  equal-valued object args stacked twins that double-fired. One
+  helper owns the key shape; all four sites ride it.
+- **The glm15-10 gate test stages inside its guarded try
+  (t31-glm16-13, test-hygiene:low; tests/BuildArtifactsTest.php)** —
+  the battery's mkdir, staging writes, and healthy control preceded
+  the try, so a control failure stranded the scratch tree under
+  dist/ (the ocr55-7 doctrine the file's own census claims closed).
+  Everything rides the guarded try now; the finally owns every exit.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 15)
 
 First claude-glm review round after glm14 (the escalated external
