@@ -42,6 +42,20 @@ final class Url {
 	private const PORT_MUST_BE_DIGITS_MESSAGE = 'The URL port must be digits — parse_url() mishandles a glued tail (":443x" truncates to 443, ":65534x" fails the parse outright) while the URL string carries the raw text, and the two must agree.';
 
 	/**
+	 * The ONE backslash sentence, shared by the whole-input screen on the
+	 * success path and the failed-parse entry screen (glm16-11).
+	 *
+	 * A backslash-bearing spelling answers this verdict wherever it dies:
+	 * the entry's port probes once answered the DIGITS sentence over a
+	 * glued tail on a failed parse ('https://evil.example\host:65536x' —
+	 * driven), splitting one refusal class across two sentences exactly
+	 * the way the glued-port class was split before glm15-6. The screen
+	 * outranks the port probe on failed parses; the class verdict is
+	 * consistent.
+	 */
+	private const MUST_NOT_CARRY_BACKSLASH_MESSAGE = 'The URL must not carry a backslash — WHATWG consumers treat "\" as a path-segment separator for http/https URLs ("https://host/device\page" reaches /device/page there while this parse keeps the byte) and as an authority terminator ("https://evil.example\@host/" sends a browser to evil.example while this parse and every redacted form name host), and this parse keeps the byte verbatim, so the two must agree: write the URL with "/" separators, never "\".';
+
+	/**
 	 * Parses and validates an absolute http(s) URL.
 	 *
 	 * The whole URL must be VALID UTF-8 first (review round t31-r4-13):
@@ -239,6 +253,21 @@ final class Url {
 			 * never feeds the verdict.
 			 */
 			if ( false === $parts ) {
+				/*
+				 * glm16-11: the backslash screen outranks the port
+				 * probe on failed parses — a backslash-bearing
+				 * spelling answers the backslash sentence whatever
+				 * glued port tail rides beside it (driven at HEAD:
+				 * 'https://evil.example\host:65536x' answered the
+				 * digits sentence), the consistent class verdict the
+				 * whole-input screen below already owns on the
+				 * success path.
+				 */
+				if ( false !== strpos( $url, '\\' ) ) {
+					// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+					throw new InvalidArgumentException( self::MUST_NOT_CARRY_BACKSLASH_MESSAGE );
+				}
+
 				$entry_at        = strrpos( $authority, '@' );
 				$entry_host_port = false === $entry_at ? $authority : (string) substr( $authority, $entry_at + 1 );
 				$entry_bracket   = strrpos( $entry_host_port, ']' );
@@ -340,7 +369,8 @@ final class Url {
 		 * refusal still rejects nothing legal.
 		 */
 		if ( false !== strpos( $url, '\\' ) ) {
-			throw new InvalidArgumentException( 'The URL must not carry a backslash — WHATWG consumers treat "\" as a path-segment separator for http/https URLs ("https://host/device\page" reaches /device/page there while this parse keeps the byte) and as an authority terminator ("https://evil.example\@host/" sends a browser to evil.example while this parse and every redacted form name host), and this parse keeps the byte verbatim, so the two must agree: write the URL with "/" separators, never "\".' );
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data (ONE sentence with the entry screen since glm16-11).
+			throw new InvalidArgumentException( self::MUST_NOT_CARRY_BACKSLASH_MESSAGE );
 		}
 
 		$at          = strrpos( $authority, '@' );

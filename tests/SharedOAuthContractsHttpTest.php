@@ -119,6 +119,17 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'empty host wins over the out-of-range port tail' => array('https://:70000', 'must be absolute with a scheme and host'),
             'empty host wins over the glued port tail' => array('https://:65536x', 'must be absolute with a scheme and host'),
             'empty host behind userinfo wins over the port tail' => array('https://user@:70000', 'must be absolute with a scheme and host'),
+            /*
+             * glm16-11: the backslash screen outranks the port probe on
+             * failed parses — a backslash-bearing spelling answers the
+             * backslash sentence whatever glued port tail rides beside
+             * it (driven red at HEAD: the digits sentence), the
+             * consistent class verdict the whole-input screen owns on
+             * the success path. Clean glued ports keep glm15-6's
+             * verdicts above.
+             */
+            'backslash beats the glued port tail on a failed parse' => array('https://evil.example\\host:65536x', 'must not carry a backslash'),
+            'backslash beats the glued port tail after the port' => array('https://evil.example:65536x\\x', 'must not carry a backslash'),
             'garbage' => array('https://@@@', 'must be absolute with a scheme and host'),
         );
     }
