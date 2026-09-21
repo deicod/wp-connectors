@@ -1008,6 +1008,31 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('next', get_option('glm15_false_opt'));
     }
 
+    public function testASingleOverAnIdenticalRecurringEntryReplacesItCoreKey()
+    {
+        /*
+         * glm16-6: the exact class glm15-13's replace claimed dead —
+         * core's cron key ([timestamp][hook][md5(args)]) is
+         * recurrence-BLIND, so a single scheduled over an
+         * identical-key RECURRING entry REPLACES the row; the stub's
+         * append stacked a twin that double-fired in one tick (driven
+         * red at HEAD).
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm16_over', static function () use (&$fires) {
+            ++$fires;
+        });
+        wp_schedule_event(1700000060, 'hourly', 'glm16_over');
+        $this->assertTrue(wp_schedule_single_event(1700000060, 'glm16_over'), 'The keyed write replaces in place and answers true.');
+
+        $this->advanceTime(120);
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The single-over-recurring pair is ONE event (red at HEAD: appended, double-fired in one tick).');
+        $this->assertSame(1, $fires);
+        $this->assertFalse(wp_next_scheduled('glm16_over'), 'The replaced entry is a SINGLE — it fired once and is gone, never rescheduled (red at HEAD: the recurring twin rescheduled).');
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*

@@ -593,6 +593,7 @@ $GLOBALS['wpdb'] = new wpdb();
 
 function wp_schedule_single_event($timestamp, $hook, $args = array())
 {
+    $timestamp = (int) $timestamp;
     /*
      * glm15-13: core's duplicate window for singles — an identical
      * single (same hook, same args) already pending within 10 MINUTES
@@ -604,8 +605,24 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
     foreach (WpHarness::$cron[ $hook ] ?? array() as $event) {
         if (! isset($event['interval'])
             && $event['args'] === $args
-            && abs($event['timestamp'] - (int) $timestamp) < 10 * MINUTE_IN_SECONDS) {
+            && abs($event['timestamp'] - $timestamp) < 10 * MINUTE_IN_SECONDS) {
             return true; // Duplicate single within core's 10-minute window.
+        }
+    }
+    /*
+     * glm16-6: the keyed write is recurrence-BLIND — core's cron key
+     * is [timestamp][hook][md5(args)] with no recurrence term, so a
+     * single scheduled over an identical-key RECURRING entry REPLACES
+     * the row (the interval dies with the overwritten entry, the id
+     * staying for the by-id fire walk) where the append stacked a twin
+     * that double-fired in one tick — the exact class glm15-13's
+     * replace claimed dead and left open on the single arm.
+     */
+    foreach (WpHarness::$cron[ $hook ] ?? array() as $index => $event) {
+        if ($event['timestamp'] === $timestamp && $event['args'] === $args) {
+            unset(WpHarness::$cron[ $hook ][ $index ]['interval']);
+
+            return true;
         }
     }
     WpHarness::$cron[ $hook ][] = array(
