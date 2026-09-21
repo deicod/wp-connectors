@@ -925,6 +925,21 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
 
         wp_remote_request('https://api.example.test/generic', array( 'method' => 'DELETE' ));
         $this->assertSame('DELETE', $this->httpAttempts()[1]['method'], 'An explicit method rides unchanged.');
+
+        /*
+         * glm16-9: the default lands BEFORE the filter — a
+         * pre_http_request mock observes core's shape ('GET' in
+         * $args), never the method-less array the round-15 fix handed
+         * it (red at HEAD: null).
+         */
+        $seen = null;
+        add_filter('pre_http_request', static function ( $pre, $args ) use ( &$seen ) {
+            $seen = $args['method'] ?? null;
+
+            return $pre;
+        }, 10, 2);
+        wp_remote_request('https://api.example.test/generic');
+        $this->assertSame('GET', $seen, 'The defaulted method reaches the pre_http_request mock, core\'s order (red at HEAD: null — the default never landed in $args).');
     }
 
     public function testIdenticalCronEntriesReplaceAndSinglesDedupeWithinTenMinutes()

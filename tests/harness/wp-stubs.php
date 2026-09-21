@@ -1302,10 +1302,17 @@ function wp_remote_request($url, $args = array())
      * call was recorded (and handed to pre_http_request mocks) as a
      * POST, green-testing a generic REST client against a divergent
      * method.
+     *
+     * glm16-9: the default lands BEFORE the pre_http_request filter
+     * sees $args, core's own order — the round-15 fix computed the
+     * method for the recorder only, so a mock observed a method-less
+     * array where core hands it 'GET'.
      */
-    $method = isset($args['method']) ? $args['method'] : 'GET';
+    if (! isset($args['method'])) {
+        $args['method'] = 'GET';
+    }
     $pre = apply_filters('pre_http_request', false, (array) $args, (string) $url);
-    WpHarness::recordHttpAttempt($method, (string) $url, (array) $args, false !== $pre);
+    WpHarness::recordHttpAttempt($args['method'], (string) $url, (array) $args, false !== $pre);
     if (false !== $pre) {
         return $pre;
     }
