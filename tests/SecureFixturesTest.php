@@ -680,6 +680,45 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_scan_string("# secrets:allow {$zaiKey}", 'realhash2'));
     }
 
+    public function testMarkerInsideAHeredocBodyExemptsNothing()
+    {
+        /*
+         * glm15-1: the marker exemption honored markers inside heredoc/
+         * nowdoc DATA — the line-local blanker owns quoted literals only,
+         * so a heredoc body line with a live key plus a lookalike
+         * '// secrets:allow' had no quote bytes to blank and laundered
+         * the finding away (red at HEAD: 0 findings over the live key).
+         * The body is string data through the token census now: the
+         * marker must sit in CODE, and a body-line marker exempts
+         * nothing.
+         */
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+
+        $heredoc = "<?php\n\$payload = <<<EOT\n{$key} // secrets:allow\nEOT;\n";
+        $this->assertSame(
+            array( "heredoc:3 openai-anthropic-key (OpenAI/Anthropic API key)" ),
+            wp_connectors_scan_string($heredoc, 'heredoc'),
+            'A marker inside heredoc DATA exempts nothing (red at HEAD: laundered to zero findings).'
+        );
+
+        // The nowdoc twin — same body, same verdict.
+        $nowdoc = "<?php\n\$payload = <<<'EOT'\n{$key} // secrets:allow\nEOT;\n";
+        $this->assertSame(
+            array( "nowdoc:3 openai-anthropic-key (OpenAI/Anthropic API key)" ),
+            wp_connectors_scan_string($nowdoc, 'nowdoc'),
+            'The nowdoc body is string data exactly like the heredoc body.'
+        );
+
+        // The plain-line control still flags in the same shape.
+        $this->assertSame(
+            array( "plain:1 openai-anthropic-key (OpenAI/Anthropic API key)" ),
+            wp_connectors_scan_string($key, 'plain')
+        );
+
+        // A marker in REAL CODE still exempts: the code-level control.
+        $this->assertSame(array(), wp_connectors_scan_string("\$v = '{$key}'; // secrets:allow", 'code'));
+    }
+
     public function testScannerAcceptsRepoSources()
     {
         $repoRoot = dirname(__DIR__);
