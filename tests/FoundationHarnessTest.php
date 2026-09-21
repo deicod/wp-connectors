@@ -846,6 +846,45 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertCount(2, wp_get_scheduled_events('glm15_single'), 'Beyond the window the single is its own event.');
     }
 
+    public function testAStoredFalseOptionRoutesToTheAddFamilyCoreNotTheUpdateFamily()
+    {
+        /*
+         * glm15-14: update_option()'s delegation predicate
+         * (array_key_exists) diverged from core's routing — a row
+         * STORED AS FALSE is indistinguishable from a missing row
+         * through core's get_option() (both answer false), so core
+         * routes the save to the ADD family while the harness routed
+         * UPDATE (driven red at HEAD: update_option_ fired for a
+         * stored-false save).
+         */
+        update_option('glm15_false_opt', 'initial');
+        update_option('glm15_false_opt', false);
+
+        $fired = array();
+        add_action('update_option_glm15_false_opt', static function () use (&$fired) {
+            $fired[] = 'update';
+        });
+        add_action('updated_option', static function () use (&$fired) {
+            $fired[] = 'updated';
+        });
+        add_action('add_option_glm15_false_opt', static function () use (&$fired) {
+            $fired[] = 'add';
+        });
+        add_action('added_option', static function () use (&$fired) {
+            $fired[] = 'added';
+        });
+
+        $this->assertTrue(update_option('glm15_false_opt', 'value'));
+        $this->assertSame(array( 'add', 'added' ), $fired, 'A stored-false save routes to the ADD family, core\'s own routing (red at HEAD: the UPDATE family fired).');
+        $this->assertSame('value', get_option('glm15_false_opt'));
+
+        // The control: a stored NON-false value keeps the UPDATE routing.
+        $fired = array();
+        $this->assertTrue(update_option('glm15_false_opt', 'next'));
+        $this->assertSame(array( 'update', 'updated' ), $fired, 'A stored non-false value keeps the UPDATE family.');
+        $this->assertSame('next', get_option('glm15_false_opt'));
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*

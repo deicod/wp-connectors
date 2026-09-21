@@ -249,15 +249,22 @@ function update_option($option, $value, $autoload = null)
 
     /*
      * Core semantics (see add_option()'s docblock below): a save for a
-     * MISSING row delegates to add_option(), which fires ONLY the
-     * add_option_ hook family — never update_option_{$option} or
-     * updated_option (code-review GLM1 #7; the stub previously fired the
-     * update family here, so tests emulating a first persisted save
-     * exercised the wrong hook path). add_option() owns this path's
+     * row core's get_option() reads as FALSE delegates to add_option(),
+     * which fires ONLY the add_option_ hook family — never
+     * update_option_{$option} or updated_option (code-review GLM1 #7;
+     * the stub previously fired the update family here, so tests
+     * emulating a first persisted save exercised the wrong hook path).
+     *
+     * glm15-14: the predicate is get_option-SHAPED, not array_key_exists
+     * — a row STORED AS FALSE is indistinguishable from a missing row
+     * through core's get_option() (both answer false), so core routes
+     * its save to the ADD family while the harness's exists-check routed
+     * UPDATE (driven: the stored-false save fired update_option_ in the
+     * harness, the add family in core). add_option() owns this path's
      * head-of sanitize (glm15-3), so the registered callback runs
      * exactly once per save whichever family persists it.
      */
-    if (! array_key_exists($option, WpHarness::$options)) {
+    if (false === $old) {
         return add_option($option, $value, '', $autoload);
     }
 
@@ -300,7 +307,19 @@ function update_option($option, $value, $autoload = null)
 
 function add_option($option, $value = '', $deprecated = '', $autoload = null)
 {
-    if (array_key_exists($option, WpHarness::$options)) {
+    /*
+     * glm15-14: the exists-guard is get_option-SHAPED, core's own
+     * predicate — a row STORED AS FALSE answers get_option() the same
+     * false a missing row does, and core's add_option() PROCEEDS for
+     * it (its guard is `false !== get_option()`), completing the
+     * ADD-family routing update_option()'s delegation hands it. The
+     * one named divergence: core's INSERT then collides on the
+     * duplicate key and the write fails (the famous false-stored
+     * footgun); the harness has no duplicate-key class to emulate, so
+     * the add completes — the hook family and the eventual value, the
+     * observable contract, match core's routing.
+     */
+    if (array_key_exists($option, WpHarness::$options) && false !== WpHarness::$options[ $option ]) {
         return false;
     }
 
