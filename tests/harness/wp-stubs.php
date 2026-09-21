@@ -321,9 +321,16 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
      * glm15-3: core calls sanitize_option() at the head of add_option()
      * too (option.php:1113, WP 7.1.1) — the registered settings callback
      * runs before the row exists and before any hook fires, exactly the
-     * production save a Task-3.2+ settings test emulates. update_option()
-     * delegates here for a missing row; the head-of placement keeps the
-     * callback at exactly one run per save on both families.
+     * production save a Task-3.2+ settings test emulates.
+     *
+     * glm16-5 CORRECTED the round-15 spec this comment carried: the
+     * head-of placement does NOT keep the callback at one run per save
+     * — core runs sanitize at BOTH heads of a first save
+     * (update_option()'s own head AND the add_option() it delegates
+     * to), so a delegated first save runs the callback exactly TWICE,
+     * structural through the natural delegation (never a forced
+     * double call), and every subsequent save exactly once. The
+     * runs=1 spec was wrong; core parity wins.
      */
     $value = sanitize_option($option, $value);
     WpHarness::$options[ $option ] = $value;

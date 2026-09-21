@@ -756,6 +756,57 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(0, $fired, 'No add hooks fire over the refusal (red at HEAD: the add family fired).');
     }
 
+    public function testAFirstSaveRunsTheSanitizerAtBothHeadsCoreShape()
+    {
+        /*
+         * glm16-5: core sanitizes TWICE on a first save — at
+         * update_option()'s head AND at the add_option() it delegates
+         * to — and the round-15 spec demanded callback_runs=1 over the
+         * missing-row delegation. The spec was wrong; core parity
+         * wins. The stub matches structurally: the delegation rides,
+         * never a forced double call, so the count falls out of the
+         * two heads themselves.
+         */
+        $runs = 0;
+        register_setting('glm16_group', 'glm16_both', array(
+            'sanitize_callback' => static function ( $value ) use ( &$runs ) {
+                ++$runs;
+
+                return \is_string( $value ) ? \trim( $value ) : $value;
+            },
+        ));
+
+        // The first save (a missing row): BOTH heads — count 2 (red at
+        // HEAD: 1, the round-15 runs=1 spec).
+        $this->assertTrue(update_option('glm16_both', '  first  '));
+        $this->assertSame(2, $runs, 'A first save runs the registered callback at both heads, core\'s own shape (the round-15 runs=1 spec corrected).');
+        $this->assertSame('first', get_option('glm16_both'));
+
+        // Subsequent saves: ONE head — count 3.
+        $this->assertTrue(update_option('glm16_both', '  second  '));
+        $this->assertSame(3, $runs, 'A subsequent save runs the callback exactly once.');
+        $this->assertSame('second', get_option('glm16_both'));
+
+        // The direct add_option() call is the second head alone: ONE run.
+        $runs = 0;
+        register_setting('glm16_group', 'glm16_direct', array(
+            'sanitize_callback' => static function ( $value ) use ( &$runs ) {
+                ++$runs;
+
+                return \is_string( $value ) ? \trim( $value ) : $value;
+            },
+        ));
+        $this->assertTrue(add_option('glm16_direct', '  direct  '));
+        $this->assertSame(1, $runs, 'A direct add_option() call is one head, one run — the delegation is what doubles the first save.');
+        $this->assertSame('direct', get_option('glm16_direct'));
+
+        // The glm15-3 stored-' raw ' leg stays sanitized: a raw-equal
+        // save still runs the callback and refuses on the answer
+        // (the counter carries the direct leg's single run above).
+        $this->assertFalse(update_option('glm16_both', 'second'));
+        $this->assertSame(2, $runs, 'The raw-equal save consulted the sanitizer (glm16-3\'s core order) and refused on the sanitized compare.');
+    }
+
     public function testUnregisterSettingRemovesTheSanitizeHook()
     {
         /*
