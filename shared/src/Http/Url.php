@@ -173,6 +173,30 @@ final class Url {
 		$parts = parse_url( $url );
 
 		/*
+		 * The authority derivation rides BEFORE the entry refusal
+		 * (glm15-7): the entry's port probes judge the FIRST
+		 * authority's own port region, and the success path below
+		 * reuses the same derivation — ONE spelling, never a twin. The
+		 * scheme separator is probed before it is used (OCR round 4,
+		 * t31-ocr4-4): every sibling position probe in this file is
+		 * false !== first — this one coerced, and (int) false is 0, so
+		 * a schemeless spelling would have judged the authority math
+		 * from the string's first byte instead of refusing. The arm is
+		 * unreachable by construction on the success path (the scheme
+		 * check below passed, and parse_url() yields a scheme only for
+		 * the 'scheme://' spelling), but the file's own doctrine
+		 * (t31-ocr1-2) refuses to lean on build-dependent invariants
+		 * the surrounding code does not re-establish — so the
+		 * invariant is named here, not assumed.
+		 */
+		$scheme_separator = strpos( $url, '://' );
+		if ( false === $scheme_separator ) {
+			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
+		}
+		$after_scheme = (string) substr( $url, $scheme_separator + 3 );
+		$authority    = (string) substr( $after_scheme, 0, strcspn( $after_scheme, '/?#' ) );
+
+		/*
 		 * The empty-host spelling is refused EXPLICITLY (OCR round 1,
 		 * t31-ocr1-2): parse_url()'s answer for 'http://:8080/' is
 		 * build-dependent — some builds in the supported floor return
@@ -195,38 +219,41 @@ final class Url {
 			 * the port block's > 65535 arm below was dead code no
 			 * input could reach. The entry owns the distinction now: a
 			 * digits-only port beyond the range in a FAILED parse
-			 * answers the port sentence — the boundary class ([/?#]
-			 * or end of authority) so userinfo ':pass@' spellings keep
-			 * the generic refusal their parse fails for anyway — and
-			 * the port block keeps the < 1 arm, the half this build
-			 * can still reach (':0' parses). glm15-6 corrected the
-			 * round's own ':443x' claim: SHORT glue parses (truncated,
-			 * answered by the raw screen below), FIVE-DIGIT-OR-LONGER
-			 * glue fails the parse and is the glued arm below this one.
+			 * answers the port sentence, and the port block keeps the
+			 * < 1 arm, the half this build can still reach (':0'
+			 * parses). glm15-6 widened the entry to the GLUED class
+			 * (five-digit-or-longer glue fails the parse; short glue
+			 * parses truncated and the raw screen answers it).
+			 *
+			 * glm15-7: the probes are ANCHORED and DERIVED, never the
+			 * unanchored regex that restarted at every '://' and
+			 * scanned into the query — 'https://?redirect=https://
+			 * evil.example:70000' answered the PORT sentence from a
+			 * match entirely inside the QUERY while the real failure
+			 * was the empty host (driven). The judgment rides the
+			 * FIRST authority's own port region, derived exactly the
+			 * way the success path derives it below: userinfo stripped
+			 * after the last '@' (so a ':digits@' userinfo shape keeps
+			 * the generic refusal its parse fails for anyway), the
+			 * port colon the first ':' after any IPv6 ']' — the query
+			 * never feeds the verdict.
 			 */
-			if ( false === $parts && 1 === preg_match( '~://[^/?#]*:([0-9]+)(?:[/?#]|\z)~', $url, $port_match ) && (int) $port_match[1] > 65535 ) {
-				throw new InvalidArgumentException( 'The URL port is out of range — an authority port must be 1–65535, and the engine cannot parse one beyond it.' );
-			}
-
-			/*
-			 * glm15-6: parse_url() fails EVERY glued port whose digit
-			 * run is five digits or more (':65536x', and the IN-RANGE
-			 * ':65534x' — driven), while the four-digit-and-shorter glue
-			 * parses truncated and the raw-port screen below answers it.
-			 * One malformed class, one sentence: the glued tail of a
-			 * failed parse answers the SAME digits sentence the raw
-			 * screen answers, never the scheme/host sentence the
-			 * misattribution wore before (the glm14-9 claim that glue
-			 * "keeps the generic refusal" held only for the short glue
-			 * that never reaches this screen). The junk class excludes
-			 * '@' so a userinfo ':digits@' shape (whose parse fails for
-			 * its own cause) keeps the generic refusal, and the junk
-			 * must run to the authority's end — the port-shaped tail of
-			 * the authority, the same derivation the raw screen rides.
-			 */
-			if ( false === $parts && 1 === preg_match( '~://[^/?#]*:([0-9]+)[^0-9/?#@]+(?:[/?#]|\z)~', $url ) ) {
-				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
-				throw new InvalidArgumentException( self::PORT_MUST_BE_DIGITS_MESSAGE );
+			if ( false === $parts ) {
+				$entry_at        = strrpos( $authority, '@' );
+				$entry_host_port = false === $entry_at ? $authority : (string) substr( $authority, $entry_at + 1 );
+				$entry_bracket   = strrpos( $entry_host_port, ']' );
+				$entry_colon     = strpos( $entry_host_port, ':', false === $entry_bracket ? 0 : (int) $entry_bracket + 1 );
+				$entry_port      = false === $entry_colon ? '' : (string) substr( $entry_host_port, $entry_colon + 1 );
+				if ( '' !== $entry_port && 1 === preg_match( '/\A([0-9]+)/', $entry_port, $entry_digits ) ) {
+					$entry_tail = (string) substr( $entry_port, strlen( $entry_digits[1] ) );
+					if ( '' === $entry_tail && (int) $entry_digits[1] > 65535 ) {
+						throw new InvalidArgumentException( 'The URL port is out of range — an authority port must be 1–65535, and the engine cannot parse one beyond it.' );
+					}
+					if ( '' !== $entry_tail ) {
+						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+						throw new InvalidArgumentException( self::PORT_MUST_BE_DIGITS_MESSAGE );
+					}
+				}
 			}
 			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
 		}
@@ -258,26 +285,6 @@ final class Url {
 		 * (glm36-8) rides the same check: a PCRE failure refuses the
 		 * URL, never passes it.
 		 */
-
-		/*
-		 * The scheme separator is probed before it is used (OCR round 4,
-		 * t31-ocr4-4): every sibling position probe in this file is
-		 * false !== first — this one coerced, and (int) false is 0, so a
-		 * schemeless spelling would have judged the authority math from
-		 * the string's first byte instead of refusing. The arm is
-		 * unreachable by construction (the scheme check above passed,
-		 * and parse_url() yields a scheme only for the 'scheme://'
-		 * spelling), but the file's own doctrine (t31-ocr1-2) refuses
-		 * to lean on build-dependent invariants the surrounding code
-		 * does not re-establish — so the invariant is named here, not
-		 * assumed.
-		 */
-		$scheme_separator = strpos( $url, '://' );
-		if ( false === $scheme_separator ) {
-			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
-		}
-		$after_scheme = (string) substr( $url, $scheme_separator + 3 );
-		$authority    = (string) substr( $after_scheme, 0, strcspn( $after_scheme, '/?#' ) );
 
 		/*
 		 * The BACKSLASH screen (OCR round 28, t31-ocr28-6, DERIVED

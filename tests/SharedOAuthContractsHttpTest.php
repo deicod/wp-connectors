@@ -98,6 +98,16 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
              */
             'glued port beyond the range' => array('https://host.example:65536x/token', 'port must be digits'),
             'glued port in range' => array('https://host.example:65534x/token', 'port must be digits'),
+            /*
+             * glm15-7: the entry probes are anchored at the FIRST
+             * authority — the query never feeds the verdict. The
+             * unanchored regex restarted at every '://' and matched
+             * ':70000' entirely inside the query, so the query-carried
+             * spelling wore the port sentence while the real failure
+             * was the empty host (driven red at HEAD).
+             */
+            'query-carried port answers the entry sentence' => array('https://?redirect=https://evil.example:70000', 'must be absolute with a scheme and host'),
+            'query-carried glued port likewise' => array('https://?next=https://evil.example:65534x', 'must be absolute with a scheme and host'),
             'garbage' => array('https://@@@', 'must be absolute with a scheme and host'),
         );
     }
