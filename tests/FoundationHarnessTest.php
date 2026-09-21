@@ -768,6 +768,34 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1700000000 + 2 * WEEK_IN_SECONDS, wp_next_scheduled('glm15_weekly'), 'The weekly recurrence reschedules on its own interval (grid-aligned, glm15-5).');
     }
 
+    public function testAddQueryArgKeepsTheFragmentAtTheTail()
+    {
+        /*
+         * glm15-11: add_query_arg() mishandled '#fragment' — the
+         * fragment was swallowed into the last param's value
+         * ('code=1#frag' parsed as the VALUE '1#frag', re-encoded
+         * '%23frag') or new params appended INSIDE the fragment
+         * ('cb#frag?p=v'). Zero callers today, but OAuth redirect
+         * URLs are where fragments live — closed preemptively,
+         * core's own shape: the fragment splits off before param
+         * parsing and re-appends LAST.
+         */
+        $this->assertSame(
+            'https://x.test/cb?code=1&p=v#frag',
+            add_query_arg(array( 'p' => 'v' ), 'https://x.test/cb?code=1#frag'),
+            'The fragment survives a new param and stays at the tail (red at HEAD: swallowed into the value, re-encoded %23frag).'
+        );
+
+        $this->assertSame(
+            'https://x.test/cb?p=v#frag',
+            add_query_arg(array( 'p' => 'v' ), 'https://x.test/cb#frag'),
+            'A URL with no query gains one BEFORE the fragment (red at HEAD: the param appended inside the fragment).'
+        );
+
+        // The no-fragment shapes stay byte-identical.
+        $this->assertSame('https://x.test/cb?code=1&p=v', add_query_arg(array( 'p' => 'v' ), 'https://x.test/cb?code=1'));
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*

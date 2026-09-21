@@ -1146,6 +1146,22 @@ function add_query_arg(...$args)
         $url = $args[2];
     }
 
+    /*
+     * glm15-11: the fragment splits off BEFORE param parsing and
+     * re-appends LAST (core's own shape) — the stub folded the whole
+     * string into the '?' split, so a fragment was swallowed into the
+     * last param's value ('code=1#frag' parsed as the VALUE '1#frag',
+     * re-encoded '%23frag') or a new param appended INSIDE the
+     * fragment ('cb#frag?p=v'). Zero callers today, but OAuth redirect
+     * URLs are where fragments live — closed preemptively.
+     */
+    $fragment = '';
+    $hash = strpos($url, '#');
+    if (false !== $hash) {
+        $fragment = substr($url, $hash);
+        $url = substr($url, 0, $hash);
+    }
+
     $parts = explode('?', $url, 2);
     $path = $parts[0];
     $params = array();
@@ -1156,7 +1172,7 @@ function add_query_arg(...$args)
         $params[ (string) $key ] = $value; // Replace, do not duplicate.
     }
 
-    return $path . ($params === array() ? '' : '?' . http_build_query($params));
+    return $path . ($params === array() ? '' : '?' . http_build_query($params)) . $fragment;
 }
 
 /*
