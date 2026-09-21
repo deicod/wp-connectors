@@ -410,49 +410,77 @@ final class WpHarness
      * event the hook-registration walk hit first, so a later-registered
      * earlier-due event ran LAST against the docblock's own promise.
      *
+     * glm15-4: the pass is a SNAPSHOT, core's wp_cron() shape — the due
+     * set is captured on entry and only snapshot members fire, so an
+     * event a handler schedules MID-RUN (or a re-scheduling handler
+     * re-arming an already-due event) is not in the snapshot and DEFERS
+     * to the next call, exactly where core's wp_cron() runs it: the next
+     * tick. The former while(true) rescan re-found every mid-run insert,
+     * so a handler re-scheduling an already-due event hung the suite
+     * forever (driven: timeout 10, exit 124) and mid-run schedules fired
+     * in the same call core defers. The pass is bounded by the
+     * snapshot's size by construction — no queue can ever loop it — and
+     * an entry a handler unschedules before its turn (still due in the
+     * live registry's own eyes) is skipped: the event the caller removed
+     * does not fire.
+     *
      * @return int Number of events fired.
      */
     public static function runDueEvents()
     {
         $fired = 0;
-        while (true) {
-            /*
-             * The earliest due event fires first (glm14-7): strictly
-             * earlier wins, so the first candidate found in scan order
-             * holds every tie — equal timestamps fire in registration
-             * order exactly as before. One event per pass keeps the
-             * index derivation honest under handler mutation (a firing
-             * handler may schedule or unschedule, shifting every list —
-             * the rescan the old continue-3 owned).
-             */
-            $best = null;
-            foreach (self::$cron as $hook => $events) {
-                foreach ($events as $index => $event) {
-                    if ($event['timestamp'] <= self::now()
-                        && (null === $best || $event['timestamp'] < $best[0])) {
-                        $best = array( $event['timestamp'], $hook, $index, $event );
-                    }
+
+        /*
+         * The snapshot: every due event at entry, ordered earliest-first
+         * (glm14-7). The stable sort keeps registration order for equal
+         * timestamps — the first-seen tie rule the rescan spelled.
+         */
+        $due = array();
+        foreach (self::$cron as $hook => $events) {
+            foreach ($events as $event) {
+                if ($event['timestamp'] <= self::now()) {
+                    $due[] = array( $event['timestamp'], $hook, $event );
                 }
             }
-            if (null === $best) {
-                return $fired;
+        }
+        usort($due, static function ($a, $b) {
+            return $a[0] <=> $b[0];
+        });
+
+        foreach ($due as list(, $hook, $event)) {
+            /*
+             * Handlers mutate the registry (glm14-7's index-drift
+             * lesson): re-locate the snapshot entry in the LIVE list by
+             * its id — core's keyed-array identity — and skip it when a
+             * handler already unscheduled it.
+             */
+            $live_index = false;
+            foreach (self::$cron[ $hook ] ?? array() as $index => $live) {
+                if ($live['id'] === $event['id']) {
+                    $live_index = $index;
+                    break;
+                }
+            }
+            if (false === $live_index) {
+                continue;
             }
 
-            list(, $hook, $index, $event) = $best;
             $args = $event['args'];
-            unset(self::$cron[$hook][$index]);
-            self::$cron[$hook] = array_values(self::$cron[$hook]);
-            if (self::$cron[$hook] === array()) {
-                unset(self::$cron[$hook]);
+            unset(self::$cron[ $hook ][ $live_index ]);
+            self::$cron[ $hook ] = array_values(self::$cron[ $hook ]);
+            if (self::$cron[ $hook ] === array()) {
+                unset(self::$cron[ $hook ]);
             }
             if (isset($event['interval']) && (int) $event['interval'] > 0) {
                 $rescheduled = $event;
                 $rescheduled['timestamp'] = self::now() + (int) $event['interval'];
-                self::$cron[$hook][] = $rescheduled;
+                self::$cron[ $hook ][] = $rescheduled;
             }
             ++$fired;
             do_action($hook, ...$args);
         }
+
+        return $fired;
     }
 
     /**

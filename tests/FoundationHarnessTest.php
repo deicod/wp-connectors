@@ -521,6 +521,53 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1700001000 + 3600, wp_next_scheduled('glm14_hourly_event'), 'The next due is recomputed from NOW, core\'s reschedule-from-now semantics.');
     }
 
+    public function testAReschedulingHandlerTerminatesAndMidRunEventsDefer()
+    {
+        /*
+         * glm15-4: the while(true) rescan re-found every mid-run insert,
+         * so a handler re-scheduling an already-due event hung the suite
+         * forever (driven red at HEAD: timeout 10, exit 124) and an
+         * event scheduled MID-RUN fired in the SAME call where core's
+         * wp_cron() snapshots the queue and defers to the next tick.
+         * The pass is a snapshot now: only entry-captured events fire,
+         * one bounded pass.
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        $rearm = true;
+        add_action('glm15_resched', static function () use (&$fires, &$rearm) {
+            ++$fires;
+            if ($rearm) {
+                wp_schedule_single_event(1700000000, 'glm15_resched');
+                $rearm = false;
+            }
+        });
+        wp_schedule_single_event(1700000000, 'glm15_resched');
+
+        $this->assertSame(1, WpHarness::runDueEvents(), 'A re-scheduling handler fires its event once and the pass terminates (red at HEAD: the unbounded rescan hung — driven at timeout 10, exit 124).');
+        $this->assertSame(1, $fires);
+        $this->assertSame(1700000000, wp_next_scheduled('glm15_resched'), 'The re-armed event (scheduled mid-run) is not in the snapshot.');
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The re-armed event fires on the NEXT call.');
+        $this->assertSame(2, $fires);
+        $this->assertFalse(wp_next_scheduled('glm15_resched'));
+
+        // A fresh mid-run schedule defers the same way (core's shape).
+        $deferred = 0;
+        add_action('glm15_first', static function () {
+            wp_schedule_single_event(WpHarness::now(), 'glm15_second');
+        });
+        add_action('glm15_second', static function () use (&$deferred) {
+            ++$deferred;
+        });
+        wp_schedule_single_event(WpHarness::now(), 'glm15_first');
+
+        $this->assertSame(1, WpHarness::runDueEvents(), 'glm15_first fires; glm15_second (scheduled mid-run) is not in the snapshot.');
+        $this->assertSame(0, $deferred, 'A mid-run-scheduled event never fires in the call that scheduled it (red at HEAD: it fired in the same call).');
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The deferred event fires on the next tick.');
+        $this->assertSame(1, $deferred);
+    }
+
     public function testASnapshotReadFailureAnswersAsItselfNeverAsDrift()
     {
         /*
