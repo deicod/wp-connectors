@@ -2483,7 +2483,7 @@ function wp_connectors_include_runtime_segments($statement)
      * text IS their runtime value.
      */
     $blanked = (string) preg_replace_callback(
-        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/',
+        wp_connectors_quoted_literal_grammar(),
         static function ($match) {
             if ('"' === $match[0][0] && false !== strpos(substr($match[0], 1, -1), '$')) {
                 return $match[0];
@@ -3424,6 +3424,40 @@ function wp_connectors_assignment_value_reasons($file, $code, $reason_variable, 
 }
 
 /**
+ * The ONE house quote grammar matching a PHP quoted string literal,
+ * EMPTY literals included (glm15-2).
+ *
+ * Escape-aware ('\\.' pairs walk inside, so a backslash-escaped closing
+ * quote does not end the literal — the glm14-1 requirement) and
+ * empty-inclusive: the quantifier is '*', never '+'. glm15-2's driven
+ * case is why '+.' is forbidden here — wp_connectors_quoted_literals()
+ * rode a '+' copy new in glm14-1, and an expression like
+ * `__DIR__ . "" . "/sub/../../outside.php"` (php -l clean, escapes at
+ * runtime) matched ZERO literals as themselves: the empty literal's
+ * closing quote PAIRED with the next literal's opening quote, the
+ * traversal literal never captured, zero violations through every
+ * self-containment gate. The '*' quantifier makes the empty literal
+ * match ITSELF, so pairing cannot cross literal boundaries. The /s
+ * modifier keeps a backslash-newline inside a multi-line literal from
+ * splitting it (the wider spelling two of the four former inline copies
+ * already rode; a single line carries no newline for it to touch).
+ *
+ * FOUR inline copies with THREE variants consolidated into this owner:
+ * wp_connectors_line_without_string_literals() (the secret scanner's
+ * marker blanker), wp_connectors_include_runtime_segments(),
+ * wp_connectors_blank_quoted_strings(), and wp_connectors_quoted_literals()
+ * — the house grammar is spelled ONCE, so the variants can never drift
+ * apart again.
+ *
+ * @return string PCRE pattern matching one single- or double-quoted
+ *                literal, escape-aware, empty literals included.
+ */
+function wp_connectors_quoted_literal_grammar()
+{
+    return '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/s';
+}
+
+/**
  * Length-preserving string blanking of one expression's quoted literals
  * (glm22-15).
  *
@@ -3441,7 +3475,7 @@ function wp_connectors_assignment_value_reasons($file, $code, $reason_variable, 
 function wp_connectors_blank_quoted_strings($expression)
 {
     return (string) preg_replace_callback(
-        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/s',
+        wp_connectors_quoted_literal_grammar(),
         static function ($match) {
             return '\'' . str_repeat('x', max(0, strlen($match[0]) - 2)) . '\'';
         },
@@ -3564,13 +3598,23 @@ function wp_connectors_array_literal_value_reasons($file, $code, $expression, $o
  * keeps every other escape raw, and double-quoted control decodes
  * contribute only inert bytes to a containment walk.
  *
+ * glm15-2: the pattern is the ONE house grammar owner
+ * (wp_connectors_quoted_literal_grammar()) — this seam's inline copy
+ * was the '+'-quantifier variant, and an empty literal ('' or "")
+ * could not match as itself, so its closing quote PAIRED with the NEXT
+ * literal's opening quote and the traversal literal beside it was
+ * never captured: `require __DIR__ . "" . "/sub/../../outside.php";`
+ * (php -l clean, escapes at runtime) answered ZERO violations through
+ * every gate (driven). The '*' grammar makes the empty literal match
+ * ITSELF; the pairing bug dies with the consolidation.
+ *
  * @param string $expression Include-target expression or statement.
  * @return list<array{0: string, 1: string}> [opening quote, runtime value] pairs.
  */
 function wp_connectors_quoted_literals($expression)
 {
     $literals = array();
-    if (preg_match_all('/\'(?:\\\\.|[^\'\\\\])+\'|"(?:\\\\.|[^"\\\\])+"/s', $expression, $matches, PREG_SET_ORDER)) {
+    if (preg_match_all(wp_connectors_quoted_literal_grammar(), $expression, $matches, PREG_SET_ORDER)) {
         foreach ($matches as $match) {
             $literals[] = array(
                 $match[0][0],

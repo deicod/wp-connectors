@@ -99,8 +99,10 @@ function wp_connectors_allow_marker_pattern()
  */
 function wp_connectors_line_without_string_literals($line)
 {
+    // glm15-2: the ONE house grammar owner — never an inline copy (the
+    // four copies had drifted into three variants).
     return (string) preg_replace(
-        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/',
+        wp_connectors_quoted_literal_grammar(),
         "''",
         $line
     );

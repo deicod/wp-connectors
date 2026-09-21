@@ -121,4 +121,45 @@ final class SelfContainmentEscapedQuoteTest extends TestCase
 
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
     }
+
+    public function testTheEmptyLiteralPairingLaunderingFlags(): void
+    {
+        /*
+         * glm15-2: the grammar's '+'-quantifier copy (the glm14-1
+         * spelling this seam rode until the consolidation) could not
+         * match an EMPTY literal, so the empty literal's closing quote
+         * PAIRED with the next literal's opening quote — the traversal
+         * literal never captured, zero violations through every gate
+         * (driven red at HEAD over exactly this fixture).
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nrequire __DIR__ . \"\" . \"/sub/../../outside.php\";\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'An empty-literal-glued traversal include must flag (red at HEAD: zero violations).');
+        $this->assertStringContainsString('outside.php', implode("\n", $violations), 'The verdict names the escaping include.');
+    }
+
+    public function testTheExtractionCapturesEmptyLiteralsAsThemselves(): void
+    {
+        /*
+         * The seam pin: an empty literal matches ITSELF, so the
+         * pairing can never cross literal boundaries — both literals
+         * of the driven expression answer, the empty one with its
+         * (empty) runtime value (red at HEAD: ONE mispaired literal,
+         * the ' . ' text between the quotes).
+         */
+        $repro = wp_connectors_quoted_literals('__DIR__ . "" . "/sub/../../outside.php"');
+
+        $this->assertSame(
+            array(
+                array( '"', '' ),
+                array( '"', '/sub/../../outside.php' ),
+            ),
+            $repro
+        );
+    }
 }
