@@ -419,10 +419,18 @@ final class WpHarness
      * so a handler re-scheduling an already-due event hung the suite
      * forever (driven: timeout 10, exit 124) and mid-run schedules fired
      * in the same call core defers. The pass is bounded by the
-     * snapshot's size by construction — no queue can ever loop it — and
-     * an entry a handler unschedules before its turn (still due in the
-     * live registry's own eyes) is skipped: the event the caller removed
-     * does not fire.
+     * snapshot's size by construction — no queue can ever loop it.
+     *
+     * glm16-8: a snapshot member fires UNCONDITIONALLY — core's wp_cron()
+     * walks its captured copy and never asks the live registry whether a
+     * handler already removed an entry, so an unschedule-then-reschedule
+     * of a not-yet-fired member does not suppress its fire (the skip the
+     * glm15-4 docblock once claimed as core's snapshot semantics was
+     * wrong: core defers only entries scheduled mid-run, which never
+     * entered the snapshot). The live list is consulted only to REMOVE
+     * the fired row and re-arm the recurrence — a handler that already
+     * unscheduled the member left nothing to remove, and the fire rides
+     * the snapshot's own args.
      *
      * @return int Number of events fired.
      */
@@ -448,11 +456,16 @@ final class WpHarness
         });
 
         foreach ($due as list(, $hook, $event)) {
+            $args = $event['args'];
             /*
-             * Handlers mutate the registry (glm14-7's index-drift
-             * lesson): re-locate the snapshot entry in the LIVE list by
-             * its id — core's keyed-array identity — and skip it when a
-             * handler already unscheduled it.
+             * glm16-8: the member fires UNCONDITIONALLY once
+             * snapshotted — the live list is only the registry's own
+             * bookkeeping (glm14-7's index-drift lesson: re-locate the
+             * snapshot entry by its id, core's keyed-array identity, to
+             * REMOVE the fired row and re-arm the recurrence). A
+             * handler that already unscheduled the member left nothing
+             * to remove, and the fire still happens: core's wp_cron()
+             * never consults the live registry for permission.
              */
             $live_index = false;
             foreach (self::$cron[ $hook ] ?? array() as $index => $live) {
@@ -461,17 +474,14 @@ final class WpHarness
                     break;
                 }
             }
-            if (false === $live_index) {
-                continue;
+            if (false !== $live_index) {
+                unset(self::$cron[ $hook ][ $live_index ]);
+                self::$cron[ $hook ] = array_values(self::$cron[ $hook ]);
+                if (self::$cron[ $hook ] === array()) {
+                    unset(self::$cron[ $hook ]);
+                }
             }
-
-            $args = $event['args'];
-            unset(self::$cron[ $hook ][ $live_index ]);
-            self::$cron[ $hook ] = array_values(self::$cron[ $hook ]);
-            if (self::$cron[ $hook ] === array()) {
-                unset(self::$cron[ $hook ]);
-            }
-            if (isset($event['interval']) && (int) $event['interval'] > 0) {
+            if (false !== $live_index && isset($event['interval']) && (int) $event['interval'] > 0) {
                 /*
                  * glm15-5: core's wp_reschedule_event() GRID-ALIGNS the
                  * next due — now + (interval − ((now − ts) % interval)) —

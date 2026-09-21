@@ -1048,6 +1048,38 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(wp_next_scheduled('glm16_over'), 'The replaced entry is a SINGLE — it fired once and is gone, never rescheduled (red at HEAD: the recurring twin rescheduled).');
     }
 
+    public function testAnUnscheduledSnapshotMemberStillFiresCoreShape()
+    {
+        /*
+         * glm16-8: runDueEvents() skipped a handler's
+         * unschedule-then-reschedule of a not-yet-fired snapshot member
+         * — the by-id relocation treated 'absent from the live list' as
+         * 'suppressed' — where core's wp_cron() walks its captured copy
+         * and fires UNCONDITIONALLY (the docblock had claimed the skip
+         * as core's snapshot semantics; the claim was wrong). Driven:
+         * the member fires once in THIS pass, the handler's reschedule
+         * standing for the next.
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm16_victim', static function () use (&$fires) {
+            ++$fires;
+        });
+        add_action('glm16_actor', static function () {
+            // Fires first (earlier due): unschedules the victim and
+            // reschedules it for the next window.
+            wp_unschedule_event(1700000000, 'glm16_victim');
+            wp_schedule_single_event(1700003600, 'glm16_victim');
+        });
+        wp_schedule_single_event(1700000000 - 60, 'glm16_actor');
+        wp_schedule_single_event(1700000000, 'glm16_victim');
+
+        $this->assertSame(2, WpHarness::runDueEvents(), 'Both snapshot members fire — the actor first, the victim STILL fires after its unschedule (red at HEAD: 1, the victim suppressed).');
+        $this->assertSame(1, $fires, 'The victim fired exactly once in THIS pass (red at HEAD: suppressed, zero).');
+        $this->assertSame(1700003600, wp_next_scheduled('glm16_victim'), 'The handler\'s reschedule stands for the next pass.');
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*
