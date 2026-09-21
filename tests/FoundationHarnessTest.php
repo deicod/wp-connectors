@@ -701,6 +701,33 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertNull(get_option('glm15_opt'), 'The function-level API stores the filter\'s answer (null included); the null GUARD is the options.php caller\'s, never the function\'s.');
     }
 
+    public function testUnregisterSettingRemovesTheSanitizeHook()
+    {
+        /*
+         * glm15-8: unregister_setting() dropped the registry row but
+         * left the sanitize callback ON the filter core's registration
+         * mechanism wires (glm14-10) — register(A), unregister,
+         * register(B) answered A still riding beside B (driven red at
+         * HEAD: 'vAB' where core answers 'vB' — the unregistered
+         * sanitizer kept shaping every later save).
+         */
+        $first = static function ( $value ) {
+            return $value . 'A';
+        };
+        register_setting('glm15_group', 'glm15_opt', array( 'sanitize_callback' => $first ));
+        unregister_setting('glm15_group', 'glm15_opt');
+        register_setting('glm15_group', 'glm15_opt', array( 'sanitize_callback' => static function ( $value ) {
+            return $value . 'B';
+        } ));
+
+        $this->assertSame('vB', sanitize_option('glm15_opt', 'v'), 'The unregistered callback is gone from the hook (red at HEAD: vAB — A still rode beside B).');
+        $this->assertTrue(update_option('glm15_opt', 'v'));
+        $this->assertSame('vB', get_option('glm15_opt'), 'The save path stores only the REGISTERED callback\'s answer (red at HEAD: vAB stored).');
+
+        // Unregistering a setting that never carried a callback is a clean no-op.
+        $this->assertTrue(unregister_setting('glm15_group', 'glm15_never_registered'));
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*

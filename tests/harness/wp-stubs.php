@@ -1450,6 +1450,19 @@ function sanitize_option($option, $value)
 
 function unregister_setting($option_group, $option_name)
 {
+    /*
+     * glm15-8: core's unregister removes the sanitize hook the
+     * registration wired (remove_filter for exactly the
+     * sanitize_option_{name} filter — glm14-10's own sibling). The
+     * registry row alone going away left the callback ON the filter,
+     * so register(A), unregister, register(B) answered A's sanitize
+     * still riding beside B's (driven: 'vAB' where core answers 'vB')
+     * — the unregistered sanitizer kept shaping every later save.
+     */
+    $registered = WpHarness::$registered_settings[ $option_name ] ?? null;
+    if (null !== $registered && ! empty($registered['sanitize_callback'])) {
+        remove_filter("sanitize_option_{$option_name}", $registered['sanitize_callback']);
+    }
     unset(WpHarness::$registered_settings[ $option_name ], $GLOBALS['wp_registered_settings'][ $option_name ]);
 
     return true;
