@@ -802,6 +802,41 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_scan_string("{$key} // secrets:allow", 'txt'));
     }
 
+    public function testADenseEntryOverTheTokenMemoryBoundAnswersAVerdictNeverAFatal()
+    {
+        /*
+         * glm16-2: token_get_all() on a ~1.9 MB dense entry needs ~98x
+         * the source in token arrays and FATALED at the 128M default
+         * with no verdict from the scanner and the inspector alike —
+         * the glm14-3/glm14-6 class reopened by the glm16-1 mask ride,
+         * under the walk's own 2 MB cap. The ride owns its memory
+         * bound now: the dense-worst-case estimate over the LARGEST
+         * PHP-MODE SPAN (a prose run between tags is one
+         * T_INLINE_HTML token — the ledger's code samples, not its
+         * megabytes, are what it tokenizes) against the parsed limit
+         * minus live usage answers the LOUD refusal naming the file,
+         * the glm14-2 vocabulary — never a fatal, and never a clean
+         * verdict over bytes the scan could not tokenize. (The dense
+         * entry is ONE span, and the estimate is deliberately the
+         * WORST case, so this leg is deterministic at the 128M default
+         * however little the process holds: ~1.9 MB x 98 ≈ 186 MB
+         * exceeds the whole limit, not merely the headroom.)
+         */
+        $dense = '<?php ' . str_repeat('$x=$x+$x;$y[]=$x;', 118000);
+        $this->assertGreaterThan(1800000, strlen($dense), 'staging: the dense entry must be the ~1.9 MB driven shape.');
+        $this->assertLessThan(2 * 1024 * 1024, strlen($dense), 'staging: the dense entry stays UNDER the walk cap — the bound this leg drives is the token pass, never the 2 MB size screen.');
+
+        $findings = wp_connectors_scan_string($dense, 'dense.php');
+        $this->assertSame(
+            array( 'dense.php: over the secret-scan token-memory bound — the secret scan cannot run' ),
+            $findings,
+            'The over-capacity token pass answers a refusal, never a fatal (red at HEAD: memory exhaustion, no verdict).'
+        );
+
+        // Normal files are unchanged: the bound never trips for them.
+        $this->assertSame(array(), wp_connectors_scan_string("<?php \$ok = 1; // secrets:allow\n", 'ok.php'));
+    }
+
     public function testScannerAcceptsRepoSources()
     {
         $repoRoot = dirname(__DIR__);

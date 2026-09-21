@@ -142,6 +142,43 @@ function wp_connectors_is_recognizably_fake_secret($value)
 }
 
 /**
+ * The byte headroom a token pass may spend before the process's own
+ * memory limit would fatal it (glm16-2).
+ *
+ * token_get_all() materializes the whole stream at once: measured on
+ * this engine (PHP 8.5), a dense ~1.9 MB source needs ~98x its own
+ * bytes in token arrays — ~186 MB against the 128M default limit — the
+ * fatal-without-a-verdict class glm14-3/glm14-6 closed for the LINE
+ * scan, reopened by the glm16-1 mask ride. The headroom is the parsed
+ * memory_limit minus live usage; an unlimited (-1/empty) or
+ * unparseable limit answers PHP_INT_MAX — the bound is off, never
+ * misjudged.
+ *
+ * @return int Bytes available before the limit.
+ */
+function wp_connectors_scan_token_memory_headroom()
+{
+    $limit = (string) ini_get('memory_limit');
+    if ('' === $limit || '-1' === $limit) {
+        return PHP_INT_MAX;
+    }
+    if (1 !== preg_match('/\A(\d+)\s*([kmg]?)(?:b)?\z/i', trim($limit), $m)) {
+        return PHP_INT_MAX;
+    }
+    $bytes = (int) $m[1];
+    $unit  = strtolower($m[2]);
+    if ('g' === $unit) {
+        $bytes *= 1024 * 1024 * 1024;
+    } elseif ('m' === $unit) {
+        $bytes *= 1024 * 1024;
+    } elseif ('k' === $unit) {
+        $bytes *= 1024;
+    }
+
+    return max(0, $bytes - memory_get_usage());
+}
+
+/**
  * Scans one file's contents for secret patterns.
  *
  * @param string $contents File contents.
@@ -152,6 +189,42 @@ function wp_connectors_scan_string($contents, $label)
 {
     $findings = array();
     $allowMarker = wp_connectors_allow_marker_pattern();
+    /*
+     * glm16-2: the ride owns its memory bound. The same strpos gate is
+     * the pre-gate (every non-PHP payload never reaches the tokenizer
+     * at all — the census the glm15-1 fix would have gated on '<<<'
+     * is gone, and the mask cares about quotes, not heredocs); for a
+     * PHP-bearing source the COST the token pass can spend is driven
+     * by the LARGEST PHP-MODE SPAN, never the whole file — a prose
+     * run between tags is one T_INLINE_HTML token, so a markdown
+     * ledger carrying small code samples tokenizes at its samples'
+     * cost, not its megabytes. The span walk is byte-honest (measured
+     * dense-worst-case factor: ~98x the span); a span whose estimate
+     * would not fit the parsed limit answers the LOUD refusal in the
+     * glm14-2 vocabulary, the 2-MB loud-skip doctrine's own shape —
+     * never a silent fatal mid-scan, never a verdict reading clean
+     * over bytes the scan could not tokenize. The walk's one ceiling:
+     * a '?>' spelled INSIDE a string or comment splits a span the
+     * lexer keeps whole, so a file deliberately WOVEN with in-string
+     * close tags could under-refuse — the exact pre-round fatal class,
+     * and a shape no honest producer ships.
+     */
+    $has_php = false !== strpos($contents, '<?');
+    if ($has_php) {
+        $span_max = 0;
+        $at = 0;
+        while (false !== ($open = strpos($contents, '<?', $at))) {
+            $close = strpos($contents, '?>', $open + 2);
+            $end = false === $close ? strlen($contents) : $close;
+            if ($end - $open > $span_max) {
+                $span_max = $end - $open;
+            }
+            $at = false === $close ? strlen($contents) : $close + 2;
+        }
+        if ($span_max * 98 > wp_connectors_scan_token_memory_headroom()) {
+            return array( sprintf('%s: over the secret-scan token-memory bound — the secret scan cannot run', $label) );
+        }
+    }
     /*
      * glm16-1: the marker judge reads the ONE token-masked view —
      * wp_connectors_mask_string_contents() owns every string-data
@@ -177,9 +250,9 @@ function wp_connectors_scan_string($contents, $label)
      * doctrine that non-PHP payloads (.txt/.md fixtures) answer no
      * tokens and no behavior change.
      */
-    $views = false === strpos($contents, '<?')
-        ? null
-        : explode("\n", wp_connectors_mask_string_contents($contents));
+    $views = $has_php
+        ? explode("\n", wp_connectors_mask_string_contents($contents))
+        : null;
     $lines = explode("\n", $contents);
     foreach ($lines as $index => $line) {
         /*
