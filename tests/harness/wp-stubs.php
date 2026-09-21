@@ -301,18 +301,19 @@ function update_option($option, $value, $autoload = null)
 function add_option($option, $value = '', $deprecated = '', $autoload = null)
 {
     /*
-     * glm15-14: the exists-guard is get_option-SHAPED, core's own
-     * predicate — a row STORED AS FALSE answers get_option() the same
-     * false a missing row does, and core's add_option() PROCEEDS for
-     * it (its guard is `false !== get_option()`), completing the
-     * ADD-family routing update_option()'s delegation hands it. The
-     * one named divergence: core's INSERT then collides on the
-     * duplicate key and the write fails (the famous false-stored
-     * footgun); the harness has no duplicate-key class to emulate, so
-     * the add completes — the hook family and the eventual value, the
-     * observable contract, match core's routing.
+     * glm16-4: an existing row — stored non-false OR stored false —
+     * answers a SILENT no-op false (core's duplicate-key shape,
+     * derived from option.php). glm15-14 recorded the routing —
+     * core's guard (false !== get_option()) PROCEEDS for a
+     * stored-false row — but the INSERT then collides on the
+     * duplicate key and fails: no hooks fire, nothing writes, no
+     * autoload flips, and add_option() answers false (the famous
+     * false-stored footgun). The harness had named that collision as
+     * its one divergence and completed the add; round 16 closes it —
+     * the observable contract (the hook family, the eventual value,
+     * the return) is core's for BOTH stored shapes: one silent no-op.
      */
-    if (array_key_exists($option, WpHarness::$options) && false !== WpHarness::$options[ $option ]) {
+    if (array_key_exists($option, WpHarness::$options)) {
         return false;
     }
 

@@ -908,7 +908,7 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertCount(2, wp_get_scheduled_events('glm15_single'), 'Beyond the window the single is its own event.');
     }
 
-    public function testAStoredFalseOptionRoutesToTheAddFamilyCoreNotTheUpdateFamily()
+    public function testAStoredFalseOptionAnswersCoreDuplicateKeySilence()
     {
         /*
          * glm15-14: update_option()'s delegation predicate
@@ -917,7 +917,12 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
          * through core's get_option() (both answer false), so core
          * routes the save to the ADD family while the harness routed
          * UPDATE (driven red at HEAD: update_option_ fired for a
-         * stored-false save).
+         * stored-false save). glm16-4 closed the seam's named
+         * divergence the same round exposed: core's INSERT then
+         * collides on the duplicate key and fails — no hooks, no
+         * write, no autoload flip, a silent false — so the stored-false
+         * save answers NOTHING observable (the famous false-stored
+         * footgun, now the harness's own shape too).
          */
         update_option('glm15_false_opt', 'initial');
         update_option('glm15_false_opt', false);
@@ -936,14 +941,19 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
             $fired[] = 'added';
         });
 
-        $this->assertTrue(update_option('glm15_false_opt', 'value'));
-        $this->assertSame(array( 'add', 'added' ), $fired, 'A stored-false save routes to the ADD family, core\'s own routing (red at HEAD: the UPDATE family fired).');
-        $this->assertSame('value', get_option('glm15_false_opt'));
+        $this->assertFalse(update_option('glm15_false_opt', 'value'), 'A stored-false save dies in the duplicate-key collision, core\'s shape (red at HEAD: the delegated ADD completed and answered true).');
+        $this->assertSame(array(), $fired, 'The collision fires NO hook family — not the UPDATE family glm15-14 refused, and not the ADD family it completed (red at HEAD: the add family fired).');
+        $this->assertFalse(get_option('glm15_false_opt'), 'Nothing writes over the collision (red at HEAD: the value stored).');
 
         // The control: a stored NON-false value keeps the UPDATE routing.
+        WpHarness::$options['glm15_false_opt'] = 'rewritten';
         $fired = array();
         $this->assertTrue(update_option('glm15_false_opt', 'next'));
         $this->assertSame(array( 'update', 'updated' ), $fired, 'A stored non-false value keeps the UPDATE family.');
+        $this->assertSame('next', get_option('glm15_false_opt'));
+
+        // And the direct call answers the same silence for both stored shapes.
+        $this->assertFalse(add_option('glm15_false_opt', 'again'), 'A direct add over an existing row is the same silent no-op.');
         $this->assertSame('next', get_option('glm15_false_opt'));
     }
 
