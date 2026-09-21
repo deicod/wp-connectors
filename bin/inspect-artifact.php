@@ -274,8 +274,9 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * The near-source PHP fence (OCR round 20, t31-ocr20-1, the
          * security lens — the r16 edge-junk class at the EXTRACTION
          * fence, closed at the traversal fence in that same round):
-         * wp_connectors_is_php_source() judges the last four bytes,
-         * so an entry whose segment hides the extension behind
+         * wp_connectors_is_php_source() judges the template tails
+         * ('.php'/'.phtml', glm14-4), so an entry whose segment hides
+         * the extension behind
          * TRAILING edge junk ('shell.php ', 'shell.php.',
          * 'shell.php\x01') is a PHP source to every
          * path-normalizing extraction target (Windows strips

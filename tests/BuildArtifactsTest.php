@@ -2472,6 +2472,63 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * The template-extension class at the inspector (glm14-4, the r6
+     * producer-gated reopen): a '.phtml' entry with a parse error plus
+     * a live-shaped token passed inspection ACCEPTED while the
+     * identical bytes as '.php' were REJECTED (driven red at HEAD by
+     * the review) — the '.php'-tail-only judgment exempted the entry
+     * from the post-extraction php -l walk AND the secret scan's
+     * extension allowlist at once. The ONE is-a-source owner gained
+     * the class, so every channel (syntax walk, secret scan,
+     * self-containment walk, near-source fold) closes together.
+     */
+    public function testPhtmlEntriesJoinTheSyntaxWalkAndTheSecretScan()
+    {
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the inspector verdict (its internal php -l spawn) cannot run.');
+        }
+        $slug = 'phtml-demo';
+        $head = "Plugin Name:       {$slug}\nVersion:           1.0.0\nRequires at least: 6.9\nRequires PHP:      8.2\nLicense:           GPL-2.0-or-later\nText Domain:       {$slug}\nAuthor:            x\n";
+        $main = "<?php\n/**\n * {$head} */\ndefine( 'PHTML_DEMO_VERSION', '1.0.0' );\n";
+        $token = 'ghp_' . bin2hex(random_bytes(18));
+        $broken = "<?php\n\$t = '{$token}';\n\$ this is a parse error ((((\n";
+        $zipPath = self::distDir() . '/connectors-phtml-demo-1.0.0.zip';
+
+        // (a) The driven vector: identical bytes as form.phtml — REJECTED on both channels.
+        $zip = new ZipArchive();
+        $this->assertTrue(true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)), "staging: {$zipPath} must open for zip writing (ZipArchive::open returned " . var_export($opened, true) . ').');
+        $zip->addFromString("{$slug}/{$slug}.php", $main);
+        $zip->addFromString("{$slug}/zai/views/form.phtml", $broken);
+        $zip->close();
+        $flat = implode("\n", wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-phtml-broken')));
+        $this->assertStringContainsString('form.phtml failed php -l', $flat, 'A parse-broken .phtml entry must fail the post-extraction syntax walk (red at HEAD: ACCEPTED).');
+        $this->assertStringContainsString('github-token', $flat, 'A live token in a .phtml entry must fail the credential screen (red at HEAD: ACCEPTED).');
+        $this->assertStringNotContainsString($token, $flat, 'Findings never echo the token.');
+        unlink($zipPath);
+
+        // (b) The control: the identical bytes as form.php — rejected before this round too.
+        $zip = new ZipArchive();
+        $this->assertTrue(true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)), "staging: {$zipPath} must open for zip writing (ZipArchive::open returned " . var_export($opened, true) . ').');
+        $zip->addFromString("{$slug}/{$slug}.php", $main);
+        $zip->addFromString("{$slug}/zai/views/form.php", $broken);
+        $zip->close();
+        $flat = implode("\n", wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-php-broken')));
+        $this->assertStringContainsString('form.php failed php -l', $flat);
+        $this->assertStringContainsString('github-token', $flat);
+        unlink($zipPath);
+
+        // (c) The tolerance leg: a CLEAN .phtml entry passes its own screens.
+        $zip = new ZipArchive();
+        $this->assertTrue(true === ($opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE)), "staging: {$zipPath} must open for zip writing (ZipArchive::open returned " . var_export($opened, true) . ').');
+        $zip->addFromString("{$slug}/{$slug}.php", $main);
+        $zip->addFromString("{$slug}/zai/views/form.phtml", "<?php\necho 'clean template';\n");
+        $zip->close();
+        $flat = implode("\n", wp_connectors_inspect_artifact($zipPath, self::scratchPath('inspect-phtml-clean')));
+        $this->assertStringNotContainsString('form.phtml', $flat, 'A clean .phtml entry passes the syntax walk and the credential screen (the class widened, never narrowed).');
+        unlink($zipPath);
+    }
+
+    /*
      * Anchored includes that walk out of the plugin dir (finding:
      * `require __DIR__ . '/../../other/bootstrap.php';` passed the check).
      */

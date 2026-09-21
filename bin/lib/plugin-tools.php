@@ -3885,7 +3885,7 @@ function wp_connectors_autoloader_violations($pluginDir)
 
 /**
  * Whether a path names a PHP source, by extension, CASE-INSENSITIVELY
- * (review round t31-r4-9).
+ * (review round t31-r4-9; the template class completed glm14-4).
  *
  * The ONE owner of the is-a-php-source judgment: PHP resolves includes
  * by any extension case ('.PHP' is as loadable as '.php'), so a
@@ -3897,30 +3897,55 @@ function wp_connectors_autoloader_violations($pluginDir)
  * type-name stem, the self-containment and unused-import walkers), so
  * collect, strip, and classify can never disagree again.
  *
+ * glm14-4: the class is the ENGINE'S TEMPLATE EXTENSIONS — '.php' and
+ * '.phtml', both case-insensitive — reopening the r6 ledger line
+ * ("the scanner's extension allowlist misses .php5/.inc/.phtml in
+ * every channel — do not re-flag without a real producer"): the
+ * producer arrived (driven by the glm14 review, red at HEAD), a
+ * 'form.phtml' entry with a parse error plus a live-shaped token
+ * passing inspect-artifact ACCEPTED while the identical bytes as
+ * 'form.php' were REJECTED — the '.php'-tail-only judgment exempted it
+ * from the post-extraction php -l walk AND the secret scan's
+ * extension allowlist, both channels at once. Widening the ONE owner
+ * closes every channel at once (the near-source fold, the collectors,
+ * the walkers) — the r6 line's own "in every channel" read as the
+ * fix shape. '.php5'/'.php7'/'.inc' stay OUT until a driven producer
+ * ships one (the r6 producer bar, restated; legacy distro configs
+ * alone are not a producer).
+ *
  * @param string $path File path or name (only the tail is judged).
- * @return bool True when the name ends in '.php' in any case.
+ * @return bool True when the name ends in '.php' or '.phtml' in any case.
  */
 function wp_connectors_is_php_source($path)
 {
-    return '.php' === wp_connectors_ascii_lower(substr((string) $path, -4));
+    $lowered = wp_connectors_ascii_lower((string) $path);
+
+    return '.php' === substr($lowered, -4) || '.phtml' === substr($lowered, -6);
 }
 
 /**
- * The basename with the (any-case) '.php' extension stripped — the ONE
- * extension-strip owner (review round t31-r4-9).
+ * The basename with the (any-case) PHP template extension stripped —
+ * the ONE extension-strip owner (review round t31-r4-9; the template
+ * class completed glm14-4).
  *
  * basename($path, '.php') strips only the exact-case suffix, so a
  * '.PHP'-spelled source kept its extension and the PSR-4 gate compared
  * a type name against 'ClockMath.PHP' — a misleading failure naming
  * the wrong defect. A name that is not a PHP source (per the ONE
- * predicate above) returns its basename unchanged.
+ * predicate above) returns its basename unchanged. A '.phtml' source
+ * strips its own six-byte tail (glm14-4 — a fixed four-byte strip
+ * would leave the stem 'form.' for 'form.phtml').
  *
  * @param string $path File path or name.
- * @return string The basename, extension-stripped when it is a '.php' in any case.
+ * @return string The basename, extension-stripped when it is a '.php' or '.phtml' in any case.
  */
 function wp_connectors_basename_without_php_extension($path)
 {
     $basename = basename((string) $path);
+
+    if ('.phtml' === substr(wp_connectors_ascii_lower($basename), -6)) {
+        return substr($basename, 0, -6);
+    }
 
     return wp_connectors_is_php_source($basename) ? substr($basename, 0, -4) : $basename;
 }

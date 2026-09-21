@@ -300,8 +300,17 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                 $findings[] = sprintf('%s: over the 2 MB secret-scan size limit — the secret scan cannot run', $file->getPathname());
                 continue;
             }
+            /*
+             * glm14-4: 'phtml' joins the allowlist the same round the
+             * ONE is-a-source owner (wp_connectors_is_php_source())
+             * gained the template class — the r6 ledger line's reopen
+             * condition ("a real producer") was met by a driven
+             * 'form.phtml' entry carrying a live token past this
+             * screen. '.php5'/'.php7'/'.inc' stay out until a driven
+             * producer ships one (the r6 bar).
+             */
             $extension = strtolower($file->getExtension());
-            if ($extension !== '' && ! in_array($extension, array( 'php', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
+            if ($extension !== '' && ! in_array($extension, array( 'php', 'phtml', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
                 continue;
             }
             /*

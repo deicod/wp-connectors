@@ -1936,17 +1936,25 @@ final class SharedOAuthArchitectureTest extends WpConnectorsTestCase
      */
     public function testThePhpExtensionJudgmentHasOneCaseInsensitiveOwner(): void
     {
-        // The predicate: extension '.php' in ANY case, and nothing else.
-        foreach (array('Url.php', 'Url.PHP', 'Url.Php', 'Url.pHp', 'dir/Url.PHP') as $is_source) {
+        /*
+         * The predicate: the engine's TEMPLATE extensions — '.php' and
+         * '.phtml' (glm14-4, the r6 producer-gated reopen) — in ANY
+         * case. '.php5' stays OUT: the r6 ledger line's own bar keeps
+         * the class closed at the driven producer ('.phtml' shipped a
+         * parse error plus a live token past inspection; '.php5' has
+         * no producer), so it pins the class boundary here.
+         */
+        foreach (array('Url.php', 'Url.PHP', 'Url.Php', 'Url.pHp', 'dir/Url.PHP', 'form.phtml', 'form.PHTML', 'dir/form.Phtml') as $is_source) {
             $this->assertTrue(wp_connectors_is_php_source($is_source), "{$is_source} is a PHP source in every extension case.");
         }
-        foreach (array('Notes.md', 'Url.phps', 'Url.php5', 'php', 'Url.pph', '') as $not_source) {
+        foreach (array('Notes.md', 'Url.phps', 'Url.php5', 'php', 'Url.pph', 'phtml', 'form.phttml', '') as $not_source) {
             $this->assertFalse(wp_connectors_is_php_source($not_source), "{$not_source} is not a PHP source.");
         }
 
         // The stem: any-case extension stripped, non-sources unchanged.
         $this->assertSame('ClockMath', wp_connectors_basename_without_php_extension('shared/src/ClockMath.PHP'));
         $this->assertSame('Url', wp_connectors_basename_without_php_extension('Http/Url.php'));
+        $this->assertSame('form', wp_connectors_basename_without_php_extension('zai/views/form.phtml'), 'A .phtml source strips its own six-byte tail, never the fixed four-byte strip.');
         $this->assertSame('notes.md', wp_connectors_basename_without_php_extension('/x/y/notes.md'), 'A non-source keeps its basename.');
 
         // End-to-end consistency on one tree (restated for t31-r5-3's
