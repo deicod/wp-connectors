@@ -195,7 +195,13 @@ function wp_connectors_scan_string($contents, $label)
  *
  * @param list<string> $roots               Absolute paths (files or directories).
  * @param bool         $prune_dev_segments  Whether to skip development-tree segments (the repository scan's concept; artifact scans never prune).
- * @return list<string> Findings.
+ * @return list<string> Findings — credential matches, plus one
+ *                      "unreadable file — the secret scan cannot run"
+ *                      line per file whose read failed (glm14-2: the
+ *                      scan verdict is never clean over bytes it could
+ *                      not read; both consumers — the CLI's exit code
+ *                      and the inspector's violations — derive their
+ *                      refusal from this list).
  */
 function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
 {
@@ -203,7 +209,26 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
     $excluded = $prune_dev_segments ? array( '.git', 'vendor', 'node_modules', 'dist', 'tools', '.phpunit.cache' ) : array();
     foreach ($roots as $root) {
         if (is_file($root)) {
-            $findings = array_merge($findings, wp_connectors_scan_string((string) file_get_contents($root), $root));
+            /*
+             * glm14-2: the read owns its failure — the old (string)
+             * cast laundered a false read (permission denial, a file
+             * vanished mid-walk) into an empty string, so a chmod-000
+             * file carrying a live token scanned to "0 finding(s)"
+             * exit 0 while every sibling gate treats the same shape
+             * as a loud FAIL (check-conventions' unreadable-file
+             * violation; php -l's exit 1). The failure IS a finding:
+             * the CLI's exit code and the inspector's verdict are
+             * both derived from this list, so both consumers refuse
+             * with zero changes. The @ suppresses only the engine's
+             * E_WARNING — the loud refusal is the finding line, the
+             * ocr30-4 doctrine.
+             */
+            $contents = @file_get_contents($root);
+            if (false === $contents) {
+                $findings[] = sprintf('%s: unreadable file — the secret scan cannot run', $root);
+                continue;
+            }
+            $findings = array_merge($findings, wp_connectors_scan_string($contents, $root));
             continue;
         }
         if (! is_dir($root)) {
@@ -257,7 +282,16 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
             if ($extension !== '' && ! in_array($extension, array( 'php', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
                 continue;
             }
-            $findings = array_merge($findings, wp_connectors_scan_string((string) file_get_contents($file->getPathname()), $file->getPathname()));
+            /*
+             * glm14-2 (the walk arm of the file-root arm above): a
+             * false read is a finding, never a laundered empty scan.
+             */
+            $contents = @file_get_contents($file->getPathname());
+            if (false === $contents) {
+                $findings[] = sprintf('%s: unreadable file — the secret scan cannot run', $file->getPathname());
+                continue;
+            }
+            $findings = array_merge($findings, wp_connectors_scan_string($contents, $file->getPathname()));
         }
     }
 

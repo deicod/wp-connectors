@@ -166,6 +166,48 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm14-2: a failed read is a finding, never a laundered empty scan.
+     */
+    public function testAnUnreadableFileFailsTheSecretScanLoudly()
+    {
+        /*
+         * The old (string) file_get_contents() casts (both arms — the
+         * file-root target and the walk) laundered a false read into
+         * an empty string: a chmod-000 file carrying a live-shaped
+         * token scanned to "0 finding(s)" exit 0 with the raw E_WARNING
+         * leaked beside it, while every sibling gate treats the same
+         * shape as a loud FAIL (check-conventions' unreadable-file
+         * violation; php -l's exit 1). The security gate was the one
+         * silent channel; driven red at HEAD exactly this shape (0
+         * findings, both arms).
+         */
+        $this->skipChmod0000LegOnRootRunner('the unreadable-file secret-scan leg');
+        $githubToken = 'ghp_' . bin2hex(random_bytes(18));
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-unreadable');
+        try {
+            $this->assertTrue(mkdir($tempDir, 0755, true), "staging: {$tempDir} must create — a staging failure fails as staging, never as the scan verdict.");
+            $this->assertNotFalse(file_put_contents($tempDir . '/readable.php', "<?php\n\$t = '{$githubToken}';\n"), "staging: {$tempDir}/readable.php must write — a staging failure fails as staging, never as the scan verdict.");
+            $this->assertNotFalse(file_put_contents($tempDir . '/unreadable.php', "<?php\n\$t = '{$githubToken}';\n"), "staging: {$tempDir}/unreadable.php must write — a staging failure fails as staging, never as the scan verdict.");
+            $this->assertTrue(chmod($tempDir . '/unreadable.php', 0000), "staging: {$tempDir}/unreadable.php must lock — the permission-bit premise of this leg.");
+
+            $findings = wp_connectors_scan_paths(array( $tempDir ));
+            $directFileFindings = wp_connectors_scan_paths(array( $tempDir . '/unreadable.php' ));
+        } finally {
+            @chmod($tempDir . '/unreadable.php', 0644);
+            WpHarness::releaseScratch($tempDir);
+        }
+
+        $report = implode("\n", $findings);
+        // The unreadable file refuses loudly through BOTH arms — the walk and the file-root target.
+        $this->assertStringContainsString('unreadable.php: unreadable file — the secret scan cannot run', $report);
+        $this->assertStringContainsString('unreadable file — the secret scan cannot run', implode("\n", $directFileFindings));
+        // Readable files in the same tree scan unchanged, and no finding ever echoes the token.
+        $this->assertStringContainsString('readable.php', $report);
+        $this->assertStringContainsString('github-token', $report);
+        $this->assertStringNotContainsString($githubToken, $report);
+    }
+
+    /**
      * The scan-scratch root maker — the r42-6 collision doctrine swept
      * to every site (OCR round 51, t31-ocr51-3; ONE census comment
      * across the file): every scan site this file grew — the
