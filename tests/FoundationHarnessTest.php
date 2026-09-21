@@ -660,8 +660,12 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
          * add_option() — :1113, driven), and the stub owns the head-of
          * sanitize now. This pin DROPS the manual call: the
          * function-level save itself must run the registered callback
-         * exactly once per save and store its answer (red at HEAD:
-         * runs=0, the raw value stored).
+         * and store its answer (red at HEAD: runs=0, the raw value
+         * stored). glm16-5 CORRECTED the round-15 runs=1 spec: core
+         * sanitizes at BOTH heads on a first save — update_option()'s
+         * head AND the add_option() it delegates to — so the first
+         * save counts TWO runs (structural through the delegation,
+         * never a forced double call) and every subsequent save one.
          */
         $runs = 0;
         register_setting('glm15_group', 'glm15_opt', array(
@@ -672,21 +676,21 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
             },
         ));
 
-        // The add path (the first save): one run, the sanitized value stored.
+        // The add path (the first save): BOTH heads run — the sanitized value stored.
         $this->assertTrue(update_option('glm15_opt', '  padded  '));
-        $this->assertSame(1, $runs, 'The add path runs the registered callback exactly once (red at HEAD: runs=0, the raw value stored).');
+        $this->assertSame(2, $runs, 'The first save runs the registered callback at both heads, core\'s both-heads shape (the round-15 runs=1 spec corrected — glm16-5).');
         $this->assertSame('padded', get_option('glm15_opt'), 'The stored value is the sanitized one, never the raw input.');
 
-        // The update path: same contract, one more run.
+        // The update path: one head, one run.
         $this->assertTrue(update_option('glm15_opt', '  tighter  '));
-        $this->assertSame(2, $runs, 'The update path runs the registered callback exactly once per save (red at HEAD: never consulted).');
+        $this->assertSame(3, $runs, 'The update path runs the registered callback exactly once per save (red at HEAD: never consulted).');
         $this->assertSame('tighter', get_option('glm15_opt'));
 
         // The unchanged shape: a save whose SANITIZED value equals the
         // stored value refuses — no write, no hooks (glm23-8 on core's
         // sanitize-then-compare order; the sanitizer still ran).
         $this->assertFalse(update_option('glm15_opt', '  tighter  '));
-        $this->assertSame(3, $runs, 'The refused unchanged save ran the sanitizer; it fired no hooks and wrote nothing.');
+        $this->assertSame(4, $runs, 'The refused unchanged save ran the sanitizer; it fired no hooks and wrote nothing.');
         $this->assertSame('tighter', get_option('glm15_opt'));
 
         /*
@@ -699,6 +703,57 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertNull(sanitize_option('glm15_opt', array( 'not', 'a', 'string' )), 'A null answer passes through, never swallowed.');
         $this->assertTrue(update_option('glm15_opt', array( 'not', 'a', 'string' )));
         $this->assertNull(get_option('glm15_opt'), 'The function-level API stores the filter\'s answer (null included); the null GUARD is the options.php caller\'s, never the function\'s.');
+    }
+
+    public function testUpdateOptionSanitizesBeforeComparingCoreOrder()
+    {
+        /*
+         * glm16-3: core sanitizes at the head, THEN compares — the
+         * stub's raw-compare-first never consulted the sanitizer over a
+         * raw-equal save (runs=0 where core runs it and writes the
+         * sanitized answer), and a false-RETURNING callback completed
+         * an ADD core refuses outright (the sanitized false compares
+         * equal to the missing-row false: one refusal, no hooks, no
+         * write).
+         */
+        $runs = 0;
+        register_setting('glm16_group', 'glm16_raw', array(
+            'sanitize_callback' => static function ( $value ) use ( &$runs ) {
+                ++$runs;
+
+                return $value . 'X';
+            },
+        ));
+
+        // A first save: both heads run (glm16-5's structural shape) —
+        // the appending callback applies at each head, core's own
+        // double-apply on a first save.
+        $this->assertTrue(update_option('glm16_raw', 'a'));
+        $this->assertSame(2, $runs, 'The first save sanitizes at both heads — the delegation rides, never a forced double call.');
+        $this->assertSame('aXX', get_option('glm16_raw'));
+
+        // The raw-equal save the sanitizer CHANGES: core runs the
+        // sanitizer and WRITES the answer (red at HEAD: the raw compare
+        // refused with runs unchanged and nothing written).
+        $this->assertTrue(update_option('glm16_raw', 'aXX'));
+        $this->assertSame(3, $runs, 'A raw-equal save still consults the sanitizer — the raw input never compares (red at HEAD: runs stayed 2 over the pair).');
+        $this->assertSame('aXXX', get_option('glm16_raw'), 'The sanitized value is what compares and writes (red at HEAD: refused, the stored value unchanged).');
+
+        // A false-returning callback: the sanitized false equals the
+        // missing-row false — core refuses with no ADD, no hooks, no
+        // write (red at HEAD: the ADD completed, fired, and stored).
+        $fired = 0;
+        add_action('add_option_glm16_falsey', static function () use (&$fired) {
+            ++$fired;
+        });
+        register_setting('glm16_group', 'glm16_falsey', array(
+            'sanitize_callback' => static function () {
+                return false;
+            },
+        ));
+
+        $this->assertFalse(update_option('glm16_falsey', 'v'), 'The false answer refuses the save (red at HEAD: the delegation completed and answered true).');
+        $this->assertSame(0, $fired, 'No add hooks fire over the refusal (red at HEAD: the add family fired).');
     }
 
     public function testUnregisterSettingRemovesTheSanitizeHook()
@@ -722,7 +777,14 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
 
         $this->assertSame('vB', sanitize_option('glm15_opt', 'v'), 'The unregistered callback is gone from the hook (red at HEAD: vAB — A still rode beside B).');
         $this->assertTrue(update_option('glm15_opt', 'v'));
-        $this->assertSame('vB', get_option('glm15_opt'), 'The save path stores only the REGISTERED callback\'s answer (red at HEAD: vAB stored).');
+        /*
+         * glm16-5: both heads apply on a first save — 'v' carries B at
+         * update_option()'s head and again at the delegated
+         * add_option()'s ('vBB'), core's own double-apply; the
+         * round-15 'vB' expectation rode the corrected runs=1 spec.
+         * The unregistered A is what must stay gone either way.
+         */
+        $this->assertSame('vBB', get_option('glm15_opt'), 'The save path stores only the REGISTERED callback\'s answer, applied at both heads (red at HEAD: vAB stored).');
 
         // Unregistering a setting that never carried a callback is a clean no-op.
         $this->assertTrue(unregister_setting('glm15_group', 'glm15_never_registered'));

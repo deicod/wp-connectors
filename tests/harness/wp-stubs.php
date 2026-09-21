@@ -230,18 +230,26 @@ function get_option($option, $default = false)
 function update_option($option, $value, $autoload = null)
 {
     /*
-     * Core semantics: no update (and no hooks, no write, no autoload
-     * flip) when the value is unchanged — the short-circuit runs BEFORE
-     * any autoload handling. glm23-8 (review round 23, finding 8)
-     * removed the old `null === $autoload` condition: an unchanged-value
-     * save with an explicit autoload argument used to rewrite the row,
-     * flip the recorded autoload, and return true where core returns
-     * false with no write at all. This first compare rides the RAW
-     * input (a missing row compared against core's false default, an
-     * existing row against the stored bytes) — glm15-3 adds the
-     * SANITIZED compare below it, core's own head-of-sanitize order,
-     * so both spellings of "unchanged" refuse with no write.
+     * glm16-3: core sanitizes at the HEAD, then compares — never a
+     * raw-input compare (driven: core's own order at update_option()'s
+     * head). The stub's raw-compare-first meant a raw-equal save never
+     * consulted the sanitizer at all (a counting callback answered
+     * runs=0 over a save core sanitizes before judging), and a
+     * false-RETURNING callback completed an ADD core refuses outright:
+     * the sanitized false compares EQUAL to the missing-row false, one
+     * refusal with no hooks and no write. The glm23-8 unchanged-value
+     * contract keeps its outcome — no update, no hooks, no write, no
+     * autoload flip when the stored value equals the saved one — it
+     * just rides the core-ordered compare now, with the sanitizer run
+     * first exactly like core's.
+     *
+     * glm16-5: the delegation below re-sanitizes at add_option()'s own
+     * head — core's BOTH-HEADS shape, structural through the natural
+     * delegation (never a forced double call): a FIRST save runs the
+     * registered callback exactly twice, every subsequent save once.
+     * The round-15 runs=1 spec was wrong; core parity wins.
      */
+    $value = sanitize_option($option, $value);
     $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
     if ($old === $value) {
         return false;
@@ -260,25 +268,10 @@ function update_option($option, $value, $autoload = null)
      * through core's get_option() (both answer false), so core routes
      * its save to the ADD family while the harness's exists-check routed
      * UPDATE (driven: the stored-false save fired update_option_ in the
-     * harness, the add family in core). add_option() owns this path's
-     * head-of sanitize (glm15-3), so the registered callback runs
-     * exactly once per save whichever family persists it.
+     * harness, the add family in core).
      */
     if (false === $old) {
         return add_option($option, $value, '', $autoload);
-    }
-
-    /*
-     * glm15-3: core calls sanitize_option() at the head of
-     * update_option() itself (option.php:886, WP 7.1.1) — the glm14-10
-     * premise ("core's own update_option does not sanitize") is FALSE,
-     * and the stub's save path skipped the registered callback for
-     * every update-path save. The sanitized value is what compares,
-     * stores, and rides every hook below.
-     */
-    $value = sanitize_option($option, $value);
-    if ($old === $value) {
-        return false;
     }
 
     /*
