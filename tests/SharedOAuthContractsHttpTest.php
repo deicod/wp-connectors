@@ -108,6 +108,17 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
              */
             'query-carried port answers the entry sentence' => array('https://?redirect=https://evil.example:70000', 'must be absolute with a scheme and host'),
             'query-carried glued port likewise' => array('https://?next=https://evil.example:65534x', 'must be absolute with a scheme and host'),
+            /*
+             * glm16-10: the port screen arms only after a NON-EMPTY
+             * authority — the authority being absent is the PRIMARY
+             * defect, so the empty-host-with-port-tail spellings wear
+             * the host sentence, never the port sentence the glm14-9
+             * entry once answered them in (driven red at HEAD:
+             * 'https://:70000' -> 'port is out of range').
+             */
+            'empty host wins over the out-of-range port tail' => array('https://:70000', 'must be absolute with a scheme and host'),
+            'empty host wins over the glued port tail' => array('https://:65536x', 'must be absolute with a scheme and host'),
+            'empty host behind userinfo wins over the port tail' => array('https://user@:70000', 'must be absolute with a scheme and host'),
             'garbage' => array('https://@@@', 'must be absolute with a scheme and host'),
         );
     }

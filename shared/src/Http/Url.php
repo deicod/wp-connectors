@@ -244,7 +244,20 @@ final class Url {
 				$entry_bracket   = strrpos( $entry_host_port, ']' );
 				$entry_colon     = strpos( $entry_host_port, ':', false === $entry_bracket ? 0 : (int) $entry_bracket + 1 );
 				$entry_port      = false === $entry_colon ? '' : (string) substr( $entry_host_port, $entry_colon + 1 );
-				if ( '' !== $entry_port && 1 === preg_match( '/\A([0-9]+)/', $entry_port, $entry_digits ) ) {
+
+				/*
+				 * glm16-10: the port screen arms only after a
+				 * NON-EMPTY authority — the authority being absent is
+				 * the PRIMARY defect ('https://:70000' once wore the
+				 * out-of-range port sentence over a host of zero
+				 * bytes, glm14-9's pre-existing entry design never
+				 * adjudicated; the round-16 adjudication: empty host
+				 * wins the verdict). The empty-host shape falls
+				 * through to the entry's own sentence below,
+				 * whatever port tail rides beside it.
+				 */
+				$entry_host = false === $entry_colon ? $entry_host_port : (string) substr( $entry_host_port, 0, $entry_colon );
+				if ( '' !== $entry_host && '' !== $entry_port && 1 === preg_match( '/\A([0-9]+)/', $entry_port, $entry_digits ) ) {
 					$entry_tail = (string) substr( $entry_port, strlen( $entry_digits[1] ) );
 					if ( '' === $entry_tail && (int) $entry_digits[1] > 65535 ) {
 						throw new InvalidArgumentException( 'The URL port is out of range — an authority port must be 1–65535, and the engine cannot parse one beyond it.' );
