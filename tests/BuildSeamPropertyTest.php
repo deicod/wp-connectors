@@ -292,9 +292,17 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         // corrupt-reopen pin's own class, at the seed position).
         $verdict = $this->runState('seed-census-throw', array(
             'expect' => 'LOUD',
-            'seed_call' => static function (string $plugin, string $dist): string {
+            'seed_call' => function (string $plugin, string $dist): string {
                 $corrupt = $dist . '/corrupt-seed.zip';
-                file_put_contents($corrupt, 'not a zip archive');
+                /*
+                 * glm15-15: the plant asserts its own landing (the
+                 * file's asserted-staging census, swept to its last
+                 * unasserted write) — a silently failed write passed
+                 * both pins over a fixture that never existed. The
+                 * assertion failure rides the seed channel as the
+                 * ROW's FAIL, never a phantom verdict.
+                 */
+                $this->assertNotFalse(file_put_contents($corrupt, 'not a zip archive'), "staging: {$corrupt} must write — a staging failure fails as staging, never the row's verdict.");
 
                 return $corrupt;
             },
@@ -331,6 +339,12 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
      * mkdir/file_put_contents/symlink), the assertion failure riding
      * the apply-throw channel as the ROW's FAIL (t31-ocr30-6), and
      * every row's verdict is unchanged when the plants land.
+     *
+     * glm15-15: the one plant OUTSIDE the table — the corrupt-seed
+     * seed_call write in testASeedThrowAnswersAFailRowNotABatteryAbort
+     * — joins the asserted-staging vocabulary (assertNotFalse, the
+     * failure riding the seed channel as the ROW's FAIL), the file's
+     * last unasserted staging write closed.
      *
      * @return array<string, array{expect: string, apply: callable, fragment?: string, extra?: callable, seed_call?: callable, skip_on_root?: bool, needs_symlink?: bool, needs_posix?: bool}>
      */
