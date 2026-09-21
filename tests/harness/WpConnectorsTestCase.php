@@ -1182,16 +1182,35 @@ abstract class WpConnectorsTestCase extends TestCase
             $this->markTestSkipped("Snapshot {$name} created; re-run to verify.");
         }
 
+        /*
+         * glm14-8: the read and the decode OWN their failure (the
+         * laundering-read class fixed at every sibling) — the old
+         * (string) file_get_contents() + json_decode() cast pair
+         * turned an unreadable snapshot into '' and a corrupt one into
+         * null -> [], so BOTH misreported as 'Captured request drifted
+         * from snapshot' and sent the operator hunting a request-drift
+         * regression that does not exist. One read, one decode: the
+         * credential-invariant asserts below ride the same bytes.
+         */
+        $raw = @file_get_contents($path);
+        if (false === $raw) {
+            $this->fail("Snapshot {$name} is unreadable — the comparison cannot run ({$path}).");
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || json_last_error() !== JSON_ERROR_NONE) {
+            $this->fail(sprintf('Snapshot %s is corrupt (json: %s) — the comparison cannot run (%s).', $name, json_last_error_msg(), $path));
+        }
+
         $this->assertSame(
             $snapshot,
-            (array) json_decode((string) file_get_contents($path), true),
+            $decoded,
             "Captured request drifted from snapshot {$name}."
         );
 
         // Snapshots never contain credentials (headers are excluded by
         // construction; assert the invariant anyway).
-        $this->assertStringNotContainsString('Bearer', (string) file_get_contents($path));
-        $this->assertStringNotContainsString('Authorization', (string) file_get_contents($path));
+        $this->assertStringNotContainsString('Bearer', $raw);
+        $this->assertStringNotContainsString('Authorization', $raw);
     }
 
     /**

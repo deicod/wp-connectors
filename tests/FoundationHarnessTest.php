@@ -521,6 +521,76 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1700001000 + 3600, wp_next_scheduled('glm14_hourly_event'), 'The next due is recomputed from NOW, core\'s reschedule-from-now semantics.');
     }
 
+    public function testASnapshotReadFailureAnswersAsItselfNeverAsDrift()
+    {
+        /*
+         * glm14-8: the snapshot compare read through a laundering pair
+         * — (string) file_get_contents() + json_decode() cast — so an
+         * unreadable snapshot became '' and a corrupt one became
+         * null -> [], BOTH misreporting as 'Captured request drifted
+         * from snapshot' and sending the operator hunting a
+         * request-drift regression that does not exist. The read and
+         * the decode own their failure now, naming the file and the
+         * json error (the laundering-read class fixed at every
+         * sibling read this change set has touched).
+         */
+        $dir = sys_get_temp_dir() . '/wp-connectors-snapshot-read-' . uniqid('', true);
+        $this->assertTrue(mkdir($dir, 0755, true), "staging: {$dir} must create — a staging failure fails as staging, never as the snapshot verdict.");
+        $probe = new class($dir) extends WpConnectorsTestCase {
+            public function __construct(string $dir)
+            {
+                parent::__construct('glm14SnapshotProbe');
+                $this->snapshot_dir = $dir;
+            }
+
+            public function probe(string $name, string $url, array $body): void
+            {
+                $this->assertMatchesSnapshot($name, $url, $body);
+            }
+
+            protected function snapshotDirectory(): string
+            {
+                return $this->snapshot_dir;
+            }
+
+            /** @var string */
+            private $snapshot_dir;
+        };
+
+        try {
+            // The healthy control: a matching committed snapshot passes.
+            $healthy = '{"url": "https://x.test/a", "body": {"k": "v"}}' . "\n";
+            $this->assertNotFalse(file_put_contents($dir . '/healthy.json', $healthy), 'staging: the healthy snapshot must write.');
+            $probe->probe('healthy', 'https://x.test/a', array('k' => 'v'));
+
+            // A truncated snapshot answers the corrupt-snapshot failure, never drift.
+            $this->assertNotFalse(file_put_contents($dir . '/truncated.json', '{"url": "https://x.test/a", "body": '), 'staging: the truncated snapshot must write.');
+            try {
+                $probe->probe('truncated', 'https://x.test/a', array('k' => 'v'));
+                $this->fail('A corrupt snapshot must fail the comparison as corrupt, never pass.');
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $this->assertStringContainsString('is corrupt (json:', $e->getMessage(), 'red at HEAD: the failure read "drifted from snapshot" over the null decode.');
+            }
+
+            // An unreadable snapshot answers the unreadable failure, never drift.
+            $this->skipChmod0000LegOnRootRunner('the unreadable-snapshot leg');
+            $this->assertNotFalse(file_put_contents($dir . '/unreadable.json', $healthy), 'staging: the unreadable snapshot must write.');
+            $this->assertTrue(chmod($dir . '/unreadable.json', 0000), 'staging: the unreadable snapshot must lock.');
+            try {
+                $probe->probe('unreadable', 'https://x.test/a', array('k' => 'v'));
+                $this->fail('An unreadable snapshot must fail the comparison as unreadable, never pass.');
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $this->assertStringContainsString('is unreadable', $e->getMessage(), 'red at HEAD: the failure read "drifted from snapshot" over the false read.');
+            }
+        } finally {
+            @chmod($dir . '/unreadable.json', 0644);
+            foreach ((glob($dir . '/*') ?: array()) as $entry) {
+                @unlink($entry);
+            }
+            @rmdir($dir);
+        }
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*
