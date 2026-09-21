@@ -88,6 +88,16 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'no host' => array('https:///token', 'must be absolute with a scheme and host'),
             'port out of range' => array('https://host.example:99999/token', 'port is out of range'),
             'port out of range, no path' => array('https://host.example:70000', 'port is out of range'),
+            /*
+             * glm15-6: parse_url() fails EVERY glued port whose digit run
+             * is five digits or more — in-range digits included — so both
+             * glue spellings landed at the entry wearing the scheme/host
+             * sentence while the short ':443x' glue answers the digits
+             * sentence below the entry (one malformed class, two
+             * sentences). Both answer the digits sentence now.
+             */
+            'glued port beyond the range' => array('https://host.example:65536x/token', 'port must be digits'),
+            'glued port in range' => array('https://host.example:65534x/token', 'port must be digits'),
             'garbage' => array('https://@@@', 'must be absolute with a scheme and host'),
         );
     }

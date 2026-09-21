@@ -27,6 +27,21 @@ use InvalidArgumentException;
 final class Url {
 
 	/**
+	 * The ONE malformed-port sentence, shared by the entry screen's
+	 * glued-tail arm and the raw-port screen below (glm15-6).
+	 *
+	 * The parse_url() engine mishandles a glued port tail BOTH ways — truncating
+	 * ':443x' to port 443 when the digit run is four digits or fewer,
+	 * failing the parse outright when it is five digits or more — so the
+	 * two screens the two sub-shapes land on (the raw screen for the
+	 * truncated parse, the entry for the failed one) must answer the
+	 * SAME sentence: one malformed class, one verdict, never one class
+	 * in two sentences the way ':443x' and ':65534x' answered before
+	 * (driven: the five-digit glue wore the scheme/host sentence).
+	 */
+	private const PORT_MUST_BE_DIGITS_MESSAGE = 'The URL port must be digits — parse_url() mishandles a glued tail (":443x" truncates to 443, ":65534x" fails the parse outright) while the URL string carries the raw text, and the two must agree.';
+
+	/**
 	 * Parses and validates an absolute http(s) URL.
 	 *
 	 * The whole URL must be VALID UTF-8 first (review round t31-r4-13):
@@ -181,14 +196,37 @@ final class Url {
 			 * input could reach. The entry owns the distinction now: a
 			 * digits-only port beyond the range in a FAILED parse
 			 * answers the port sentence — the boundary class ([/?#]
-			 * or end of authority) so userinfo ':pass@' spellings and
-			 * ':443x' glue keep the generic refusal, their parse
-			 * failing for its own cause — and the port block keeps
-			 * the < 1 arm, the half this build can still reach
-			 * (':0' parses).
+			 * or end of authority) so userinfo ':pass@' spellings keep
+			 * the generic refusal their parse fails for anyway — and
+			 * the port block keeps the < 1 arm, the half this build
+			 * can still reach (':0' parses). glm15-6 corrected the
+			 * round's own ':443x' claim: SHORT glue parses (truncated,
+			 * answered by the raw screen below), FIVE-DIGIT-OR-LONGER
+			 * glue fails the parse and is the glued arm below this one.
 			 */
 			if ( false === $parts && 1 === preg_match( '~://[^/?#]*:([0-9]+)(?:[/?#]|\z)~', $url, $port_match ) && (int) $port_match[1] > 65535 ) {
 				throw new InvalidArgumentException( 'The URL port is out of range — an authority port must be 1–65535, and the engine cannot parse one beyond it.' );
+			}
+
+			/*
+			 * glm15-6: parse_url() fails EVERY glued port whose digit
+			 * run is five digits or more (':65536x', and the IN-RANGE
+			 * ':65534x' — driven), while the four-digit-and-shorter glue
+			 * parses truncated and the raw-port screen below answers it.
+			 * One malformed class, one sentence: the glued tail of a
+			 * failed parse answers the SAME digits sentence the raw
+			 * screen answers, never the scheme/host sentence the
+			 * misattribution wore before (the glm14-9 claim that glue
+			 * "keeps the generic refusal" held only for the short glue
+			 * that never reaches this screen). The junk class excludes
+			 * '@' so a userinfo ':digits@' shape (whose parse fails for
+			 * its own cause) keeps the generic refusal, and the junk
+			 * must run to the authority's end — the port-shaped tail of
+			 * the authority, the same derivation the raw screen rides.
+			 */
+			if ( false === $parts && 1 === preg_match( '~://[^/?#]*:([0-9]+)[^0-9/?#@]+(?:[/?#]|\z)~', $url ) ) {
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+				throw new InvalidArgumentException( self::PORT_MUST_BE_DIGITS_MESSAGE );
 			}
 			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
 		}
@@ -388,7 +426,13 @@ final class Url {
 		if ( false !== $colon ) {
 			$raw_port = (string) substr( $host_port, $colon + 1 );
 			if ( 1 !== preg_match( '/\A[0-9]+\z/', $raw_port ) ) {
-				throw new InvalidArgumentException( 'The URL port must be digits — parse_url() truncates a malformed port silently (":443x" reads as 443) while the URL string carries the raw text, and the two must agree.' );
+				/*
+				 * glm15-6: the ONE malformed-port sentence (the const
+				 * above) — the truncated-parse sub-shape of the same
+				 * glued class.
+				 */
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+				throw new InvalidArgumentException( self::PORT_MUST_BE_DIGITS_MESSAGE );
 			}
 			$raw_port_int = (int) $raw_port;
 
