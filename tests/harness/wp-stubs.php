@@ -591,9 +591,29 @@ $GLOBALS['wpdb'] = new wpdb();
  * -------------------------------------------------------------------------
  */
 
+/**
+ * The cron args identity: core's own key shape, md5(serialize($args))
+ * (glm16-12).
+ *
+ * Core's cron array keys events by the digest of the SERIALIZED args —
+ * an equality over VALUES (two distinct-but-equal-valued object args
+ * serialize to identical bytes and are the same event), never PHP's
+ * identity compare (===), which answered 'different' for an
+ * equal-valued pair and stacked twin entries that double-fired in one
+ * tick where core's keyed array answers one.
+ *
+ * @param array $args Event args.
+ * @return string The serialized digest.
+ */
+function wp_connectors_cron_args_key($args)
+{
+    return md5(serialize($args));
+}
+
 function wp_schedule_single_event($timestamp, $hook, $args = array())
 {
     $timestamp = (int) $timestamp;
+    $args_key = wp_connectors_cron_args_key($args);
     /*
      * glm15-13/glm16-7: core's duplicate window for singles — an
      * identical single (same hook, same args, non-recurring) already
@@ -610,7 +630,7 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
      */
     foreach (WpHarness::$cron[ $hook ] ?? array() as $event) {
         if (! isset($event['interval'])
-            && $event['args'] === $args
+            && wp_connectors_cron_args_key($event['args']) === $args_key
             && $event['timestamp'] >= WpHarness::now() - 10 * MINUTE_IN_SECONDS) {
             return false; // Core's duplicate-single skip.
         }
@@ -625,7 +645,7 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
      * replace claimed dead and left open on the single arm.
      */
     foreach (WpHarness::$cron[ $hook ] ?? array() as $index => $event) {
-        if ($event['timestamp'] === $timestamp && $event['args'] === $args) {
+        if ($event['timestamp'] === $timestamp && wp_connectors_cron_args_key($event['args']) === $args_key) {
             unset(WpHarness::$cron[ $hook ][ $index ]['interval']);
 
             return true;
@@ -659,10 +679,13 @@ function wp_schedule_event($timestamp, $recurrence, $hook, $args = array())
      * [timestamp][hook][md5(args)], so scheduling the IDENTICAL event
      * (same timestamp, same args) REPLACES the entry rather than
      * appending a twin. The old append double-fired the pair in one
-     * tick (driven) where core fires once.
+     * tick (driven) where core fires once. glm16-12: the args leg of
+     * the key rides the SERIALIZED DIGEST (the helper above), never
+     * PHP's identity compare.
      */
+    $args_key = wp_connectors_cron_args_key($args);
     foreach (WpHarness::$cron[ $hook ] ?? array() as $index => $event) {
-        if ($event['timestamp'] === (int) $timestamp && $event['args'] === $args) {
+        if ($event['timestamp'] === (int) $timestamp && wp_connectors_cron_args_key($event['args']) === $args_key) {
             WpHarness::$cron[ $hook ][ $index ]['interval'] = $interval;
 
             return true;
@@ -681,8 +704,9 @@ function wp_schedule_event($timestamp, $recurrence, $hook, $args = array())
 function wp_next_scheduled($hook, $args = array())
 {
     $best = false;
+    $args_key = wp_connectors_cron_args_key($args);
     foreach (WpHarness::$cron[ $hook ] ?? array() as $event) {
-        if ($event['args'] !== $args) {
+        if (wp_connectors_cron_args_key($event['args']) !== $args_key) {
             continue;
         }
         if (false === $best || $event['timestamp'] < $best) {
@@ -711,8 +735,9 @@ function wp_get_scheduled_events($hook = null)
 
 function wp_unschedule_event($timestamp, $hook, $args = array())
 {
+    $args_key = wp_connectors_cron_args_key($args);
     foreach (WpHarness::$cron[ $hook ] ?? array() as $index => $event) {
-        if ($event['timestamp'] === (int) $timestamp && $event['args'] === $args) {
+        if ($event['timestamp'] === (int) $timestamp && wp_connectors_cron_args_key($event['args']) === $args_key) {
             unset(WpHarness::$cron[ $hook ][ $index ]);
             WpHarness::$cron[ $hook ] = array_values(WpHarness::$cron[ $hook ]);
 

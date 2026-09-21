@@ -1095,6 +1095,53 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1700003600, wp_next_scheduled('glm16_victim'), 'The handler\'s reschedule stands for the next pass.');
     }
 
+    public function testEqualValuedObjectArgsAreOneCronEventCoreDigest()
+    {
+        /*
+         * glm16-12: the cron args comparisons rode PHP's identity
+         * (===) where core's key is md5(serialize($args)) — two
+         * equal-VALUED but non-identical object args answered
+         * 'different' at every key site (the keyed replace, the
+         * singles dedupe, wp_next_scheduled, wp_unschedule_event) and
+         * stacked twin entries that double-fired in one tick where
+         * core's keyed array answers one event (driven red at HEAD).
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm16_digest', static function () use (&$fires) {
+            ++$fires;
+        });
+        $make = static function () {
+            return new ArrayObject(array( 'k' => 'v' ));
+        };
+        $first = $make();
+        $second = $make();
+        $this->assertNotSame($first, $second, 'staging: the pair must be two distinct instances — the identity compare this leg drives.');
+
+        // The keyed replace answers ONE entry over the equal-valued
+        // pair (red at HEAD: appended, double-fired).
+        $this->assertTrue(wp_schedule_event(1700000300, 'hourly', 'glm16_digest', array( $first )));
+        $this->assertTrue(wp_schedule_event(1700000300, 'hourly', 'glm16_digest', array( $second )));
+        $this->advanceTime(400);
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The equal-valued pair is ONE event (red at HEAD: two entries, double-fired in one tick).');
+        $this->assertSame(1, $fires);
+
+        // wp_next_scheduled finds the rescheduled occurrence by VALUE.
+        $next = wp_next_scheduled('glm16_digest', array( $second ));
+        $this->assertNotFalse($next, 'wp_next_scheduled answers over the equal-valued args (red at HEAD: false — identity missed the entry).');
+
+        // And the unschedule with a third equal-valued instance removes it.
+        $this->assertTrue(wp_unschedule_event($next, 'glm16_digest', array( $make() )), 'The digest-keyed unschedule removes the entry over any equal-valued spelling (red at HEAD: false).');
+        $this->assertFalse(wp_next_scheduled('glm16_digest', array( $first )));
+
+        // The singles dedupe rides the same digest: an equal-valued
+        // twin within core's window answers FALSE.
+        $this->assertTrue(wp_schedule_single_event(1700000500, 'glm16_single_val', array( $make() )));
+        $this->assertFalse(wp_schedule_single_event(1700000600, 'glm16_single_val', array( $make() )), 'The duplicate single is recognized over the digest (red at HEAD: appended as distinct).');
+        $this->assertCount(1, wp_get_scheduled_events('glm16_single_val'));
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*
