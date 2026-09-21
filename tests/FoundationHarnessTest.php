@@ -518,7 +518,16 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
 
         $this->assertSame(1, WpHarness::runDueEvents(), 'A day-overdue hourly event fires exactly once (red at HEAD: replayed once per missed interval).');
         $this->assertSame(1, $hourly);
-        $this->assertSame(1700001000 + 3600, wp_next_scheduled('glm14_hourly_event'), 'The next due is recomputed from NOW, core\'s reschedule-from-now semantics.');
+        /*
+         * glm15-5: core's wp_reschedule_event() GRID-ALIGNS the next
+         * due — now + (interval − ((now − ts) % interval)) — keeping the
+         * schedule's phase over its own grid (with these pinned numbers:
+         * ts 1699913600, hourly, now 1700001000 → 1700003600). The
+         * glm14-7 pin asserted 1700004600 (the now+interval DRIFT
+         * spelling) mislabeled as core semantics — corrected with the
+         * driven number.
+         */
+        $this->assertSame(1700003600, wp_next_scheduled('glm14_hourly_event'), 'The next due is grid-aligned to the schedule\'s phase, core\'s wp_reschedule_event() arithmetic (glm14-7 pinned the now+interval drift spelling here).');
     }
 
     public function testAReschedulingHandlerTerminatesAndMidRunEventsDefer()

@@ -398,10 +398,10 @@ final class WpHarness
      *
      * Simulates a cron run against the deterministic clock; a fired single
      * event is removed before its hook fires, while recurring events are
-     * rescheduled at now + interval — ONE fire per run however far
-     * overdue, the next due recomputed from NOW (core's
-     * wp_reschedule_event semantics), never replayed once per missed
-     * interval.
+     * rescheduled GRID-ALIGNED to the schedule's own phase — now +
+     * (interval − ((now − ts) % interval)), core's wp_reschedule_event()
+     * arithmetic (glm15-5) — ONE fire per run however far overdue, never
+     * replayed once per missed interval.
      *
      * glm14-7: the order is the EARLIEST timestamp first, stable for
      * equal timestamps (the registration-order scan breaks ties — the
@@ -472,8 +472,22 @@ final class WpHarness
                 unset(self::$cron[ $hook ]);
             }
             if (isset($event['interval']) && (int) $event['interval'] > 0) {
+                /*
+                 * glm15-5: core's wp_reschedule_event() GRID-ALIGNS the
+                 * next due — now + (interval − ((now − ts) % interval)) —
+                 * never now+interval: the schedule keeps its phase over
+                 * the event's own grid, however late the fire. The
+                 * glm14-7 now+interval spelling DRIFTED one fire's
+                 * lateness into every later due (the round's own pinned
+                 * numbers: ts 1699913600, hourly, now 1700001000 — core
+                 * answers 1700003600, the drift spelling 1700004600).
+                 * An on-time fire (ts === now) answers now + interval
+                 * under both spellings — the grid term vanishes.
+                 */
+                $now = self::now();
+                $interval = (int) $event['interval'];
                 $rescheduled = $event;
-                $rescheduled['timestamp'] = self::now() + (int) $event['interval'];
+                $rescheduled['timestamp'] = $now + ($interval - (($now - $event['timestamp']) % $interval));
                 self::$cron[ $hook ][] = $rescheduled;
             }
             ++$fired;
