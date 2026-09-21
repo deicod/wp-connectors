@@ -198,6 +198,25 @@ function wp_connectors_mask_string_contents($code)
  * self-containment driver keeps the empty-analysis tolerance the old
  * (string) cast gave it).
  *
+ * glm14-6: the memo's retention is BOUNDED (FIFO by insertion order,
+ * 24 MB of retained view bytes) — the glm25-8 fix landed the memo with
+ * no eviction, so a process walking many trees retained THREE full
+ * copies of every PHP byte it ever read for its whole lifetime, and
+ * the artifact inspector rides this provider over EXTRACTED
+ * (hostile-controlled) trees: a zip shipping ~40 MB of .php entries
+ * retained ~120 MB against the 128M default memory_limit and the
+ * inspector died at exit 255 with NO verdict (measured by the review,
+ * re-driven this round). The bound sits above this repository's whole
+ * PHP tree (~5.3 MB of sources ≈ 16 MB of views), so the repo-wide
+ * checks keep their single-tokenize-per-file purpose; a walk over a
+ * larger tree evicts oldest-first and re-tokenizes on re-consult —
+ * correct, just slower, never verdict-less. A SINGLE file whose own
+ * triple exceeds the bound still enters (the analysis of one file
+ * needs all three views simultaneously; refusing to memoize it would
+ * only re-blank the next consult) — that transient single-file class
+ * is the analysis's own memory floor, not the accumulation this bound
+ * kills.
+ *
  * @param string $path Absolute file path.
  * @return array{source: string, code: string, masked: string}|null The
  *         raw source, its comment-stripped view, and the string-masked
@@ -207,6 +226,8 @@ function wp_connectors_file_code_views($path)
 {
     /** @var array<string, array{source: string, code: string, masked: string}> $views */
     static $views = array();
+    /** @var int $retained */
+    static $retained = 0;
 
     $source = @file_get_contents($path);
     if (false === $source) {
@@ -214,16 +235,26 @@ function wp_connectors_file_code_views($path)
     }
 
     $key = $path . "\0" . md5($source);
-    if (!isset($views[$key])) {
-        $code = wp_connectors_strip_comments($source);
-        $views[$key] = array(
-            'source' => $source,
-            'code' => $code,
-            'masked' => wp_connectors_mask_string_contents($code),
-        );
+    if (isset($views[$key])) {
+        return $views[$key];
     }
 
-    return $views[$key];
+    $code = wp_connectors_strip_comments($source);
+    $triple = array(
+        'source' => $source,
+        'code' => $code,
+        'masked' => wp_connectors_mask_string_contents($code),
+    );
+    $entry_bytes = strlen($source) + strlen($code) + strlen($triple['masked']);
+    while ($views !== array() && $retained + $entry_bytes > 24 * 1024 * 1024) {
+        $oldest = (string) array_key_first($views);
+        $retained -= strlen($views[$oldest]['source']) + strlen($views[$oldest]['code']) + strlen($views[$oldest]['masked']);
+        unset($views[$oldest]);
+    }
+    $views[$key] = $triple;
+    $retained += $entry_bytes;
+
+    return $triple;
 }
 
 /**

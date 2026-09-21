@@ -1304,4 +1304,50 @@ FIXTURE
         $tools = (string) file_get_contents(dirname(__DIR__) . '/bin/lib/plugin-tools.php');
         $this->assertStringContainsString('$views = wp_connectors_file_code_views($path);', $tools, 'The self-containment driver reads the shared views.');
     }
+
+    public function testTheSharedViewProviderRetentionIsBounded(): void
+    {
+        /*
+         * glm14-6: the memo never evicted, retaining three full copies
+         * of every PHP byte read for the process lifetime — and the
+         * artifact inspector rides this provider over EXTRACTED
+         * (hostile-controlled) trees, so a zip shipping ~40 MB of
+         * .php entries retained ~120 MB against the 128M default and
+         * the inspector died at exit 255 with NO verdict (the review's
+         * measured shape). Retention is FIFO-bounded at 24 MB of view
+         * bytes — above this repository's whole PHP tree (~5.3 MB of
+         * sources), so the repo-wide single-tokenize-per-file purpose
+         * survives; an over-bound walk evicts oldest-first and
+         * re-tokenizes on re-consult (red at HEAD: the reflection
+         * read below answered ~3x the fed bytes, no bound at all).
+         */
+        $payload = '<?php' . "\n" . '/*' . str_repeat('x ', 512 * 1024) . "*/\n\$y = 1;\n";
+        $first_path = null;
+        $first_views = null;
+        $file_count = 30; // ~31 MB of sources — past the 24 MB bound.
+        for ($i = 0; $i < $file_count; ++$i) {
+            $path = $this->root . '/retention-' . $i . '.php';
+            file_put_contents($path, $payload);
+            $views = wp_connectors_file_code_views($path);
+            $this->assertIsArray($views, "Every fed file yields its triple, eviction or not (file {$i}).");
+            $this->assertSame($payload, $views['source'], "The served source is the file's own content, eviction or not (file {$i}).");
+            if (0 === $i) {
+                $first_path = $path;
+                $first_views = $views;
+            }
+        }
+
+        // The memo's own retained-bytes counter is bounded at the cap plus at most one entry.
+        $statics = (new ReflectionFunction('wp_connectors_file_code_views'))->getStaticVariables();
+        $this->assertArrayHasKey('retained', $statics, 'The provider carries its retention counter.');
+        $one_entry = 3 * strlen($payload);
+        $this->assertLessThanOrEqual(
+            24 * 1024 * 1024 + $one_entry,
+            $statics['retained'],
+            'Retention stays at the bound plus at most one in-flight entry — never the process-lifetime accumulation.'
+        );
+
+        // A re-consult past eviction re-tokenizes and answers the identical values.
+        $this->assertSame($first_views, wp_connectors_file_code_views($first_path), 'An evicted entry re-serves the same triple values on re-consult.');
+    }
 }
