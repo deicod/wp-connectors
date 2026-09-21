@@ -482,6 +482,45 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(wp_next_scheduled('test_clock_event'));
     }
 
+    public function testDueEventsFireInTimestampOrderAndAnOverdueRecurringEventFiresOnce()
+    {
+        /*
+         * glm14-7: the docblock promised timestamp order while the
+         * scan fired whichever due event the hook-registration walk
+         * hit first (driven: a later-registered event at ts=200 fired
+         * BEFORE an earlier-due one at ts=100), and a far-overdue
+         * recurring event replayed once per missed interval — rescheduled
+         * at timestamp+interval, still in the past, re-found by the
+         * progress loop — where core's wp_reschedule_event fires ONCE
+         * and recomputes the next due from NOW.
+         */
+        $this->freezeTime(1700000000);
+
+        $order = array();
+        add_action('zz_glm14_event', static function () use (&$order) {
+            $order[] = 'zz';
+        });
+        add_action('aa_glm14_event', static function () use (&$order) {
+            $order[] = 'aa';
+        });
+        wp_schedule_single_event(1700000200, 'zz_glm14_event');
+        wp_schedule_single_event(1700000100, 'aa_glm14_event');
+
+        $this->advanceTime(1000);
+        $this->assertSame(2, WpHarness::runDueEvents());
+        $this->assertSame(array( 'aa', 'zz' ), $order, 'Due events fire in timestamp order (red at HEAD: registration order, zz first).');
+
+        $hourly = 0;
+        add_action('glm14_hourly_event', static function () use (&$hourly) {
+            ++$hourly;
+        });
+        wp_schedule_event(1700000000 - 86400, 'hourly', 'glm14_hourly_event');
+
+        $this->assertSame(1, WpHarness::runDueEvents(), 'A day-overdue hourly event fires exactly once (red at HEAD: replayed once per missed interval).');
+        $this->assertSame(1, $hourly);
+        $this->assertSame(1700001000 + 3600, wp_next_scheduled('glm14_hourly_event'), 'The next due is recomputed from NOW, core\'s reschedule-from-now semantics.');
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*

@@ -398,40 +398,61 @@ final class WpHarness
      *
      * Simulates a cron run against the deterministic clock; a fired single
      * event is removed before its hook fires, while recurring events are
-     * rescheduled at timestamp + interval.
+     * rescheduled at now + interval — ONE fire per run however far
+     * overdue, the next due recomputed from NOW (core's
+     * wp_reschedule_event semantics), never replayed once per missed
+     * interval.
+     *
+     * glm14-7: the order is the EARLIEST timestamp first, stable for
+     * equal timestamps (the registration-order scan breaks ties — the
+     * order the events were added, the previous behavior for the
+     * equal-timestamp class). The scan used to fire whichever due
+     * event the hook-registration walk hit first, so a later-registered
+     * earlier-due event ran LAST against the docblock's own promise.
      *
      * @return int Number of events fired.
      */
     public static function runDueEvents()
     {
         $fired = 0;
-        $progress = true;
-        while ($progress) {
-            $progress = false;
+        while (true) {
+            /*
+             * The earliest due event fires first (glm14-7): strictly
+             * earlier wins, so the first candidate found in scan order
+             * holds every tie — equal timestamps fire in registration
+             * order exactly as before. One event per pass keeps the
+             * index derivation honest under handler mutation (a firing
+             * handler may schedule or unschedule, shifting every list —
+             * the rescan the old continue-3 owned).
+             */
+            $best = null;
             foreach (self::$cron as $hook => $events) {
                 foreach ($events as $index => $event) {
-                    if ($event['timestamp'] <= self::now()) {
-                        $args = $event['args'];
-                        unset(self::$cron[$hook][$index]);
-                        self::$cron[$hook] = array_values(self::$cron[$hook]);
-                        if (self::$cron[$hook] === array()) {
-                            unset(self::$cron[$hook]);
-                        }
-                        if (isset($event['interval']) && (int) $event['interval'] > 0) {
-                            $rescheduled = $event;
-                            $rescheduled['timestamp'] = $event['timestamp'] + (int) $event['interval'];
-                            self::$cron[$hook][] = $rescheduled;
-                        }
-                        ++$fired;
-                        $progress = true;
-                        do_action($hook, ...$args);
-                        continue 3;
+                    if ($event['timestamp'] <= self::now()
+                        && (null === $best || $event['timestamp'] < $best[0])) {
+                        $best = array( $event['timestamp'], $hook, $index, $event );
                     }
                 }
             }
-        }
+            if (null === $best) {
+                return $fired;
+            }
 
-        return $fired;
+            list(, $hook, $index, $event) = $best;
+            $args = $event['args'];
+            unset(self::$cron[$hook][$index]);
+            self::$cron[$hook] = array_values(self::$cron[$hook]);
+            if (self::$cron[$hook] === array()) {
+                unset(self::$cron[$hook]);
+            }
+            if (isset($event['interval']) && (int) $event['interval'] > 0) {
+                $rescheduled = $event;
+                $rescheduled['timestamp'] = self::now() + (int) $event['interval'];
+                self::$cron[$hook][] = $rescheduled;
+            }
+            ++$fired;
+            do_action($hook, ...$args);
+        }
     }
 
     /**
