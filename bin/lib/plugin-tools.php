@@ -109,7 +109,10 @@ function wp_connectors_strip_comments($source)
  * include's resolution and phantom includes were analyzed as
  * statements. This returns a copy of the SAME LENGTH where every byte
  * belonging to a string region — single/double-quoted literals, heredoc
- * and nowdoc bodies, and {$...} interpolations inside them — is a
+ * and nowdoc bodies, {$...} interpolations inside them, and inline-HTML
+ * regions (glm16-1: ?>-bounded spans and __halt_compiler() tails, both
+ * T_INLINE_HTML — bytes the engine never parses as code, string data to
+ * every consumer that must not honor comment-lookalike text) — is a
  * space. Real code keeps its bytes and its offsets, so matches found on
  * the masked copy slice the true statement text out of the original.
  *
@@ -135,6 +138,25 @@ function wp_connectors_mask_string_contents($code)
         if (T_END_HEREDOC === $id) {
             $masked .= str_repeat(' ', strlen($text));
             $in_heredoc = false;
+            continue;
+        }
+        if (T_INLINE_HTML === $id) {
+            /*
+             * glm16-1: inline HTML — a ?>-bounded span or a
+             * __halt_compiler() tail — is string data, never code: the
+             * engine never parses those bytes, and the ONE masker is the
+             * single owner of that judgment (the secret scanner's marker
+             * judge rides this view, deleting the glm15-1 heredoc
+             * census; a marker-shaped text in an HTML region must not
+             * exempt the live key beside it). The conventions consumers
+             * keep their verdicts: statement anchors match code tokens,
+             * and a mid-HTML 'use' the import-position fence once
+             * excluded is now unmatchable — the same "never an import"
+             * verdict one screen earlier. The namespace ledger's own
+             * inline-HTML blanking (t31-ocr4-9) blanks spaces here, a
+             * harmless no-op.
+             */
+            $masked .= str_repeat(' ', strlen($text));
             continue;
         }
 

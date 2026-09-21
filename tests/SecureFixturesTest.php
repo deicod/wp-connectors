@@ -719,6 +719,89 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_scan_string("\$v = '{$key}'; // secrets:allow", 'code'));
     }
 
+    public function testEveryStringDataRegionClassLaunderedNothing()
+    {
+        /*
+         * glm16-1: the glm15-1 heredoc census failed open four ways
+         * (all driven red at HEAD — zero findings through the marker
+         * judge): a NESTED heredoc clobbered its single-boolean state
+         * machine (only the inner body marked, live keys on OUTER body
+         * lines laundering); every other token-visible data region
+         * laundered (multi-line quoted-literal interiors,
+         * __halt_compiler() tails, ?>-bounded inline HTML, a
+         * lexer-refused opener); and the EOF branch was off by one (an
+         * unterminated heredoc without a trailing newline marked ZERO
+         * body lines — byte-identical contents ± one newline flipped
+         * the verdict). The census is deleted; the marker judge rides
+         * the ONE token-masked view, nesting-aware and
+         * length-preserving — every region class one owner.
+         */
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+
+        // (a) NESTED heredoc: the outer body past the interpolated inner
+        // close is still string data (red at HEAD: the census's boolean
+        // closed at the inner T_END_HEREDOC — zero findings).
+        $nested = "<?php\necho <<<OUTER\n{\$v = <<<INNER\ninner\nINNER; }\n{$key} // secrets:allow\nOUTER;\n";
+        $this->assertSame(
+            array( "nested:6 {$expect}" ),
+            wp_connectors_scan_string($nested, 'nested'),
+            'A marker on the OUTER body of a nested heredoc exempts nothing.'
+        );
+
+        // (b) Multi-line quoted-literal interior: the line inside the
+        // literal carries no quote bytes (red at HEAD: laundered).
+        $multiline = "<?php\n\$x = \"\n{$key} // secrets:allow\n\";\n";
+        $this->assertSame(
+            array( "multiline:3 {$expect}" ),
+            wp_connectors_scan_string($multiline, 'multiline'),
+            'A marker inside a multi-line quoted interior exempts nothing.'
+        );
+
+        // (c) The __halt_compiler() tail: bytes after the halt are data.
+        $halt = "<?php __halt_compiler();\n{$key} // secrets:allow\n";
+        $this->assertSame(
+            array( "halt:2 {$expect}" ),
+            wp_connectors_scan_string($halt, 'halt'),
+            'A marker in the halt-compiler tail exempts nothing.'
+        );
+
+        // (d) Close-tag-bounded inline HTML inside a .php payload.
+        $html = "<?php ?>\n{$key} // secrets:allow\n<?php\n\$x = 1;\n";
+        $this->assertSame(
+            array( "html:2 {$expect}" ),
+            wp_connectors_scan_string($html, 'html'),
+            'A marker in an inline-HTML region exempts nothing.'
+        );
+
+        // (e) A lexer-refused opener rides the SAME whole-payload
+        // inline-HTML class — but its lexing is INI-dependent (this
+        // host runs short_open_tag=On, where '<?phpecho' is real code
+        // and the marker a real comment, correctly exempt), so the
+        // class is driven by the halt-tail and close-tag legs above
+        // rather than an INI-flaky spelling here.
+
+        // (f) The EOF adjacency: an unterminated heredoc blanks through
+        // EOF with AND without the trailing newline — byte-identical
+        // contents ± one byte answer ONE verdict (red at HEAD: the
+        // no-newline spelling marked zero body lines).
+        $unterminated = "<?php\n\$x = <<<EOT\n{$key} // secrets:allow";
+        $this->assertSame(
+            array( "unterm:3 {$expect}" ),
+            wp_connectors_scan_string($unterminated, 'unterm'),
+            'An unterminated heredoc body flags without a trailing newline.'
+        );
+        $this->assertSame(
+            array( "untermnl:3 {$expect}" ),
+            wp_connectors_scan_string($unterminated . "\n", 'untermnl'),
+            'The trailing newline flips nothing — same verdict ± the byte.'
+        );
+
+        // The documented tolerance stays: a non-PHP payload (no '<?'
+        // anywhere) keeps its marker (the pinned glm15-1 doctrine).
+        $this->assertSame(array(), wp_connectors_scan_string("{$key} // secrets:allow", 'txt'));
+    }
+
     public function testScannerAcceptsRepoSources()
     {
         $repoRoot = dirname(__DIR__);

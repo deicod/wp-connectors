@@ -6,9 +6,11 @@
  * Detects live-credential shapes (API keys, OAuth tokens, JWTs, private
  * keys) in files. Exemptions are structured, never a bare word on the line:
  * a line is skipped only when it carries the strict "secrets:allow" marker
- * in an actual comment — never as string-literal contents, and never
- * inside a heredoc/nowdoc body (glm15-1: body lines are string data
- * through the token census) — and a match is
+ * in an actual comment — never as string-literal contents, and never in
+ * any string-data region (glm16-1: the marker judge reads the ONE
+ * token-masked view, wp_connectors_mask_string_contents(), which owns
+ * every region class — quoted interiors, heredoc/nowdoc bodies however
+ * nested, halt-compiler tails, ?>-bounded inline HTML) — and a match is
  * skipped only when the matched VALUE itself is recognizable as a fake
  * (placeholder shapes, well-known dummy segments) — see
  * wp_connectors_allow_marker_pattern() and
@@ -80,19 +82,24 @@ function wp_connectors_allow_marker_pattern()
 }
 
 /**
- * Removes PHP string-literal CONTENTS from a source line.
+ * Removes PHP string-literal CONTENTS from a source line — the NON-PHP
+ * payload arm of the marker judge (glm16-1).
  *
  * Single- and double-quoted literals (escape-aware within the line) are
  * replaced by empty shells, so comment-marker detection can never honor a
  * marker that is itself string content — `$v = 'sk-…' . '// secrets:allow';`
  * carries a live value plus a lookalike marker and must stay flaggable.
- * Deliberately line-based (no tokenizer): an unterminated multi-line
- * string on this line simply keeps its contents, the same limitation the
- * scanner already accepts elsewhere. The multi-LINE string regions —
- * heredoc/nowdoc bodies — cannot ride a line-local lens at all;
- * wp_connectors_heredoc_body_lines() (glm15-1) is the other half of the
- * blanking: the marker judge feeds a body line a fully blanked view, so
- * the marker must sit in CODE, never in string data.
+ * Deliberately line-based (no tokenizer): a payload carrying no '<?'
+ * anywhere can lex no PHP tokens at all (every open-tag spelling starts
+ * with it), so the whole-file masked view has nothing to see and the
+ * documented tolerance stands — markers in prose payloads (.txt/.md
+ * fixtures) stay honored exactly as the line-local grammar always read
+ * them (the pinned glm15-1 doctrine: non-PHP payloads, no tokens, no
+ * behavior change). Every PHP-BEARING payload rides
+ * wp_connectors_mask_string_contents() instead — the ONE owner that sees
+ * the multi-line region classes (nested heredoc bodies, multi-line
+ * quoted interiors, halt-compiler tails, ?>-bounded inline HTML) a
+ * line-local lens cannot.
  *
  * @param string $line One line of source.
  * @return string The line with string contents blanked out.
@@ -135,53 +142,6 @@ function wp_connectors_is_recognizably_fake_secret($value)
 }
 
 /**
- * The 1-based line numbers sitting inside a heredoc/nowdoc BODY (glm15-1).
- *
- * The marker blanker is line-local (quoted literals only), so a heredoc
- * body line — live key plus a lookalike '// secrets:allow' — has no quote
- * bytes to blank and the marker laundered the finding: body text read as
- * a code comment. The token census sees what the line-local lens cannot:
- * every line strictly between the T_START_HEREDOC line and the
- * T_END_HEREDOC line is string DATA. An unterminated heredoc (a
- * parse-broken file) marks through EOF — the fail-closed direction:
- * refusing an exemption never hides a finding, and the contents are still
- * pattern-scanned raw regardless.
- *
- * @param string $contents Full file contents.
- * @return array<int, true> 1-based body-line numbers, keyed by line.
- */
-function wp_connectors_heredoc_body_lines($contents)
-{
-    $body_lines = array();
-    $line = 1;
-    $in_heredoc = false;
-    $body_from = 0;
-    foreach (token_get_all($contents) as $token) {
-        $id = is_array($token) ? $token[0] : null;
-        $text = is_array($token) ? $token[1] : $token;
-        if (T_START_HEREDOC === $id) {
-            // The opener's token text carries its trailing newline, so the
-            // count lands ON the first body line.
-            $in_heredoc = true;
-            $body_from = $line + substr_count($text, "\n");
-        } elseif (T_END_HEREDOC === $id && $in_heredoc) {
-            for ($body = $body_from; $body < $line; ++$body) {
-                $body_lines[ $body ] = true;
-            }
-            $in_heredoc = false;
-        }
-        $line += substr_count($text, "\n");
-    }
-    if ($in_heredoc) {
-        for ($body = $body_from; $body < $line; ++$body) {
-            $body_lines[ $body ] = true;
-        }
-    }
-
-    return $body_lines;
-}
-
-/**
  * Scans one file's contents for secret patterns.
  *
  * @param string $contents File contents.
@@ -192,20 +152,46 @@ function wp_connectors_scan_string($contents, $label)
 {
     $findings = array();
     $allowMarker = wp_connectors_allow_marker_pattern();
-    $heredocBodies = wp_connectors_heredoc_body_lines($contents);
+    /*
+     * glm16-1: the marker judge reads the ONE token-masked view —
+     * wp_connectors_mask_string_contents() owns every string-data
+     * region class in a single length-preserving pass: quoted-literal
+     * interiors (multi-line included), heredoc/nowdoc bodies however
+     * NESTED through {$...} interpolation, __halt_compiler() tails, and
+     * ?>-bounded inline HTML. The glm15-1 heredoc census this replaces
+     * failed open four ways (driven): a NESTED heredoc clobbered its
+     * single-boolean state machine (only the inner body marked — live
+     * keys on outer body lines answered zero findings through the CLI
+     * gate); every other token-visible data region laundered; the EOF
+     * branch was off by one (an unterminated heredoc without a trailing
+     * newline marked ZERO body lines — byte-identical contents ± one
+     * newline flipped the verdict); and a lexer-refused opener
+     * ('<?phpecho') read as pure prose. The masker is offset-based and
+     * nesting-aware by construction — none of those classes reach it —
+     * and the fail-closed direction survives: an unterminated heredoc
+     * blanks through EOF whatever the trailing byte.
+     *
+     * A payload carrying no '<?' anywhere can lex no PHP tokens at all
+     * (every open-tag spelling starts with those two bytes), so it
+     * keeps the line-local tolerance arm instead — the pinned glm15-1
+     * doctrine that non-PHP payloads (.txt/.md fixtures) answer no
+     * tokens and no behavior change.
+     */
+    $views = false === strpos($contents, '<?')
+        ? null
+        : explode("\n", wp_connectors_mask_string_contents($contents));
     $lines = explode("\n", $contents);
     foreach ($lines as $index => $line) {
         /*
-         * Markers count only in REAL comments: blank out string-literal
-         * contents first, so a marker that is itself string data cannot
-         * exempt the live secret sitting next to it on the same line —
-         * and a heredoc/nowdoc BODY line (glm15-1) is string data the
-         * line-local blanker cannot see, so it feeds the judge an empty
-         * view: the marker must sit in CODE, never in the body.
+         * Markers count only in REAL comments: the judge reads the
+         * masked view of the line, so a marker that is itself string
+         * data — quoted contents, a heredoc body, an HTML region —
+         * cannot exempt the live secret sitting next to it; the marker
+         * must sit in CODE.
          */
-        $codeView = isset($heredocBodies[ $index + 1 ])
-            ? ''
-            : wp_connectors_line_without_string_literals($line);
+        $codeView = null === $views
+            ? wp_connectors_line_without_string_literals($line)
+            : ($views[ $index ] ?? '');
         if (preg_match($allowMarker, $codeView) === 1) {
             continue;
         }
