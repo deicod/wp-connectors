@@ -6,6 +6,149 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 15)
+
+First claude-glm review round after glm14 (the escalated external
+review's second pass). The review: 15 findings, 14 CONFIRMED, 2
+refuted — SIX of the findings indict glm14's own fixes, three of them
+falsifying recorded premises with driven evidence. Driver adjudication:
+all 15 accepted — fifteen numbered commits t31-glm15-1..15 (one per
+finding, the full offline check green after every commit); the two
+refutations (the tr_TR fold mechanism dead on PHP 8+ — confirming
+r68-2/r69-2 as doctrine-only; the check_admin_referer die-contract
+already documented+pinned) go to the ledger only. Suite 1794 → 1809
+tests, 47275 → 47350 assertions, 3 skipped unchanged (every delta
+measured from output). The round's shape: six glm14 indictments —
+three premises falsified driven (sanitize-in-update_option,
+grid-align reschedule, glued-port parse_url gap), two fix-extensions
+(grammar's fourth copy consolidated, the unregister sibling), one
+masking regression corrected; two new live fail-opens (heredoc marker
+laundering, empty-literal pairing); entry-screen anchoring; three
+wp-stubs parity classes; two latent divergences closed preemptively;
+and the asserted-staging census closed.
+
+- **The secrets:allow marker must sit in code, never in heredoc data
+  (t31-glm15-1, security:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — the exemption honored markers inside
+  heredoc/nowdoc DATA (the line-local blanker owns quoted literals
+  only), so a body line with a live key plus a lookalike marker
+  laundered the finding (driven red at HEAD: zero findings, a shipped
+  zip ACCEPTED). Heredoc bodies are string data through the token
+  census now; an unterminated heredoc marks through EOF (fail-closed).
+- **The house quote grammar is ONE owner, the empty-literal pairing
+  dead (t31-glm15-2, security:high; bin/lib/plugin-tools.php, bin/lib/
+  secret-scanner.php, tests/SelfContainmentEscapedQuoteTest.php)** —
+  the grammar existed as FOUR inline copies with THREE variants, and
+  the '+'-quantifier copy glm14-1 landed fail-opens: an empty literal
+  paired with the next literal's opening quote, so
+  `require __DIR__ . "" . "/sub/../../outside.php";` answered zero
+  violations through every gate (driven). One shared grammar, '*'
+  quantifier (empty literals match themselves), all four call sites
+  riding it.
+- **sanitize_option() at the head of update_option()/add_option()
+  (t31-glm15-3, bug:medium; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — glm14-10's premise ("core's own
+  update_option does not sanitize") is FALSE (WP 7.1.1 option.php:886/
+  :1113, driven), and its regression masked the gap by calling
+  sanitize_option() manually first. The stub owns the head-of sanitize
+  (the sanitized value compares, stores, and rides every hook; the
+  callback runs exactly once per save on both families); the
+  regression drops the manual call and counts runs.
+- **runDueEvents() fires the entry snapshot
+  (t31-glm15-4, bug:high; tests/harness/WpHarness.php, tests/
+  FoundationHarnessTest.php)** — the while(true) rescan re-found every
+  mid-run insert, so a handler re-scheduling an already-due event hung
+  the suite forever (driven: timeout 10, exit 124) and mid-run
+  schedules fired in the same call core's wp_cron() defers. The due
+  set is captured on entry, stably ordered (glm14-7's tie rule
+  intact), each member re-located by id in the live registry; the pass
+  is bounded by the snapshot's size by construction.
+- **The recurring reschedule grid-aligns
+  (t31-glm15-5, bug:medium; tests/harness/WpHarness.php, tests/
+  FoundationHarnessTest.php)** — glm14-7's now+interval spelling
+  DRIFTS one fire's lateness into every later due; core grid-aligns:
+  now + (interval − ((now − ts) % interval)). With the round's own
+  pinned numbers core answers 1700003600 where the harness answered
+  1700004600 — and the pin asserted the drift number mislabeled as
+  core semantics. The pin corrects to the driven number; on-time
+  fires are byte-identical under both spellings.
+- **The glued port answers the port sentence at the entry
+  (t31-glm15-6, bug:low; shared/src/Http/Url.php, tests/
+  SharedOAuthContractsHttpTest.php)** — parse_url() fails EVERY glued
+  port of five digits or more (in-range ':65534x' included) while
+  short glue parses truncated: one malformed class, two sentences
+  (driven: the five-digit glue wore the scheme/host sentence,
+  falsifying glm14-9's glue clause). One shared compile-time sentence
+  for both screens; userinfo ':digits@' shapes keep the generic
+  refusal.
+- **The entry probes are anchored at the first authority
+  (t31-glm15-7, bug:low; shared/src/Http/Url.php, tests/
+  SharedOAuthContractsHttpTest.php)** — the entry regex restarted at
+  every '://' and scanned into the query: a query-carried ':70000'
+  answered the PORT sentence over an empty-host failure (driven). The
+  probes ride the derived authority (userinfo after the last '@',
+  port colon after any ']') — the query never feeds the verdict; the
+  success path reuses the same derivation, the twin deleted.
+- **unregister_setting() removes the sanitize hook
+  (t31-glm15-8, bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — the registry row went away but the
+  callback stayed ON the filter core's registration wires, so
+  register(A), unregister, register(B) answered A still riding
+  (driven: 'vAB' where core answers 'vB'). The recorded callback is
+  removed from its own filter (glm14-10's sibling).
+- **Cron schedules apply the cron_schedules filter; unknown
+  recurrences refuse; weekly joins the defaults
+  (t31-glm15-9, bug:medium; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — three driven divergences: the filter
+  was never applied (a plugin's custom schedule invisible), an
+  unknown recurrence was accepted with interval 0 (fires once, never
+  reschedules; core returns false), and 'weekly'/WEEK_IN_SECONDS were
+  absent. Core's own shape: filter first, defaults merged over it,
+  unknown recurrences refused with no queue entry.
+- **The autoloader and version-constant readers own their read
+  failures (t31-glm15-10, bug:medium; bin/lib/plugin-tools.php,
+  tests/BuildArtifactsTest.php)** — the pair still hand-rolled the
+  (string) file_get_contents laundering read glm14-2 swept: a
+  chmod-0000 src/autoload.php answered three misattributed verdicts
+  through all three gates. One loud FAIL naming the unreadable file
+  each (the glm14-2 sibling vocabulary).
+- **add_query_arg() keeps the fragment at the tail
+  (t31-glm15-11, bug:low, latent; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — a '#fragment' was swallowed into the
+  last param's value (re-encoded '%23frag') or a new param appended
+  inside the fragment. Zero callers today, but OAuth redirect URLs
+  are where fragments live: closed preemptively at core's shape.
+- **wp_remote_request() defaults the method to GET
+  (t31-glm15-12, bug:low, latent; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — the stub defaulted POST where core's
+  WP_Http::request defaults GET, recording and mocking every
+  default call as a POST. The raw entry point's default changes; the
+  get/post/head wrappers set their methods explicitly and are
+  untouched.
+- **Identical cron entries replace; singles carry the 10-minute
+  dedupe window (t31-glm15-13, bug:medium; tests/harness/
+  wp-stubs.php, tests/FoundationHarnessTest.php)** — identical
+  reschedules APPENDED and double-fired in one tick where core's
+  keyed array REPLACES (driven); singles deduped only the exact
+  timestamp. The recurring schedule replaces in place on the
+  identical key; singles dedupe within 10 minutes of a pending
+  identical single, distinct beyond it.
+- **The update_option() delegation predicate is get_option-shaped
+  (t31-glm15-14, bug:medium; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — an option STORED AS FALSE routed to
+  the UPDATE hook family in the harness, the ADD family in core
+  (driven): core's get_option() reads stored-false the same false a
+  missing row answers. The delegation rides false === $old and
+  add_option() proceeds for stored-false (core's own predicate; the
+  duplicate-key insert failure core then hits is named at the seam as
+  the one divergence — the hook family and eventual value match).
+- **The corrupt-seed plant asserts its own write
+  (t31-glm15-15, test-hygiene:low; tests/BuildSeamPropertyTest.php)**
+  — the file's one unasserted staging write after the t31-ocr55-5
+  census: a failed write passed both pins over a fixture that never
+  existed. assertNotFalse through the file's asserted-staging
+  vocabulary, the failure riding the seed channel as the ROW's FAIL.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 14)
 
 First claude-glm `/code-review max` round after the OCR phase
