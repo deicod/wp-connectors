@@ -197,11 +197,13 @@ function wp_connectors_scan_string($contents, $label)
  * @param bool         $prune_dev_segments  Whether to skip development-tree segments (the repository scan's concept; artifact scans never prune).
  * @return list<string> Findings — credential matches, plus one
  *                      "unreadable file — the secret scan cannot run"
- *                      line per file whose read failed (glm14-2: the
- *                      scan verdict is never clean over bytes it could
- *                      not read; both consumers — the CLI's exit code
- *                      and the inspector's violations — derive their
- *                      refusal from this list).
+ *                      line per file whose read failed (glm14-2) and
+ *                      one "over the 2 MB secret-scan size limit" line
+ *                      per over-limit file the walk skipped (glm14-3):
+ *                      the scan verdict is never clean over bytes it
+ *                      did not read; both consumers — the CLI's exit
+ *                      code and the inspector's violations — derive
+ *                      their refusal from this list.
  */
 function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
 {
@@ -275,7 +277,27 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                     }
                 }
             }
-            if (! $file->isFile() || $file->getSize() > 2 * 1024 * 1024) {
+            if (! $file->isFile()) {
+                continue;
+            }
+            if ($file->getSize() > 2 * 1024 * 1024) {
+                /*
+                 * glm14-3: the 2 MB cap is a deliberate memory bound —
+                 * the scan is line-based over the whole file's
+                 * contents, so the bound exists to keep a hostile
+                 * multi-gigabyte entry from exhausting the process
+                 * before a verdict lands (the file-root arm above has
+                 * no cap because a caller naming one file owns that
+                 * choice; the WALK judges trees it did not choose).
+                 * The skip is LOUD, never silent: an over-limit file
+                 * answers a finding line in the glm14-2 vocabulary, so
+                 * the verdict never reads clean over bytes the scan
+                 * did not read — a zip shipping a >2 MB entry now
+                 * fails the inspector's credential screen instead of
+                 * passing ACCEPTED (driven red at HEAD: exactly 1
+                 * finding, the oversized twin invisible).
+                 */
+                $findings[] = sprintf('%s: over the 2 MB secret-scan size limit — the secret scan cannot run', $file->getPathname());
                 continue;
             }
             $extension = strtolower($file->getExtension());

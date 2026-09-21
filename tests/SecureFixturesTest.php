@@ -208,6 +208,46 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm14-3: the over-size skip is loud — the verdict never reads
+     * clean over bytes the walk did not read.
+     */
+    public function testAnOverSizeFileFailsTheSecretScanLoudly()
+    {
+        /*
+         * The walk silently skipped any file over 2 MB (no diagnostic,
+         * no doctrine note): a 2.4 MB big.php beside a 41-byte
+         * small.php carrying the IDENTICAL live-shaped token answered
+         * exactly 1 finding — big.php invisible — and a zip shipping a
+         * >2 MB entry passed the inspector's credential screen
+         * ACCEPTED at 0 violations (driven red at HEAD by the
+         * reviewer, re-driven pre-fix). The cap stays (a deliberate
+         * memory bound over trees the walk did not choose); the skip
+         * answers a finding line now, so both consumers — the CLI's
+         * exit code and the inspector's violations — refuse.
+         */
+        $githubToken = 'ghp_' . bin2hex(random_bytes(18));
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-oversize');
+        try {
+            $this->assertTrue(mkdir($tempDir, 0755, true), "staging: {$tempDir} must create — a staging failure fails as staging, never as the scan verdict.");
+            $this->assertNotFalse(file_put_contents($tempDir . '/small.php', "<?php\n\$t = '{$githubToken}';\n"), "staging: {$tempDir}/small.php must write — a staging failure fails as staging, never as the scan verdict.");
+            // 2,450,041 bytes — one byte class over the 2 * 1024 * 1024 cap, the reviewer's own driven size.
+            $this->assertNotFalse(file_put_contents($tempDir . '/big.php', '<?php\n$t = \'' . $githubToken . '\';\n' . str_repeat('// ' . bin2hex(random_bytes(16)) . "\n", 98000)), "staging: {$tempDir}/big.php must write — a staging failure fails as staging, never as the scan verdict.");
+            $this->assertGreaterThan(2 * 1024 * 1024, filesize($tempDir . '/big.php'), 'staging: big.php must land over the 2 MB cap the leg premises.');
+
+            $findings = wp_connectors_scan_paths(array( $tempDir ));
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+
+        $report = implode("\n", $findings);
+        $this->assertStringContainsString('big.php: over the 2 MB secret-scan size limit — the secret scan cannot run', $report);
+        // The under-limit twin still scans normally, and no finding ever echoes the token.
+        $this->assertStringContainsString('small.php', $report);
+        $this->assertStringContainsString('github-token', $report);
+        $this->assertStringNotContainsString($githubToken, $report);
+    }
+
+    /**
      * The scan-scratch root maker — the r42-6 collision doctrine swept
      * to every site (OCR round 51, t31-ocr51-3; ONE census comment
      * across the file): every scan site this file grew — the
