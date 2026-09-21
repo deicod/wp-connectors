@@ -3509,22 +3509,48 @@ function wp_connectors_array_literal_value_reasons($file, $code, $expression, $o
 
 /**
  * The quoted string literals of an expression, each with its opening
- * quote character (glm29-3).
+ * quote character (glm29-3), as their RUNTIME VALUES (glm14-1).
  *
  * The old quote-blind capture (`[\'"]([^\'"]+)[\'"]`) lost which quote
  * opened a literal, so interpolation judgments could not tell a
  * double-quoted runtime-built string from a single-quoted static one —
  * the laundering hole the interpolation predicate below closes.
  *
+ * glm14-1: the capture is ESCAPE-AWARE (the house quote grammar the
+ * blanking helpers already ride — `\\.` pairs walk inside the literal,
+ * so a backslash-escaped closing quote does not end it) and the inner
+ * text is DECODED — escaped quotes and escaped backslashes become
+ * their single bytes. The old class stopped the match AT an escaped
+ * quote, so every byte after it was invisible to every self-
+ * containment include gate: `require __DIR__ . '/a\'./../../../outside.php';`
+ * (php -l clean; the runtime value resolves outside the plugin dir)
+ * extracted only the truncated head `/a\` — no '..' segment, no escape
+ * walk, zero violations — while the escape-aware runtime-segment
+ * blanker erased the whole literal, so no layer ever saw the
+ * traversal. Decoding is required for the same reason: judged on the
+ * raw escaped bytes the truncated-head traversal still composes
+ * inside. Only quote/backslash escapes decode — single-quoted PHP
+ * keeps every other escape raw, and double-quoted control decodes
+ * contribute only inert bytes to a containment walk.
+ *
  * @param string $expression Include-target expression or statement.
- * @return list<array{0: string, 1: string}> [opening quote, inner text] pairs.
+ * @return list<array{0: string, 1: string}> [opening quote, runtime value] pairs.
  */
 function wp_connectors_quoted_literals($expression)
 {
     $literals = array();
-    if (preg_match_all('/([\'"])([^\'"]+)\\1/', $expression, $matches, PREG_SET_ORDER)) {
+    if (preg_match_all('/\'(?:\\\\.|[^\'\\\\])+\'|"(?:\\\\.|[^"\\\\])+"/s', $expression, $matches, PREG_SET_ORDER)) {
         foreach ($matches as $match) {
-            $literals[] = array($match[1], $match[2]);
+            $literals[] = array(
+                $match[0][0],
+                (string) preg_replace_callback(
+                    '/\\\\[\'"\\\\]/',
+                    static function ($pair) {
+                        return $pair[0][1];
+                    },
+                    substr($match[0], 1, -1)
+                ),
+            );
         }
     }
 

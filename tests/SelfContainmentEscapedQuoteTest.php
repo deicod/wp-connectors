@@ -1,0 +1,124 @@
+<?php
+/**
+ * Self-containment scanner escaped-quote fixtures (glm14-1).
+ *
+ * The quoted-literal extraction stopped each match AT a backslash-
+ * escaped closing quote, so every byte after it was invisible to all
+ * three self-containment gates (check-conventions, build pre-gate +
+ * staged gate, inspect-artifact — the one shared engine walk): the
+ * truncated head carried no '..' segment, the escape walk never ran,
+ * and the escape-aware runtime-segment blanker erased the whole
+ * literal, so `require __DIR__ . '/a\'./../../../outside.php';`
+ * (php -l clean; the runtime value resolves outside the plugin dir)
+ * scanned to zero violations. The glm29 ledger line that claimed
+ * escaped-quote shapes are caught downstream was falsified by this
+ * spelling — its pinned shape was an escaped '$' inside double
+ * quotes, a different vector with no traversal behind the escape.
+ * These fixtures pin the extraction seam (escape-aware, decoded to
+ * the runtime value) and the gate verdicts on both sides of the fix.
+ *
+ * @package wp-connectors
+ */
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/../bin/check-conventions.php';
+
+use PHPUnit\Framework\TestCase;
+
+final class SelfContainmentEscapedQuoteTest extends TestCase
+{
+    /**
+     * @var string Per-test fixture root.
+     */
+    private $root;
+
+    protected function setUp(): void
+    {
+        $this->root = sys_get_temp_dir() . '/wp-connectors-self-containment-escaped-quote-' . uniqid('', true);
+        mkdir($this->root, 0755, true);
+    }
+
+    protected function tearDown(): void
+    {
+        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
+            if (is_file($entry)) {
+                @unlink($entry);
+            }
+        }
+        @rmdir($this->root);
+    }
+
+    public function testTheEscapedQuoteTraversalLaunderingFlags(): void
+    {
+        /*
+         * The round's repro, exactly as driven red at HEAD: php -l
+         * clean (verified by the driven leg), the runtime value
+         * resolves outside the plugin dir, and the pre-fix scan
+         * answered ZERO violations through all three gates.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nrequire __DIR__ . '/a\\'./../../../outside.php';\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'An escaped-quote include whose runtime value escapes the plugin dir must flag.');
+        $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
+    }
+
+    public function testTheExtractionIsEscapeAwareAndDecodedToTheRuntimeValue(): void
+    {
+        /*
+         * The seam pin: ONE literal, its inner text the RUNTIME VALUE
+         * (the escaped quote decoded). Red at HEAD the extraction
+         * answered the truncated head '/a\' — no '..' segment, which
+         * is the laundering itself. The legitimate-escape leg beside
+         * it pins that ordinary escaped quotes decode without
+         * corrupting the literal set.
+         */
+        $repro = wp_connectors_quoted_literals("require __DIR__ . '/a\\'./../../../outside.php';");
+
+        $this->assertSame(array( array( '\'', "/a'./../../../outside.php" ) ), $repro);
+
+        $legit = wp_connectors_quoted_literals("require __DIR__ . '/sub/it\\'s/fine.php';");
+
+        $this->assertSame(array( array( '\'', "/sub/it's/fine.php" ) ), $legit);
+    }
+
+    public function testTheIdenticalIncludeWithoutTheEscapedQuoteStaysRefused(): void
+    {
+        /*
+         * The control leg: the same traversal with a plain segment
+         * byte where the escaped quote sat was always refused and
+         * must stay refused — the fix widens the literal view, never
+         * narrows the verdict.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nrequire __DIR__ . '/a/../../../outside.php';\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'An unescaped traversal include must stay flagged.');
+        $this->assertStringContainsString('not anchored to the plugin dir', implode("\n", $violations));
+    }
+
+    public function testALegitimateEscapedQuoteInADownwardPathStaysClean(): void
+    {
+        /*
+         * The tolerance leg: an escaped quote inside an ordinary
+         * downward literal (an apostrophe in a filename) is a legal
+         * spelling and must not corrupt the extracted literal set
+         * into a violation.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nrequire __DIR__ . '/sub/it\\'s/fine.php';\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
+    }
+}
