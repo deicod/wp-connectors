@@ -1229,7 +1229,14 @@ function load_plugin_textdomain($domain, $deprecated = false, $plugin_rel_path =
 
 function wp_remote_request($url, $args = array())
 {
-    $method = isset($args['method']) ? $args['method'] : 'POST';
+    /*
+     * glm15-12: the default method is GET, core's own (WP_Http::
+     * request) — the stub defaulted POST, so every default-method
+     * call was recorded (and handed to pre_http_request mocks) as a
+     * POST, green-testing a generic REST client against a divergent
+     * method.
+     */
+    $method = isset($args['method']) ? $args['method'] : 'GET';
     $pre = apply_filters('pre_http_request', false, (array) $args, (string) $url);
     WpHarness::recordHttpAttempt($method, (string) $url, (array) $args, false !== $pre);
     if (false !== $pre) {

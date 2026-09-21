@@ -796,6 +796,24 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('https://x.test/cb?code=1&p=v', add_query_arg(array( 'p' => 'v' ), 'https://x.test/cb?code=1'));
     }
 
+    public function testWpRemoteRequestDefaultsToGetCoreNotPost()
+    {
+        /*
+         * glm15-12: wp_remote_request() defaulted the method to POST
+         * where core's WP_Http::request defaults GET — the recorded
+         * attempt (and any pre_http_request mock's view of $args)
+         * named POST for every default call, green-testing a generic
+         * REST client against a divergent method.
+         */
+        $this->allowUnmockedHttp = true;
+
+        wp_remote_request('https://api.example.test/generic');
+        $this->assertSame('GET', $this->httpAttempts()[0]['method'], 'The default method is GET, core\'s own (red at HEAD: POST).');
+
+        wp_remote_request('https://api.example.test/generic', array( 'method' => 'DELETE' ));
+        $this->assertSame('DELETE', $this->httpAttempts()[1]['method'], 'An explicit method rides unchanged.');
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*
