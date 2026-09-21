@@ -591,6 +591,43 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         }
     }
 
+    public function testTheRegisteredSanitizeCallbackRunsOnTheSettingsSavePath()
+    {
+        /*
+         * glm14-10: the stub's register_setting() recorded the
+         * sanitize_callback but never wired it, and no
+         * sanitize_option() existed at all — a test emulating the
+         * options.php save (POST, admin_init, update_option) stored
+         * the raw POST value with the registered sanitizer never
+         * consulted, green-testing a save pipeline that behaves
+         * differently from production. The callback rides the
+         * sanitize_option_{name} filter now (core's own mechanism),
+         * and the save-path primitive exists: sanitize, guard null
+         * (a refusing callback never persists), then update_option —
+         * the options.php shape Task 3.2+ settings tests inherit.
+         */
+        register_setting('glm14_group', 'glm14_opt', array(
+            'sanitize_callback' => static function ( $value ) {
+                return \is_string( $value ) ? trim( $value ) : null;
+            },
+        ));
+
+        // The save path: sanitize, then persist.
+        $sanitized = sanitize_option('glm14_opt', '  padded  ');
+        $this->assertSame('padded', $sanitized, 'The registered callback runs on the save path (red at HEAD: no sanitize_option() existed at all).');
+        update_option('glm14_opt', $sanitized);
+        $this->assertSame('padded', get_option('glm14_opt'), 'The stored value is the sanitized one, never the raw input.');
+
+        // The refusal shape (core's options.php null guard): a null answer
+        // refuses the save — the stored option keeps its prior value.
+        $refused = sanitize_option('glm14_opt', array( 'not', 'a', 'string' ));
+        $this->assertNull($refused, 'A null answer passes through, never swallowed.');
+        if (null !== $refused) {
+            update_option('glm14_opt', $refused);
+        }
+        $this->assertSame('padded', get_option('glm14_opt'), 'The null-refused save leaves the stored value unchanged.');
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*

@@ -1371,7 +1371,46 @@ function register_setting($option_group, $option_name, $args = array())
     // idiomatic `global $wp_registered_settings` read.
     $GLOBALS['wp_registered_settings'][ $option_name ] = WpHarness::$registered_settings[ $option_name ];
 
+    /*
+     * glm14-10: core's sanitize wiring — the recorded callback rides
+     * the sanitize_option_{name} filter, exactly core's mechanism, so
+     * the settings-save path (sanitize_option() below, then
+     * update_option()) can never skip it. The stub previously
+     * RECORDED the callback only and defined no sanitize_option() at
+     * all, so a test emulating the options.php save (POST, admin_init,
+     * update_option) stored the raw POST value with the registered
+     * sanitizer never consulted — the suite green-testing a save
+     * pipeline that behaves differently from production, where core
+     * invokes the callback before persistence. Latent today (no test
+     * rides the path yet); wired now so the first Task-3.2+ settings
+     * test inherits core's contract instead of discovering the drift.
+     */
+    if (! empty($args['sanitize_callback'])) {
+        add_filter("sanitize_option_{$option_name}", $args['sanitize_callback']);
+    }
+
     return true;
+}
+
+/**
+ * Sanitizes an option value through the registered settings filter.
+ *
+ * glm14-10: core's primitive, subset-scoped — core runs its built-in
+ * per-option table first, then the sanitize_option_{name} filter this
+ * harness's register_setting() registers its callback under; the stub
+ * owns the FILTER half only (no built-in table — the settings this
+ * harness registers carry their own callbacks). The SAVE PATH owns
+ * the null guard (core's options.php shape): a null answer from the
+ * filter REFUSES the save — the caller persists only a non-null
+ * value, and the stored option keeps its prior value.
+ *
+ * @param string $option Option name.
+ * @param mixed  $value  Raw value (e.g. the unslashed POST input).
+ * @return mixed The sanitized value, null when the callback refuses.
+ */
+function sanitize_option($option, $value)
+{
+    return apply_filters("sanitize_option_{$option}", $value, $option);
 }
 
 function unregister_setting($option_group, $option_name)
