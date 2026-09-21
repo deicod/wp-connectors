@@ -595,18 +595,24 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
 {
     $timestamp = (int) $timestamp;
     /*
-     * glm15-13: core's duplicate window for singles — an identical
-     * single (same hook, same args) already pending within 10 MINUTES
-     * of the new timestamp is the same event, not a second one (the
-     * old stub deduped only the exact-timestamp spelling; core's own
-     * window is wider and exists so a double-fired scheduling path
-     * cannot stack a burst).
+     * glm15-13/glm16-7: core's duplicate window for singles — an
+     * identical single (same hook, same args, non-recurring) already
+     * pending is the same event, not a second one, and the skip
+     * answers FALSE (core's own return; the stub answered true). The
+     * window is NOW-anchored and FLOORED, inclusive — core's shape is
+     * the wp_next_scheduled-class floor at time() - 10*MINUTE_IN_
+     * SECONDS over the EXISTING single's timestamp (the harness's
+     * deterministic clock standing in for time()), never the symmetric
+     * abs() distance between the two timestamps the round-15 spelling
+     * rode: a single 9:59 old still dedupes, one 10:01 old stacks —
+     * past singles pile as bursts in core precisely because the window
+     * stops counting them long before they fire.
      */
     foreach (WpHarness::$cron[ $hook ] ?? array() as $event) {
         if (! isset($event['interval'])
             && $event['args'] === $args
-            && abs($event['timestamp'] - $timestamp) < 10 * MINUTE_IN_SECONDS) {
-            return true; // Duplicate single within core's 10-minute window.
+            && $event['timestamp'] >= WpHarness::now() - 10 * MINUTE_IN_SECONDS) {
+            return false; // Core's duplicate-single skip.
         }
     }
     /*

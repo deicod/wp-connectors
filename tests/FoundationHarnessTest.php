@@ -949,14 +949,29 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1, WpHarness::runDueEvents(), 'The identical recurring pair is ONE event (red at HEAD: appended, fired twice in one tick).');
         $this->assertSame(1, $fires);
 
-        // Singles: an identical single within 10 minutes dedupes (core's own window).
-        wp_schedule_single_event(1700000300, 'glm15_single');
-        wp_schedule_single_event(1700000600, 'glm15_single');
+        // Singles: an identical single within core's 10-minute window
+        // dedupes — and the skip answers FALSE, core's own return
+        // (glm16-7; red at HEAD: true).
+        $this->assertTrue(wp_schedule_single_event(1700000300, 'glm15_single'));
+        $this->assertFalse(wp_schedule_single_event(1700000600, 'glm15_single'), 'The duplicate single answers FALSE, core\'s own return (red at HEAD: true).');
         $this->assertCount(1, wp_get_scheduled_events('glm15_single'), 'An identical single within the 10-minute window dedupes (red at HEAD: two entries).');
 
-        // Outside the window the events are distinct, exactly like core's.
-        wp_schedule_single_event(1700001201, 'glm15_single');
-        $this->assertCount(2, wp_get_scheduled_events('glm15_single'), 'Beyond the window the single is its own event.');
+        /*
+         * glm16-7: the window is NOW-anchored and FLOORED, inclusive —
+         * what counts is the EXISTING single's age against now(),
+         * never the symmetric distance between the two timestamps the
+         * round-15 abs() spelling rode: an identical single 9:59 old
+         * still dedupes, one 10:01 old stacks (past singles pile as
+         * bursts in core precisely because the window stops counting
+         * them long before they fire).
+         */
+        $this->advanceTime(779); // The existing single (ts 1700000300) is 599 seconds old — one second inside the inclusive floor.
+        $this->assertFalse(wp_schedule_single_event(1700001800, 'glm15_single'), '9:59 old — still within core\'s window.');
+        $this->assertCount(1, wp_get_scheduled_events('glm15_single'));
+
+        $this->advanceTime(2); // 601 seconds old — past the floor.
+        $this->assertTrue(wp_schedule_single_event(1700001801, 'glm15_single'), '10:01 old — past singles stack as bursts, core\'s own shape.');
+        $this->assertCount(2, wp_get_scheduled_events('glm15_single'), 'Beyond the floor the single is its own event.');
     }
 
     public function testAStoredFalseOptionAnswersCoreDuplicateKeySilence()
