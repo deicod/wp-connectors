@@ -814,6 +814,38 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('DELETE', $this->httpAttempts()[1]['method'], 'An explicit method rides unchanged.');
     }
 
+    public function testIdenticalCronEntriesReplaceAndSinglesDedupeWithinTenMinutes()
+    {
+        /*
+         * glm15-13: identical reschedules APPENDED where core's keyed
+         * cron array REPLACES (the pair double-fired in one tick —
+         * driven at HEAD), and singles lacked core's 10-minute
+         * duplicate window (only the exact-timestamp spelling
+         * deduped).
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm15_dup', static function () use (&$fires) {
+            ++$fires;
+        });
+        wp_schedule_event(1700000060, 'hourly', 'glm15_dup');
+        wp_schedule_event(1700000060, 'hourly', 'glm15_dup');
+
+        $this->advanceTime(120);
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The identical recurring pair is ONE event (red at HEAD: appended, fired twice in one tick).');
+        $this->assertSame(1, $fires);
+
+        // Singles: an identical single within 10 minutes dedupes (core's own window).
+        wp_schedule_single_event(1700000300, 'glm15_single');
+        wp_schedule_single_event(1700000600, 'glm15_single');
+        $this->assertCount(1, wp_get_scheduled_events('glm15_single'), 'An identical single within the 10-minute window dedupes (red at HEAD: two entries).');
+
+        // Outside the window the events are distinct, exactly like core's.
+        wp_schedule_single_event(1700001201, 'glm15_single');
+        $this->assertCount(2, wp_get_scheduled_events('glm15_single'), 'Beyond the window the single is its own event.');
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*

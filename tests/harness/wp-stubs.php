@@ -573,9 +573,19 @@ $GLOBALS['wpdb'] = new wpdb();
 
 function wp_schedule_single_event($timestamp, $hook, $args = array())
 {
+    /*
+     * glm15-13: core's duplicate window for singles — an identical
+     * single (same hook, same args) already pending within 10 MINUTES
+     * of the new timestamp is the same event, not a second one (the
+     * old stub deduped only the exact-timestamp spelling; core's own
+     * window is wider and exists so a double-fired scheduling path
+     * cannot stack a burst).
+     */
     foreach (WpHarness::$cron[ $hook ] ?? array() as $event) {
-        if ($event['timestamp'] === (int) $timestamp && $event['args'] === $args && ! isset($event['interval'])) {
-            return true; // Duplicate single event, matching core behavior.
+        if (! isset($event['interval'])
+            && $event['args'] === $args
+            && abs($event['timestamp'] - (int) $timestamp) < 10 * MINUTE_IN_SECONDS) {
+            return true; // Duplicate single within core's 10-minute window.
         }
     }
     WpHarness::$cron[ $hook ][] = array(
@@ -601,6 +611,20 @@ function wp_schedule_event($timestamp, $recurrence, $hook, $args = array())
         return false;
     }
     $interval = (int) $intervals[ $recurrence ]['interval'];
+    /*
+     * glm15-13: keyed-array REPLACE — core's cron array keys events by
+     * [timestamp][hook][md5(args)], so scheduling the IDENTICAL event
+     * (same timestamp, same args) REPLACES the entry rather than
+     * appending a twin. The old append double-fired the pair in one
+     * tick (driven) where core fires once.
+     */
+    foreach (WpHarness::$cron[ $hook ] ?? array() as $index => $event) {
+        if ($event['timestamp'] === (int) $timestamp && $event['args'] === $args) {
+            WpHarness::$cron[ $hook ][ $index ]['interval'] = $interval;
+
+            return true;
+        }
+    }
     WpHarness::$cron[ $hook ][] = array(
         'timestamp' => (int) $timestamp,
         'args' => $args,
