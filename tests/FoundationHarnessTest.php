@@ -594,38 +594,55 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     public function testTheRegisteredSanitizeCallbackRunsOnTheSettingsSavePath()
     {
         /*
-         * glm14-10: the stub's register_setting() recorded the
-         * sanitize_callback but never wired it, and no
-         * sanitize_option() existed at all — a test emulating the
-         * options.php save (POST, admin_init, update_option) stored
-         * the raw POST value with the registered sanitizer never
-         * consulted, green-testing a save pipeline that behaves
-         * differently from production. The callback rides the
-         * sanitize_option_{name} filter now (core's own mechanism),
-         * and the save-path primitive exists: sanitize, guard null
-         * (a refusing callback never persists), then update_option —
-         * the options.php shape Task 3.2+ settings tests inherit.
+         * glm14-10 wired the callback and added the sanitize_option()
+         * primitive on the premise that core's own update_option() does
+         * not sanitize — and this regression MASKED the gap by calling
+         * sanitize_option() manually before update_option(), green over
+         * a stub whose save path still skipped the callback. glm15-3:
+         * the premise is FALSE (WP 7.1.1 core calls sanitize_option()
+         * at the head of BOTH update_option() — option.php:886 — and
+         * add_option() — :1113, driven), and the stub owns the head-of
+         * sanitize now. This pin DROPS the manual call: the
+         * function-level save itself must run the registered callback
+         * exactly once per save and store its answer (red at HEAD:
+         * runs=0, the raw value stored).
          */
-        register_setting('glm14_group', 'glm14_opt', array(
-            'sanitize_callback' => static function ( $value ) {
-                return \is_string( $value ) ? trim( $value ) : null;
+        $runs = 0;
+        register_setting('glm15_group', 'glm15_opt', array(
+            'sanitize_callback' => static function ( $value ) use ( &$runs ) {
+                ++$runs;
+
+                return \is_string( $value ) ? \trim( $value ) : null;
             },
         ));
 
-        // The save path: sanitize, then persist.
-        $sanitized = sanitize_option('glm14_opt', '  padded  ');
-        $this->assertSame('padded', $sanitized, 'The registered callback runs on the save path (red at HEAD: no sanitize_option() existed at all).');
-        update_option('glm14_opt', $sanitized);
-        $this->assertSame('padded', get_option('glm14_opt'), 'The stored value is the sanitized one, never the raw input.');
+        // The add path (the first save): one run, the sanitized value stored.
+        $this->assertTrue(update_option('glm15_opt', '  padded  '));
+        $this->assertSame(1, $runs, 'The add path runs the registered callback exactly once (red at HEAD: runs=0, the raw value stored).');
+        $this->assertSame('padded', get_option('glm15_opt'), 'The stored value is the sanitized one, never the raw input.');
 
-        // The refusal shape (core's options.php null guard): a null answer
-        // refuses the save — the stored option keeps its prior value.
-        $refused = sanitize_option('glm14_opt', array( 'not', 'a', 'string' ));
-        $this->assertNull($refused, 'A null answer passes through, never swallowed.');
-        if (null !== $refused) {
-            update_option('glm14_opt', $refused);
-        }
-        $this->assertSame('padded', get_option('glm14_opt'), 'The null-refused save leaves the stored value unchanged.');
+        // The update path: same contract, one more run.
+        $this->assertTrue(update_option('glm15_opt', '  tighter  '));
+        $this->assertSame(2, $runs, 'The update path runs the registered callback exactly once per save (red at HEAD: never consulted).');
+        $this->assertSame('tighter', get_option('glm15_opt'));
+
+        // The unchanged shape: a save whose SANITIZED value equals the
+        // stored value refuses — no write, no hooks (glm23-8 on core's
+        // sanitize-then-compare order; the sanitizer still ran).
+        $this->assertFalse(update_option('glm15_opt', '  tighter  '));
+        $this->assertSame(3, $runs, 'The refused unchanged save ran the sanitizer; it fired no hooks and wrote nothing.');
+        $this->assertSame('tighter', get_option('glm15_opt'));
+
+        /*
+         * The null guard stays the save-path CALLER's (core's
+         * options.php shape): the primitive passes a null answer
+         * through, and the function-level API stores the filter's
+         * answer like any other — the options.php emulation refuses
+         * on null before it ever calls update_option().
+         */
+        $this->assertNull(sanitize_option('glm15_opt', array( 'not', 'a', 'string' )), 'A null answer passes through, never swallowed.');
+        $this->assertTrue(update_option('glm15_opt', array( 'not', 'a', 'string' )));
+        $this->assertNull(get_option('glm15_opt'), 'The function-level API stores the filter\'s answer (null included); the null GUARD is the options.php caller\'s, never the function\'s.');
     }
 
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()

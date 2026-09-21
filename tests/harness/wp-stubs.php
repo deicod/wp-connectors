@@ -229,8 +229,6 @@ function get_option($option, $default = false)
 
 function update_option($option, $value, $autoload = null)
 {
-    $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
-
     /*
      * Core semantics: no update (and no hooks, no write, no autoload
      * flip) when the value is unchanged — the short-circuit runs BEFORE
@@ -238,8 +236,13 @@ function update_option($option, $value, $autoload = null)
      * removed the old `null === $autoload` condition: an unchanged-value
      * save with an explicit autoload argument used to rewrite the row,
      * flip the recorded autoload, and return true where core returns
-     * false with no write at all.
+     * false with no write at all. This first compare rides the RAW
+     * input (a missing row compared against core's false default, an
+     * existing row against the stored bytes) — glm15-3 adds the
+     * SANITIZED compare below it, core's own head-of-sanitize order,
+     * so both spellings of "unchanged" refuse with no write.
      */
+    $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
     if ($old === $value) {
         return false;
     }
@@ -250,10 +253,25 @@ function update_option($option, $value, $autoload = null)
      * add_option_ hook family — never update_option_{$option} or
      * updated_option (code-review GLM1 #7; the stub previously fired the
      * update family here, so tests emulating a first persisted save
-     * exercised the wrong hook path).
+     * exercised the wrong hook path). add_option() owns this path's
+     * head-of sanitize (glm15-3), so the registered callback runs
+     * exactly once per save whichever family persists it.
      */
     if (! array_key_exists($option, WpHarness::$options)) {
         return add_option($option, $value, '', $autoload);
+    }
+
+    /*
+     * glm15-3: core calls sanitize_option() at the head of
+     * update_option() itself (option.php:886, WP 7.1.1) — the glm14-10
+     * premise ("core's own update_option does not sanitize") is FALSE,
+     * and the stub's save path skipped the registered callback for
+     * every update-path save. The sanitized value is what compares,
+     * stores, and rides every hook below.
+     */
+    $value = sanitize_option($option, $value);
+    if ($old === $value) {
+        return false;
     }
 
     /*
@@ -285,6 +303,16 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
     if (array_key_exists($option, WpHarness::$options)) {
         return false;
     }
+
+    /*
+     * glm15-3: core calls sanitize_option() at the head of add_option()
+     * too (option.php:1113, WP 7.1.1) — the registered settings callback
+     * runs before the row exists and before any hook fires, exactly the
+     * production save a Task-3.2+ settings test emulates. update_option()
+     * delegates here for a missing row; the head-of placement keeps the
+     * callback at exactly one run per save on both families.
+     */
+    $value = sanitize_option($option, $value);
     WpHarness::$options[ $option ] = $value;
     WpHarness::$option_autoload[ $option ] = null === $autoload ? true : (bool) $autoload;
 
@@ -1399,10 +1427,15 @@ function register_setting($option_group, $option_name, $args = array())
  * per-option table first, then the sanitize_option_{name} filter this
  * harness's register_setting() registers its callback under; the stub
  * owns the FILTER half only (no built-in table — the settings this
- * harness registers carry their own callbacks). The SAVE PATH owns
- * the null guard (core's options.php shape): a null answer from the
- * filter REFUSES the save — the caller persists only a non-null
- * value, and the stored option keeps its prior value.
+ * harness registers carry their own callbacks).
+ *
+ * glm15-3: update_option()/add_option() call this at their own heads
+ * (core's option.php shape, both functions), passing the filter THREE
+ * args — sanitized value, option name, original value — so the
+ * function-level API stores the filter's ANSWER, never the raw input.
+ * The null GUARD stays the save-path CALLER's (core's options.php
+ * shape): a null answer from the filter refuses the options.php save;
+ * update_option()/add_option() store it like any other answer.
  *
  * @param string $option Option name.
  * @param mixed  $value  Raw value (e.g. the unslashed POST input).
@@ -1410,7 +1443,9 @@ function register_setting($option_group, $option_name, $args = array())
  */
 function sanitize_option($option, $value)
 {
-    return apply_filters("sanitize_option_{$option}", $value, $option);
+    $original = $value;
+
+    return apply_filters("sanitize_option_{$option}", $value, $option, $original);
 }
 
 function unregister_setting($option_group, $option_name)
