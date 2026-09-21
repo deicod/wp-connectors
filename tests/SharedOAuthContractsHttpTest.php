@@ -77,26 +77,37 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
     }
 
     /**
-     * @return list<array{0: string}>
+     * @return list<array{0: string, 1: string}>
      */
     public function invalidUrlProvider(): array
     {
         return array(
-            'relative path' => array('/oauth2/token'),
-            'scheme-less host' => array('token-endpoint.example/oauth2/token'),
-            'non-http scheme' => array('ftp://token-endpoint.example/token'),
-            'no host' => array('https:///token'),
-            'port out of range' => array('https://host.example:99999/token'),
-            'garbage' => array('https://@@@'),
+            'relative path' => array('/oauth2/token', 'must be absolute with a scheme and host'),
+            'scheme-less host' => array('token-endpoint.example/oauth2/token', 'must be absolute with a scheme and host'),
+            'non-http scheme' => array('ftp://token-endpoint.example/token', 'scheme must be http or https'),
+            'no host' => array('https:///token', 'must be absolute with a scheme and host'),
+            'port out of range' => array('https://host.example:99999/token', 'port is out of range'),
+            'port out of range, no path' => array('https://host.example:70000', 'port is out of range'),
+            'garbage' => array('https://@@@', 'must be absolute with a scheme and host'),
         );
     }
 
     /**
+     * glm14-9: every row asserts the MESSAGE, never the class alone —
+     * the ':99999' leg once asserted only the exception class, so the
+     * out-of-range port dying at the entry screen in the scheme/host
+     * sentence (parse_url() returns false for ports beyond 65535, the
+     * engine's own range check) was invisible to the suite while the
+     * range screen below the entry sat dead (driven: ':70000' answered
+     * 'must be absolute with a scheme and host'). The entry names the
+     * out-of-range port now.
+     *
      * @dataProvider invalidUrlProvider
      */
-    public function testInvalidUrlsAreRejected(string $url): void
+    public function testInvalidUrlsAreRejected(string $url, string $fragment): void
     {
         $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage($fragment);
 
         new HttpRequest('POST', $url);
     }

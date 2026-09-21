@@ -168,6 +168,28 @@ final class Url {
 		 * bytes is no host, whatever spelling the engine hands back.
 		 */
 		if ( false === $parts || ! isset( $parts['scheme'], $parts['host'] ) || '' === $parts['host'] ) {
+			/*
+			 * glm14-9: parse_url() returns FALSE outright for an
+			 * authority whose port exceeds 65535 (the engine's own
+			 * range check), so the out-of-range port died HERE wearing
+			 * the scheme/host sentence on every supported build — the
+			 * operator with a misconfigured provider port got a
+			 * message directing them at the wrong screen (driven:
+			 * 'https://idp:70000/token' answered 'must be absolute
+			 * with a scheme and host', never the port sentence), and
+			 * the port block's > 65535 arm below was dead code no
+			 * input could reach. The entry owns the distinction now: a
+			 * digits-only port beyond the range in a FAILED parse
+			 * answers the port sentence — the boundary class ([/?#]
+			 * or end of authority) so userinfo ':pass@' spellings and
+			 * ':443x' glue keep the generic refusal, their parse
+			 * failing for its own cause — and the port block keeps
+			 * the < 1 arm, the half this build can still reach
+			 * (':0' parses).
+			 */
+			if ( false === $parts && 1 === preg_match( '~://[^/?#]*:([0-9]+)(?:[/?#]|\z)~', $url, $port_match ) && (int) $port_match[1] > 65535 ) {
+				throw new InvalidArgumentException( 'The URL port is out of range — an authority port must be 1–65535, and the engine cannot parse one beyond it.' );
+			}
 			throw new InvalidArgumentException( 'The URL must be absolute with a scheme and host.' );
 		}
 		// The scheme fold is the LOCALE-INDEPENDENT byte table's (OCR
@@ -369,7 +391,16 @@ final class Url {
 				throw new InvalidArgumentException( 'The URL port must be digits — parse_url() truncates a malformed port silently (":443x" reads as 443) while the URL string carries the raw text, and the two must agree.' );
 			}
 			$raw_port_int = (int) $raw_port;
-			if ( $raw_port_int < 1 || $raw_port_int > 65535 ) {
+
+			/*
+			 * glm14-9: only the < 1 arm lives here — parse_url()
+			 * returns false for any port beyond 65535, so a URL
+			 * reaching this block carries an engine-accepted port and
+			 * the > 65535 arm was dead code (the entry screen's
+			 * out-of-range probe owns that class, naming the port
+			 * sentence where the failed parse actually lands).
+			 */
+			if ( $raw_port_int < 1 ) {
 				throw new InvalidArgumentException( 'The URL port is out of range.' );
 			}
 
