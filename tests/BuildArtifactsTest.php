@@ -2971,6 +2971,63 @@ FIXTURE;
     }
 
     /*
+     * The CLI's option map is validated (glm14-5): getopt() silently
+     * drops unrecognized options, so a typo'd '--slugg=zai' fell
+     * through to build-everything at exit 0 (every connector's zip and
+     * manifest entry rebuilt instead of the one asked for), and the
+     * space-separated value form bound no value (getopt answers
+     * false for the optional-value spelling without '='), dying in a
+     * misleading 'no main plugin file' refusal instead of naming the
+     * malformed invocation.
+     */
+    public function testTheCliOptionMapRefusesUnknownAndValuelessOptions()
+    {
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the option-refusal legs ride a spawned CLI.');
+        }
+        $repo = $this->makeBuildCliRepo(array( 'alpha-demo' => true, 'beta-demo' => true ));
+
+        // (a) A typo'd option name refuses naming the input — never builds everything.
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slugg=alpha-demo 2>&1', $output, $exit);
+        $report = implode("\n", $output);
+        $this->assertSame(1, $exit, "A typo'd option must refuse, never fall through to build-everything:\n{$report}");
+        $this->assertStringContainsString('unknown option --slugg', $report, 'The refusal names the actual input (red at HEAD: exit 0 having built every connector).');
+        $this->assertFileDoesNotExist($repo . '/dist/connectors-alpha-demo-1.0.0.zip', 'Nothing is built on a refused invocation.');
+
+        // (b) The exact option still builds exactly the one connector asked for.
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug=alpha-demo 2>&1', $output, $exit);
+        $report = implode("\n", $output);
+        $this->assertSame(0, $exit, "The well-formed invocation must keep building:\n{$report}");
+        $this->assertStringContainsString('connectors-alpha-demo-1.0.0.zip', $report);
+        $this->assertStringNotContainsString('connectors-beta-demo-1.0.0.zip', $report, 'Exactly the one asked-for connector is built.');
+        $this->assertFileDoesNotExist($repo . '/dist/connectors-beta-demo-1.0.0.zip');
+
+        // (c) The space-separated value form refuses naming the real cause —
+        // getopt binds no value without '=' (it answers false).
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --fixture alpha-demo 2>&1', $output, $exit);
+        $report = implode("\n", $output);
+        $this->assertSame(1, $exit, "The space-separated form must refuse:\n{$report}");
+        $this->assertStringContainsString('unrecognized argument alpha-demo', $report, 'The refusal names the actual input (red at HEAD: a misleading directory-shaped refusal over the empty binding).');
+        $this->assertStringNotContainsString('no main plugin file', $report, 'The misleading directory-shaped refusal is gone.');
+
+        // (d) The bare option form names the spelling getopt actually requires.
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --fixture 2>&1', $output, $exit);
+        $report = implode("\n", $output);
+        $this->assertSame(1, $exit, "The bare option must refuse:\n{$report}");
+        $this->assertStringContainsString('--fixture=<value>', $report);
+
+        WpHarness::releaseScratch($repo);
+    }
+
+    /*
      * Duplicate plugin headers (finding: the parser kept the LAST value while
      * WordPress's get_file_data() keeps the FIRST).
      */

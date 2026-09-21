@@ -4098,6 +4098,39 @@ if (wp_connectors_cli_entry(__FILE__)) {
     $distDir = $repoRoot . '/dist';
     $args = getopt('', array( 'slug::', 'fixture::' ));
 
+    /*
+     * glm14-5: the invocation is VALIDATED against the known option
+     * set, from argv itself — getopt() silently DROPS unrecognized
+     * options (its parsed map can never name them), so a typo'd
+     * '--slugg=zai' fell through to build-everything at exit 0,
+     * building and re-landing dist zips/manifest entries for EVERY
+     * connector instead of the one asked for; and the space-separated
+     * value form ('--fixture example-connector') binds no value
+     * (getopt answers false for the optional-value spelling without
+     * '='), so isset() passed, (string) false became '', and the run
+     * died in 'no main plugin file ... tests/fixtures/plugins/'
+     * instead of naming the malformed invocation — the silent-defaults
+     * class the probe CLI was rewritten to refuse. Every argv element
+     * after the script must be a known option, and a getopt value that
+     * is not a string (false: option without '='; array: repeated
+     * option) refuses with the spelling named.
+     */
+    foreach (array_slice(wp_connectors_cli_args(), 1) as $arg) {
+        $name = (string) strtok((string) $arg, '=');
+        if ('--slug' !== $name && '--fixture' !== $name) {
+            fwrite(STDERR, ('' !== $name && '-' === $name[0])
+                ? "build: unknown option {$name} (known options: --slug=<slug>, --fixture=<fixture-name>)\n"
+                : "build: unrecognized argument {$arg} (options ride --slug=<slug> / --fixture=<fixture-name>)\n");
+            exit(1);
+        }
+    }
+    foreach ($args as $key => $value) {
+        if (! is_string($value)) {
+            fwrite(STDERR, "build: option --{$key} needs its value in the --{$key}=<value> spelling (getopt binds no value for the space-separated, bare, or repeated forms)\n");
+            exit(1);
+        }
+    }
+
     $targets = array();
     if (isset($args['fixture'])) {
         $fixtureDir = $repoRoot . '/tests/fixtures/plugins/' . (string) $args['fixture'];
