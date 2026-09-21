@@ -6,6 +6,104 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 14)
+
+First claude-glm `/code-review max` round after the OCR phase
+converged (OCR round 70: zero findings, 61/61 files — the r37 close
+criterion met). The review: 25 candidates, 3-state verification, 15
+findings survived (12 CONFIRMED, 3 PLAUSIBLE), 10 refuted with quoted
+evidence (adjudications stand). Driver adjudication: findings 1-10
+accepted — ten numbered commits t31-glm14-1..10 (one per finding, the
+full offline check green after every commit); findings 11-15 (cleanup:
+twin use-import grammars, seven-fold always-throw duplication, the
+//u UTF-8 twin, the per-caller validated-spelling contract, the
+apply_filters 0-arity clamp) deferred to the post-convergence cleanup
+sweep. Suite 1781 → 1794 tests, 47131 → 47275 assertions, 3 skipped
+unchanged (every delta measured from output). The round's shape: four
+driven security-gate bypasses closed at their one-owner seams, the
+build CLI's silent mode-broadening refused, the hostile-tree OOM
+answered with a verdict, two harness contracts made true of their own
+docblocks, the port screen's dead half made honest, and the
+settings-save sanitize step made emulable. The sixth driven refutation
+of the loop recorded (the glm29 escaped-quote line, vector corrected);
+the r6 extension-class adjudication reopened and completed.
+
+- **The quoted-literal extraction escape-aware and decoded
+  (t31-glm14-1, security:high; bin/lib/plugin-tools.php, tests/
+  SelfContainmentEscapedQuoteTest.php)** — the match stopped at a
+  backslash-escaped closing quote, so an outside-resolving traversal
+  behind it was invisible to every self-containment gate (driven red
+  at HEAD: php -l clean, zero violations). The matcher rides the house
+  quote grammar and decodes to the runtime value — decoding required:
+  the raw escaped bytes still compose inside. Falsifies the glm29
+  escaped-quote claim (corrected, vector distinction named).
+- **A failed read fails the secret scan loudly
+  (t31-glm14-2, security:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — both file_get_contents casts laundered a
+  false read into an empty scan (a chmod-000 file with a live token:
+  "0 finding(s)" exit 0). The failure is a finding line now; the CLI
+  exit code and the inspector's verdict both refuse (driven, both
+  arms, non-root).
+- **The over-size skip is loud (t31-glm14-3, security:medium; bin/lib/
+  secret-scanner.php)** — files over 2 MB were silently exempt from
+  credential detection; a zip shipping a >2 MB entry passed the
+  inspector's credential screen ACCEPTED. The cap stays (a stated
+  memory bound) and the skip answers a finding line (driven: the
+  oversized twin surfaces beside the under-limit one).
+- **The is-a-source class owns the engine's template extensions
+  (t31-glm14-4, security:medium; bin/lib/plugin-tools.php, bin/lib/
+  secret-scanner.php, bin/inspect-artifact.php)** — a '.phtml' entry
+  with a parse error plus a live token passed inspection while the
+  identical bytes as '.php' were rejected (driven on a copy of the
+  real dist zip). The r6 producer-gated adjudication reopened and
+  completed: '.php'/'.phtml' at the ONE owner closes every channel at
+  once; '.php5'/'.php7'/'.inc' stay out pending a driven producer.
+- **The build CLI validates its option map from argv
+  (t31-glm14-5, bug:medium; bin/build.php)** — a typo'd '--slugg=zai'
+  exited 0 having rebuilt EVERY connector; the space-separated value
+  form died in a misleading refusal. Unknown options and value-less
+  bindings refuse with the actual input named, nothing built on a
+  refused invocation (driven; getopt's parsed map can never name a
+  dropped option — the walk reads argv itself).
+- **The shared view provider's retention is bounded
+  (t31-glm14-6, bug:medium; bin/lib/plugin-tools.php, tests/
+  UnusedImportScannerTest.php)** — the memo never evicted, and the
+  inspector rides it over hostile extracted trees: ~40 MB of .php
+  entries retained ~120 MB, dying at exit 255 with no verdict
+  (measured). FIFO-bounded at 24 MB — above the whole repo tree, so
+  the single-tokenize purpose survives; over-bound walks re-tokenize
+  on re-consult (driven: red at HEAD died in the exhaustion fatal
+  itself).
+- **Due events fire in timestamp order; overdue recurring fires once
+  (t31-glm14-7, bug:medium; tests/harness/WpHarness.php, tests/
+  FoundationHarnessTest.php)** — the walk fired in registration order
+  against the docblock's own promise, and a day-overdue hourly event
+  replayed 25× where core fires once and reschedules from now (both
+  driven red at HEAD). Equal timestamps keep registration order.
+- **The snapshot compare owns its read and its decode
+  (t31-glm14-8, bug:low; tests/harness/WpConnectorsTestCase.php,
+  tests/FoundationHarnessTest.php)** — a corrupt or unreadable
+  snapshot misreported as "Captured request drifted" over the silent
+  null/false decode (driven red at HEAD). Unreadable and corrupt
+  answer as themselves, naming the file and the json error; the 3×
+  re-read folded into one.
+- **The out-of-range port answers the port sentence
+  (t31-glm14-9, bug:low; shared/src/Http/Url.php, tests/
+  SharedOAuthContractsHttpTest.php)** — parse_url() fails outright on
+  ports beyond 65535, so the port died at the entry screen wearing
+  the scheme/host message and the range screen's upper arm sat dead
+  (driven: ':70000'). The entry names the out-of-range port; the port
+  block keeps the reachable '< 1' arm; the invalid-URL battery asserts
+  the message on every row, never the class alone.
+- **The registered sanitize callback is wired; the save-path primitive
+  exists (t31-glm14-10, bug:low, latent; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — register_setting() recorded the
+  callback but never wired it, and no sanitize_option() existed, so
+  the settings-save pipeline was unemulatable (a save emulation stored
+  raw input). The callback rides the sanitize_option_{name} filter
+  exactly as core registers it; a null answer refuses the save
+  (driven; red at HEAD: the undefined-function call itself).
+
 ### Fixed (shared — M3 Task 3.1, OCR round 69)
 
 Sixty-ninth OCR round (61/61 fully complete): 3 findings, driver
