@@ -590,7 +590,17 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
 function wp_schedule_event($timestamp, $recurrence, $hook, $args = array())
 {
     $intervals = wp_get_schedules();
-    $interval = isset($intervals[ $recurrence ]) ? (int) $intervals[ $recurrence ]['interval'] : 0;
+    /*
+     * glm15-9: an unknown recurrence REFUSES (false), core's own
+     * branch — the stub accepted it with interval 0, an event that
+     * fired once and never rescheduled while claiming a recurrence
+     * (driven: a schedule the defaults never carried — 'weekly'
+     * before it joined them — returned TRUE with interval 0).
+     */
+    if (! isset($intervals[ $recurrence ])) {
+        return false;
+    }
+    $interval = (int) $intervals[ $recurrence ]['interval'];
     WpHarness::$cron[ $hook ][] = array(
         'timestamp' => (int) $timestamp,
         'args' => $args,
@@ -661,11 +671,23 @@ function wp_clear_scheduled_hook($hook)
 
 function wp_get_schedules()
 {
-    return array(
+    /*
+     * glm15-9: core's own shape — the 'cron_schedules' filter is
+     * applied FIRST and the defaults merged OVER it, so a plugin adds
+     * its own schedules but can never clobber a default spelling. The
+     * stub's static map never applied the filter at all, so a custom
+     * schedule registered through it was invisible at resolution time
+     * (driven: a 'cron_schedules' callback's entry never answered).
+     * 'weekly' joins the default set (core's own, WP 5.4+).
+     */
+    $schedules = array(
         'hourly' => array( 'interval' => HOUR_IN_SECONDS ),
         'twicedaily' => array( 'interval' => 12 * HOUR_IN_SECONDS ),
         'daily' => array( 'interval' => DAY_IN_SECONDS ),
+        'weekly' => array( 'interval' => WEEK_IN_SECONDS ),
     );
+
+    return array_merge(apply_filters('cron_schedules', array()), $schedules);
 }
 
 if (! defined('HOUR_IN_SECONDS')) {
@@ -676,6 +698,9 @@ if (! defined('DAY_IN_SECONDS')) {
 }
 if (! defined('MINUTE_IN_SECONDS')) {
     define('MINUTE_IN_SECONDS', 60);
+}
+if (! defined('WEEK_IN_SECONDS')) {
+    define('WEEK_IN_SECONDS', 604800);
 }
 
 function wp_connectors_harness_uid()

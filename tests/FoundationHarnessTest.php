@@ -728,6 +728,46 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertTrue(unregister_setting('glm15_group', 'glm15_never_registered'));
     }
 
+    public function testCronSchedulesApplyTheFilterRefuseUnknownRecurrencesAndCarryWeekly()
+    {
+        /*
+         * glm15-9: the schedules map diverged from core three ways —
+         * the 'cron_schedules' filter was never applied (a plugin's
+         * custom schedule invisible at resolution time), an unknown
+         * recurrence was ACCEPTED (wp_schedule_event(..., 'weekly',
+         * ...) returned true with interval 0, firing once and never
+         * rescheduling — core returns false), and 'weekly'/
+         * WEEK_IN_SECONDS were absent (the constant reference a fatal
+         * at HEAD).
+         */
+        $this->freezeTime(1700000000);
+
+        // (a) The filter applies at schedule-time resolution, and the
+        // defaults merge OVER a same-key filter entry (core's order).
+        add_filter('cron_schedules', static function ( $schedules ) {
+            $schedules['glm15_custom'] = array( 'interval' => 123 );
+            $schedules['daily'] = array( 'interval' => 999999 );
+
+            return $schedules;
+        });
+        $schedules = wp_get_schedules();
+        $this->assertSame(123, $schedules['glm15_custom']['interval'], 'The cron_schedules filter is applied (red at HEAD: the custom entry never answered).');
+        $this->assertSame(DAY_IN_SECONDS, $schedules['daily']['interval'], 'The defaults merge over the filter — a plugin never clobbers a default spelling.');
+        $this->assertTrue(wp_schedule_event(1700000000 + 2 * WEEK_IN_SECONDS, 'glm15_custom', 'glm15_custom_hook'), 'A custom schedule resolves through the filter (scheduled past this leg\'s window).');
+
+        // (b) An unknown recurrence refuses and never enters the queue.
+        $this->assertFalse(wp_schedule_event(1700000100, 'glm15_unknown', 'glm15_hook'), 'An unknown recurrence refuses (red at HEAD: accepted with interval 0).');
+        $this->assertFalse(wp_next_scheduled('glm15_hook'), 'The refused event never entered the queue.');
+
+        // (c) 'weekly'/WEEK_IN_SECONDS are core's own defaults now.
+        $this->assertSame(7 * DAY_IN_SECONDS, WEEK_IN_SECONDS, 'WEEK_IN_SECONDS exists at core\'s own value (red at HEAD: undefined).');
+        $this->assertSame(WEEK_IN_SECONDS, wp_get_schedules()['weekly']['interval'], 'The weekly schedule joins the default set.');
+        $this->assertTrue(wp_schedule_event(1700000000, 'weekly', 'glm15_weekly'));
+        $this->advanceTime(WEEK_IN_SECONDS);
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The weekly event fires once when due.');
+        $this->assertSame(1700000000 + 2 * WEEK_IN_SECONDS, wp_next_scheduled('glm15_weekly'), 'The weekly recurrence reschedules on its own interval (grid-aligned, glm15-5).');
+    }
+
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
     {
         /*
