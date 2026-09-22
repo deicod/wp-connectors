@@ -798,6 +798,37 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertStringContainsString('zai-key', implode("\n", $loose));
     }
 
+    /**
+     * glm21-4: the marker grammar knows the HTML COMMENT enclosure —
+     * `<!-- secrets:allow -->` — the only comment syntax a markup
+     * payload carries (.svg walk-allowlisted, .html CLI-named, .md
+     * prose), while the markdown HEADING spelling rides the `#` arm
+     * DELIBERATELY (markdown has no comment syntax; the heading is the
+     * prose-level enclosure a marked .md fixture rides).
+     */
+    public function testTheAllowMarkerHonorsTheHtmlCommentEnclosure()
+    {
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+
+        // The HTML comment exempts on every enclosure position (red at
+        // HEAD: every commented row flagged — the grammar knew no '<!--').
+        $this->assertSame(array(), wp_connectors_scan_string("<text>{$key}</text> <!-- secrets:allow -->\n", 'marked.svg'), 'The trailing HTML comment exempts the svg line (red at HEAD: flagged).');
+        $this->assertSame(array(), wp_connectors_scan_string("<!-- secrets:allow --> <text>{$key}</text>\n", 'marked.svg'), 'The leading HTML comment exempts identically.');
+        $this->assertSame(array(), wp_connectors_scan_string("<!--secrets:allow--> <text>{$key}</text>\n", 'page.html'), 'The tight no-space spelling exempts too, the CLI-named .html riding the same arm.');
+
+        // The markdown HEADING spelling stays honored — re-derived and
+        // pinned DELIBERATELY (the docblock's own note), never by accident.
+        $this->assertSame(array(), wp_connectors_scan_string("# secrets:allow {$key}\n", 'head.md'), 'The markdown heading spelling stays honored through the # arm — a deliberate member of the enclosure vocabulary, pinned.');
+
+        // The unmarked control still flags — the enclosure exempts, prose never does.
+        $this->assertSame(
+            array( "unmarked.svg:1 {$expect}" ),
+            wp_connectors_scan_string("<text>{$key}</text>\n", 'unmarked.svg'),
+            'The same svg line without the marker still flags — the enclosure owns the exemption, never the payload.'
+        );
+    }
+
     public function testScannerExemptsOnlyStrictMarkerAndFakeValues()
     {
         // (a) The strict marker comment — and only it — exempts a line.

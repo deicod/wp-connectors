@@ -74,11 +74,25 @@ function wp_connectors_secret_patterns()
  * credential sitting on a line that merely mentions "fixture" must still
  * be flagged.
  *
+ * glm21-4: the grammar knows the HTML COMMENT enclosure too —
+ * `<!-- secrets:allow -->` — one more enclosure in the marker's own
+ * vocabulary, consistent across every walk-allowlisted markup
+ * extension (.svg, .xml) and a CLI-named .html alike: an HTML or XML
+ * comment is the only comment syntax those payloads carry, and a
+ * marked fixture in them honored NO marker at all while a markdown
+ * HEADING (`# secrets:allow` — markdown has no comment syntax at all)
+ * rode the `#` arm green (driven red at HEAD: the svg comment form
+ * flagged). The heading spelling's status is re-derived and pinned
+ * DELIBERATELY: the `#` arm speaks every hash-prefixed comment
+ * spelling (shell, ruby, yaml) and the markdown heading is the
+ * prose-level enclosure a marked .md fixture rides — honored in both
+ * arms on purpose, never by accident.
+ *
  * @return string PCRE pattern matching the marker inside a comment.
  */
 function wp_connectors_allow_marker_pattern()
 {
-    return '/(?:^|\s)(?:\/\/|#|\/\*|\*)\s*secrets:allow\b/';
+    return '/(?:^|\s)(?:\/\/|#|\/\*|\*|<!--)\s*secrets:allow\b/';
 }
 
 /**
