@@ -217,7 +217,34 @@ function wp_connectors_scan_string($contents, $label)
      * child process at HEAD); the largest-span spelling passed the
      * gate on exactly the shape the gate exists to refuse.
      */
-    $has_php = false !== strpos($contents, '<?');
+    /*
+     * glm17-3: the pre-gate is extension- and shape-aware. The bare
+     * '<?' probe routed every text-family payload carrying an '<?xml'
+     * declaration or a fenced, unclosed php sample onto the masked
+     * view — where the masker blanks the prose as inline HTML and a
+     * legitimately marked fixture's marker vanished (driven: a marked
+     * .md answered 1 finding at HEAD, 0 before the mask ride; the
+     * >1.3 MB unclosed-sample .md answered the token-memory refusal
+     * where the line scan always ran clean). The masked view is for
+     * CODE payloads — a .php/.phtml label, or an extension-less label
+     * (the in-process spellings) — which keep the bare '<?' probe
+     * exactly as before. A TEXT-family extension (anything else the
+     * walk allowlists: .md/.txt/.svg/.xml/...) reaches the tokenizer
+     * only for a genuine embedded sample — a '<?php' open WITH a
+     * matching '?>' close after it, the one shape that can carry real
+     * multi-line string regions to launder; bare '<?xml' declarations,
+     * '<?=' short-echo samples, and fence-delimited unclosed samples
+     * keep the line-local tolerance arm exactly as the pre-diff
+     * behavior read them (a matched-close sample's marker-in-data
+     * still launders correctly through the mask — pinned below).
+     */
+    $label_ext = strtolower((string) pathinfo($label, PATHINFO_EXTENSION));
+    $has_php = false;
+    if ('' === $label_ext || 'php' === $label_ext || 'phtml' === $label_ext) {
+        $has_php = false !== strpos($contents, '<?');
+    } elseif (false !== ($sample_open = stripos($contents, '<?php'))) {
+        $has_php = false !== strpos($contents, '?>', $sample_open + 5);
+    }
     if ($has_php) {
         $span_total = 0;
         $at = 0;
@@ -264,7 +291,9 @@ function wp_connectors_scan_string($contents, $label)
      * (every open-tag spelling starts with those two bytes), so it
      * keeps the line-local tolerance arm instead — the pinned glm15-1
      * doctrine that non-PHP payloads (.txt/.md fixtures) answer no
-     * tokens and no behavior change.
+     * tokens and no behavior change. glm17-3 widens that arm to the
+     * text-family shapes with no matched '<?php'...'?>' sample — the
+     * pre-gate above owns the routing.
      */
     $views = $has_php
         ? explode("\n", wp_connectors_mask_string_contents($contents))

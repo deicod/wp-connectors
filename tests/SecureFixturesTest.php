@@ -923,6 +923,58 @@ CHILD;
         );
     }
 
+    public function testTextFamilyPayloadsKeepTheirProseMarkers()
+    {
+        /*
+         * glm17-3: the '<?' pre-gate was extension-blind — an '<?xml'
+         * declaration or a fenced, unclosed php sample inside a text
+         * family file routed the WHOLE payload onto the masked view,
+         * where the masker blanks prose as inline HTML and a
+         * legitimately marked fixture's marker vanished (driven red at
+         * HEAD: a marked .md answered 1 finding). Text-family payloads
+         * reach the tokenizer only for a matched '<?php'...'?>'
+         * sample; every other prose shape keeps the line-local arm.
+         */
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+
+        // The driven benign shape: a marked fixture with an '<?xml'
+        // declaration (red at HEAD: 1 finding — the prose marker
+        // blanked as inline HTML).
+        $xmlDecl = "# Provider configuration\n\napi_key = {$key} // secrets:allow\n\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+        $this->assertSame(array(), wp_connectors_scan_string($xmlDecl, 'docs.md'), 'An <?xml declaration in prose never routes the .md onto the masked view (red at HEAD: the marker blanked, 1 finding).');
+
+        // The short-echo shape rides the same arm (a '<?=' sample is
+        // not a '<?php' open).
+        $shortEcho = "Guide\n\n<?= \$k ?> with the key {$key} // secrets:allow\n";
+        $this->assertSame(array(), wp_connectors_scan_string($shortEcho, 'guide.md'), 'A <?= sample in prose keeps the line-local marker (red at HEAD: blanked).');
+
+        // The unclosed fenced sample: no matching close tag, no
+        // tokenizer — and the >1.3 MB unclosed-sample shape the glm17-2
+        // finding named as the over-refusal (red at HEAD: the loud
+        // token-memory refusal at the 128M runner limit) scans clean
+        // at its honest line cost. (A marker BESIDE an unclosed sample
+        // is honored in both arms — everything after the unclosed open
+        // tag lexes as code, so the comment is real — the over-refusal
+        // is the unclosed class's own harm.)
+        $big = '<?php $sample = 1;' . str_repeat("\n# prose line the lexer never sees because the sample never closes", 23000);
+        $this->assertGreaterThan(1300000, strlen($big), 'staging: the unclosed-sample .md must be the >1.3 MB over-refusal shape.');
+        $this->assertSame(array(), wp_connectors_scan_string($big, 'big.md'), 'The unclosed-sample .md scans clean at its line cost (red at HEAD: over the token-memory bound — the whole file rode one span).');
+
+        // The laundering class STAYS masked: a matched php open plus
+        // close tag
+        // sample in a text-family file routes to the masked view, so a
+        // marker inside the sample's multi-line string data exempts
+        // nothing — the line-local arm would launder it (the interior
+        // line carries no quote bytes).
+        $sample = "<?php \$x = \"\n{$key} // secrets:allow\n\"; ?>\n";
+        $this->assertSame(
+            array( "sample.md:2 {$expect}" ),
+            wp_connectors_scan_string($sample, 'sample.md'),
+            'A matched-close embedded sample rides the masked view — its string data launders nothing.'
+        );
+    }
+
     public function testScannerAcceptsRepoSources()
     {
         $repoRoot = dirname(__DIR__);
