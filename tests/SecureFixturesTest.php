@@ -990,6 +990,37 @@ CHILD;
         );
     }
 
+    public function testTheMemoryLimitParserIsWidthAwareAndNeverWraps()
+    {
+        /*
+         * glm17-13: the headroom parser scaled the limit with an
+         * integer multiply — on a 32-bit build a '4G' spelling
+         * overflowed the width and answered garbage (a wrapped count
+         * driving the headroom to 0, EVERY scan into the loud
+         * refusal) where the honest reading of a limit beyond the
+         * addressable width is the bound-off class. The scale rides
+         * the float arithmetic and SATURATES at PHP_INT_MAX — the
+         * same saturation path clamps '4G' on 32-bit and any >8EiB
+         * spelling on 64-bit, width-aware by construction. A 32-bit
+         * simulation is not cheap on this host; the unit pin drives
+         * the parser function directly.
+         */
+        $this->assertSame(128 * 1024 * 1024, wp_connectors_memory_limit_to_bytes('128M'), 'In-width values stay exact.');
+        $this->assertSame(128 * 1024 * 1024, wp_connectors_memory_limit_to_bytes('128mb'), 'The unit folds case-insensitively with the optional b.');
+        $this->assertSame(2 * 1024 * 1024 * 1024, wp_connectors_memory_limit_to_bytes('2G'));
+        $this->assertSame(512 * 1024, wp_connectors_memory_limit_to_bytes('512K'));
+        $this->assertSame(1024, wp_connectors_memory_limit_to_bytes('1024'), 'A bare byte count parses.');
+
+        // Over-width saturates — never a wrapped or cast-garbage count.
+        // '9999999999G' scales past the 64-bit width on THIS host and
+        // past any 32-bit spelling the same code path clamps.
+        $this->assertSame(PHP_INT_MAX, wp_connectors_memory_limit_to_bytes('9999999999G'), 'A limit beyond the integer width saturates to the bound-off answer (red at the old integer multiply: an overflowed count).');
+
+        // Unparseable spellings answer the same bound-off class.
+        $this->assertSame(PHP_INT_MAX, wp_connectors_memory_limit_to_bytes('-1'));
+        $this->assertSame(PHP_INT_MAX, wp_connectors_memory_limit_to_bytes('not-a-limit'));
+    }
+
     public function testScannerAcceptsRepoSources()
     {
         $repoRoot = dirname(__DIR__);

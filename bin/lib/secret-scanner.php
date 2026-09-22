@@ -142,6 +142,39 @@ function wp_connectors_is_recognizably_fake_secret($value)
 }
 
 /**
+ * Parses one memory_limit spelling to its byte count, WIDTH-AWARE
+ * (glm17-13).
+ *
+ * The scale is computed in float and SATURATED at PHP_INT_MAX: an
+ * integer multiply of a limit whose scaled bytes exceed the host's
+ * integer width answered garbage through the cast ('4G' on a 32-bit
+ * build — a wrapped count driving the headroom to 0 and EVERY scan
+ * into the loud refusal; any >8EiB spelling likewise on 64-bit),
+ * where the honest reading of a limit larger than the process can
+ * address is the bound-off class: it can never fatal the token pass.
+ * The same saturation path answers an unparseable spelling — the
+ * bound is off, never misjudged. In-width values (up to 2^53 bytes,
+ * every real limit) stay exact.
+ *
+ * @param string $limit The raw ini spelling (e.g. '128M', '2G', '-1').
+ * @return int The byte count; PHP_INT_MAX when over-width or unparseable.
+ */
+function wp_connectors_memory_limit_to_bytes($limit)
+{
+    if (1 !== preg_match('/\A(\d+)\s*([kmg]?)(?:b)?\z/i', trim((string) $limit), $m)) {
+        return PHP_INT_MAX;
+    }
+    $count = (float) $m[1];
+    $unit  = strtolower($m[2]);
+    $multiplier = 'g' === $unit ? 1073741824.0 : ('m' === $unit ? 1048576.0 : ('k' === $unit ? 1024.0 : 1.0));
+    if ($count * $multiplier >= (float) PHP_INT_MAX) {
+        return PHP_INT_MAX;
+    }
+
+    return (int) ($count * $multiplier);
+}
+
+/**
  * The byte headroom a token pass may spend before the process's own
  * memory limit would fatal it (glm16-2).
  *
@@ -150,9 +183,9 @@ function wp_connectors_is_recognizably_fake_secret($value)
  * bytes in token arrays — ~186 MB against the 128M default limit — the
  * fatal-without-a-verdict class glm14-3/glm14-6 closed for the LINE
  * scan, reopened by the glm16-1 mask ride. The headroom is the parsed
- * memory_limit minus live usage; an unlimited (-1/empty) or
- * unparseable limit answers PHP_INT_MAX — the bound is off, never
- * misjudged.
+ * memory_limit minus live usage; an unlimited (-1/empty) limit answers
+ * PHP_INT_MAX, and the parse itself is width-aware (glm17-13, the
+ * helper above) — the bound is off, never misjudged.
  *
  * @return int Bytes available before the limit.
  */
@@ -162,20 +195,8 @@ function wp_connectors_scan_token_memory_headroom()
     if ('' === $limit || '-1' === $limit) {
         return PHP_INT_MAX;
     }
-    if (1 !== preg_match('/\A(\d+)\s*([kmg]?)(?:b)?\z/i', trim($limit), $m)) {
-        return PHP_INT_MAX;
-    }
-    $bytes = (int) $m[1];
-    $unit  = strtolower($m[2]);
-    if ('g' === $unit) {
-        $bytes *= 1024 * 1024 * 1024;
-    } elseif ('m' === $unit) {
-        $bytes *= 1024 * 1024;
-    } elseif ('k' === $unit) {
-        $bytes *= 1024;
-    }
 
-    return max(0, $bytes - memory_get_usage());
+    return max(0, wp_connectors_memory_limit_to_bytes($limit) - memory_get_usage());
 }
 
 /**
