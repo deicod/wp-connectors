@@ -778,7 +778,10 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
  * @param bool         $prune_dev_segments  Whether to skip development-tree segments (the repository scan's concept; artifact scans never prune).
  * @return list<string> Findings — credential matches, plus one
  *                      "unreadable file — the secret scan cannot run"
- *                      line per file whose read failed (glm14-2) and
+ *                      line per file whose read failed (glm14-2), one
+ *                      "unreadable scan root — the secret scan cannot
+ *                      run" line per root that names nothing at all —
+ *                      missing or a dangling symlink (glm21-3), and
  *                      one "over the 2 MB secret-scan size limit" line
  *                      per over-limit file — walked (glm14-3) or named
  *                      directly at the file-root arm (glm20-1):
@@ -842,6 +845,18 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
             continue;
         }
         if (! is_dir($root)) {
+            /*
+             * glm21-3: a root that names NOTHING — a typo'd CLI
+             * target, a dangling symlink — once answered 'secrets: 0
+             * finding(s)' exit 0, certifying a tree the scan never saw
+             * clean (the ocr20-4 narrative's shape, never adjudicated;
+             * the glm14-5/ocr53-4/glm14-2 doctrines refuse this class
+             * loudly everywhere else). The refusal is a finding line in
+             * the glm14-2 vocabulary — both consumers (the CLI's exit
+             * code, the inspector's violations) derive their refusal
+             * from this list with zero changes.
+             */
+            $findings[] = sprintf('%s: unreadable scan root — the secret scan cannot run', $root);
             continue;
         }
         $iterator = new RecursiveIteratorIterator(

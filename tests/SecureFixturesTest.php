@@ -298,6 +298,49 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm21-3: a scan root that names NOTHING — a typo'd CLI target, a
+     * dangling symlink — answers the loud refusal naming it, never a
+     * clean '0 finding(s)' exit 0 over a tree the scan never saw (the
+     * glm14-5/ocr53-4/glm14-2 refuse-loudly class, observed in
+     * ocr20-4's narrative and never adjudicated until this round).
+     */
+    public function testAMissingScanRootAnswersTheLoudRefusalNeverACleanVerdict()
+    {
+        $missing = sys_get_temp_dir() . '/wp-connectors-scan-missing-' . getmypid() . '-' . bin2hex(random_bytes(4));
+        $this->assertSame(
+            array( $missing . ': unreadable scan root — the secret scan cannot run' ),
+            wp_connectors_scan_paths(array( $missing )),
+            'A typo\'d CLI target certifies nothing clean — the missing root answers the loud refusal naming it (red at HEAD: 0 findings, exit 0).'
+        );
+
+        // A DANGLING-SYMLINK root answers the same refusal — is_file()
+        // and is_dir() both read false through the dead link.
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the dangling-root leg cannot stage its dead link.');
+        }
+        $dangling = $missing . '-dangling';
+        $this->assertTrue(@symlink($missing . '/nowhere', $dangling), 'staging: the dangling root link must take — a staging failure fails as staging, never as the scan verdict.');
+        try {
+            $this->assertSame(
+                array( $dangling . ': unreadable scan root — the secret scan cannot run' ),
+                wp_connectors_scan_paths(array( $dangling )),
+                'A dangling-symlink root answers the same loud refusal — never a clean verdict over a tree the link never reaches.'
+            );
+        } finally {
+            @unlink($dangling);
+        }
+
+        // An EXISTING root rides unchanged: the empty tree scans clean.
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-missingroot');
+        try {
+            $this->assertTrue(mkdir($tempDir, 0755, true), "staging: {$tempDir} must create — a staging failure fails as staging, never as the scan verdict.");
+            $this->assertSame(array(), wp_connectors_scan_paths(array( $tempDir )), 'An existing empty root scans clean exactly as before — the refusal owns the names-nothing class alone.');
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+    }
+
+    /**
      * The scan-scratch root maker — the r42-6 collision doctrine swept
      * to every site (OCR round 51, t31-ocr51-3; ONE census comment
      * across the file): every scan site this file grew — the
