@@ -897,6 +897,92 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm25-1: TTL (re)arming survives the stored-false row's MISSING
+     * read — glm24-4's keep-guard keyed on $own_entry alone, but a
+     * stored-false row answers $existing FALSE (the get_option-shaped
+     * predicate's own reading), so the arming block (inside $existing)
+     * never ran over it and the write's keep-guard was the row's ONLY
+     * expiry seat: keeping the standing expires_at there disarmed every
+     * TTL-bearing re-save — set('k', false) then set('k', false, 100)
+     * never expired, and set('f', false, 100) then set('f', false,
+     * 300) died at the stale first window (driven red at HEAD, both
+     * shapes). The standing timeout is kept ONLY over a zero-expiration
+     * save; an expiration-bearing save takes the head's own derivation
+     * whichever row shape carries it, and the plain rows keep glm23-1's
+     * zero-expiration keep besides.
+     */
+    public function testTtlArmingSurvivesTheStoredFalseRowsMissingRead()
+    {
+        $census = static function (string $transient): array {
+            return $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
+                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
+                $GLOBALS['wpdb']->esc_like('_transient_' . $transient) . '%'
+            ));
+        };
+
+        /*
+         * Shape 1 — ARM over a stored-false row that carried no TTL:
+         * the second save names 100, the row must die at it.
+         */
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm25_arm', false));
+        $this->assertTrue(set_transient('glm25_arm', false, 100), 'The TTL-bearing re-save completes over the stored-false row — the ADD family its own shape (the false row reads missing).');
+        $this->freezeTime(1050);
+        $this->assertFalse(get_transient('glm25_arm'), 'Inside the armed window the row serves its stored false — the false answer is the VALUE, never the expiry.');
+        $this->assertSame(array( '_transient_glm25_arm' ), $census('glm25_arm'), 'The read above unsets nothing inside the window — the row LIVES at t=1050 < 1100.');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm25_arm'), 'Past the armed window the read answers false — the death itself is the census below.');
+        $this->assertSame(array(), $census('glm25_arm'), 'The ARM-OVER-FALSE row dies at the save\'s own 100 (red at HEAD: never armed, the row stood forever).');
+
+        /*
+         * Shape 2 — RE-ARM over an armed stored-false row: the second
+         * save names 300 over the first save's 100, the window moves.
+         */
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm25_rearm', false, 100));
+        $this->assertTrue(set_transient('glm25_rearm', false, 300), 'The TTL-bearing re-save completes — the new window is the save\'s own, never the stale first one.');
+        $this->freezeTime(1150);
+        $this->assertFalse(get_transient('glm25_rearm'), 'Past the FIRST window the read answers false — whether the row died is the census below.');
+        $this->assertSame(array( '_transient_glm25_rearm' ), $census('glm25_rearm'), 'The RE-ARMED window stands — the row lives at t=1150 < 1300 (red at HEAD: dead at the stale 1100).');
+        $this->freezeTime(1301);
+        $this->assertFalse(get_transient('glm25_rearm'));
+        $this->assertSame(array(), $census('glm25_rearm'), 'The re-armed row dies at the SECOND save\'s own 300.');
+
+        /*
+         * Shape 3 — glm24-4's zero-expiration keep restated beside the
+         * widened guard: a zero-expiration re-save keeps the standing
+         * window (the transient store's own row is the row whose
+         * window stands).
+         */
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm25_keep', false, 100));
+        $this->freezeTime(1050);
+        $this->assertTrue(set_transient('glm25_keep', false), 'The zero-expiration re-save completes — it names no expiration to keep or move.');
+        $this->freezeTime(1099);
+        $this->assertFalse(get_transient('glm25_keep'));
+        $this->assertSame(array( '_transient_glm25_keep' ), $census('glm25_keep'), 'The zero-expiration re-save keeps the standing window — the row lives at t=1099 < 1100.');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm25_keep'));
+        $this->assertSame(array(), $census('glm25_keep'), 'The kept window ends at the FIRST save\'s own 100 (glm24-4 stands over the widened guard).');
+
+        /*
+         * Shape 4 — the plain rows: an expiration-bearing re-save moves
+         * the window, a zero-expiration re-save keeps it (glm23-1 over
+         * the truth-valued row).
+         */
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm25_plain', 'a', 100));
+        $this->assertTrue(set_transient('glm25_plain', 'b', 200));
+        $this->freezeTime(1150);
+        $this->assertSame('b', get_transient('glm25_plain'), 'The plain row lives inside its re-armed window (t=1150 < 1200).');
+        $this->assertTrue(set_transient('glm25_plain', 'c'));
+        $this->freezeTime(1151);
+        $this->assertSame('c', get_transient('glm25_plain'), 'The zero-expiration re-save keeps the plain row\'s standing window.');
+        $this->freezeTime(1201);
+        $this->assertFalse(get_transient('glm25_plain'), 'The plain row dies at the expiration-bearing save\'s own 200 (t=1201 > 1200).');
+    }
+
+    /**
      * glm24-5: the completion actions observe the PRE-HEAD value —
      * core's clone (glm22-5's doctrine) and sanitize (glm22-6's)
      * live INSIDE the delegated by-value twins

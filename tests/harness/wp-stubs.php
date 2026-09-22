@@ -758,8 +758,21 @@ function set_transient($transient, $value, $expiration = 0)
          * TTL-armed stored-false row's expires_at to false, the row
          * never dying (driven; glm23-1's own invariant violated). The
          * transient store's own row is the row whose window stands.
+         *
+         * glm25-1: the keep is the ZERO-EXPIRATION SAVE'S alone
+         * ($own_entry && false === $expires_at) — keying on
+         * $own_entry alone was too broad: a stored-false row answers
+         * $existing FALSE, so the arming block above never runs over
+         * it and THIS write is the row's only expiry seat, where
+         * keeping the standing expires_at disarmed every TTL-bearing
+         * re-save (set('k', false) then set('k', false, 100) never
+         * expired; set('f', false, 100) then set('f', false, 300)
+         * died at the stale first window — driven). The standing
+         * timeout survives only a save that names no expiration
+         * (glm23-1's own rule); an expiration-bearing save takes the
+         * head's derivation whichever row shape carries it.
          */
-        'expires_at' => $own_entry ? WpHarness::$transients[ $transient ]['expires_at'] : $expires_at,
+        'expires_at' => ($own_entry && false === $expires_at) ? WpHarness::$transients[ $transient ]['expires_at'] : $expires_at,
     );
     if ($option_row) {
         // glm23-3: the seeded row's own home stays current — the stores
