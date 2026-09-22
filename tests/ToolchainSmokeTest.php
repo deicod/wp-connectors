@@ -240,14 +240,20 @@ final class ToolchainSmokeTest extends TestCase
              * glm23-13: the patch target rides the ROOTS OWNER the
              * walk consults — the trailing separator is spelled at
              * the owner's connectors line in the copied library, the
-             * walk's own root derivation one seam over.
+             * walk's own root derivation one seam over. glm24-12:
+             * the anchor is STRUCTURAL — $base . '/connectors', the
+             * owner's own derivation spelling, not the 12-char
+             * '/connectors' substring any future literal in the
+             * 5,000-line library could collide with (a collision
+             * flipping the exactly-once pin, or the patch reaching
+             * a line that is not the root's).
              */
             $this->assertSame(
                 1,
-                substr_count($library, "'/connectors'"),
-                'The patch target must exist exactly once — the owner\'s connectors line is one line; a second occurrence would patch both and this pin owns the count.'
+                substr_count($library, "\$base . '/connectors'"),
+                'The patch target must exist exactly once — the owner\'s own derivation spelling, one line; a second occurrence would patch both and this pin owns the count (the structural anchor: never the bare substring).'
             );
-            $patched_library = str_replace("'/connectors'", "'/connectors/'", $library);
+            $patched_library = str_replace("\$base . '/connectors'", "\$base . '/connectors/'", $library);
             $this->assertNotSame($library, $patched_library, 'The patch must reach the owner\'s roots line.');
             $this->assertTrue(copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php'), 'staging: the lint tool must copy — a staging failure fails as staging, never as the lint verdict.');
             $this->assertNotFalse(file_put_contents($scratch . '/bin/lib/plugin-tools.php', $patched_library), 'staging: the patched tool library must write — a staging failure fails as staging, never as the lint verdict.');

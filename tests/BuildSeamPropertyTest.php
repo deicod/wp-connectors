@@ -1740,8 +1740,10 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         // t31-ocr3-8): every entry script consumes
         // wp_connectors_cli_entry() and none carries a hand-rolled copy
         // of the guard anymore.
+        $entry_sources = array();
         foreach (array('build.php', 'inspect-artifact.php', 'lint-php.php', 'check-conventions.php', 'scan-secrets.php') as $entry) {
-            $source = (string) file_get_contents(__DIR__ . '/../bin/' . $entry);
+            $entry_sources[ $entry ] = (string) file_get_contents(__DIR__ . '/../bin/' . $entry);
+            $source = $entry_sources[ $entry ];
             $this->assertStringContainsString('wp_connectors_cli_entry(__FILE__)', $source, "{$entry} consumes the ONE CLI-entry helper.");
             $this->assertStringNotContainsString("realpath(\$argv[0]) === __FILE__", $source, "{$entry} carries no hand-rolled guard copy.");
             $this->assertStringNotContainsString("ini_set('display_errors'", $source, "{$entry} carries no hand-rolled diagnostics copy.");
@@ -1755,7 +1757,12 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * walk with every staged leg flips together (the structural
          * pin; the legs' own summary/refusal pins own the accounting).
          */
-        $lintToolSource = (string) file_get_contents(__DIR__ . '/../bin/lint-php.php');
+        /*
+         * glm24-12: the pin REUSES the loop's own read — the second
+         * file_get_contents once re-read the ~13 KB of lint-php.php
+         * fifteen lines after the loop above had already read it.
+         */
+        $lintToolSource = $entry_sources['lint-php.php'];
         $this->assertStringContainsString('wp_connectors_lint_roots(', $lintToolSource, 'The lint walk consults the ONE lint-roots owner.');
         $this->assertStringNotContainsString("'/../connectors'", $lintToolSource, 'The walk carries no hand-spelled roots line beside the owner — the six-site hand-copy class is closed.');
         $toolLibrarySource = (string) file_get_contents(__DIR__ . '/../bin/lib/plugin-tools.php');
