@@ -918,6 +918,35 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $this->assertStringContainsString('out of range', $e->getMessage(), 'The range verdict outranks the leading-zeros verdict on the failed parse exactly as it does on the success path.');
         }
 
+        /*
+         * glm22-2: the ZERO-VALUED class answers the one class verdict
+         * — the entry arm's range check once carried only the > 65535
+         * side (glm21-5's own miss), so the parse-false zero spellings
+         * (':000000/' — six digits, the engine refuses the parse) fell
+         * through to the leading-zeros sentence whose remediation is
+         * DEAD (stripping the zeros lands on ':0', itself refused by
+         * range) while the parseable twins (':0/', ':00000/') answered
+         * range through the raw screen's < 1 arm — the class split
+         * across two sentences (red at HEAD: ':000000/' answered
+         * 'without leading zeros'). The ocr25-3 rule owns the class
+         * whole: a zero-valued spelling has no canonical form, and
+         * every member answers the range verdict.
+         */
+        foreach (array(
+            'zero, one digit (parses; the raw screen)' => 'https://host.example:0/',
+            'zero, five digits (parses to 0; the raw screen)' => 'https://host.example:00000/',
+            'zero, six digits (parse-false; the entry screen)' => 'https://host.example:000000/',
+            'zero, seven digits (parse-false; the entry screen)' => 'https://host.example:0000000/',
+        ) as $label => $zero_url) {
+            try {
+                Url::parse_validated($zero_url);
+                $this->fail(sprintf('A zero-valued port spelling (%s) must be refused — 0 is outside the 1–65535 band whichever screen its spelling reaches.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('out of range', $e->getMessage(), sprintf('The zero-valued class answers the RANGE verdict through whichever screen its spelling reaches (%s) — never the dead-end leading-zeros remediation (red at HEAD: the six-digit spelling wore it).', $label));
+                $this->assertStringNotContainsString('without leading zeros', $e->getMessage(), sprintf('A zero-valued spelling has no canonical form to write — the zeros sentence is a dead end for it (%s).', $label));
+            }
+        }
+
         // The canonical spellings stay green and agree with themselves:
         // url() carries ':8443', the authority and the redacted form
         // spell ':8443' — one verdict across every form.

@@ -314,7 +314,28 @@ final class Url {
 
 					if ( '' !== $entry_port && 1 === preg_match( '/\A([0-9]+)/', $entry_port, $entry_digits ) ) {
 						$entry_tail = (string) substr( $entry_port, strlen( $entry_digits[1] ) );
-						if ( '' === $entry_tail && (int) $entry_digits[1] > 65535 ) {
+
+						/*
+						 * glm22-2: the range check is TWO-SIDED — the
+						 * arm once checked only > 65535, so the
+						 * zero-valued parse-false class (':000000/' —
+						 * six digits, the engine refuses the parse)
+						 * fell through to the leading-zeros arm below
+						 * whose remediation is DEAD (stripping the
+						 * zeros lands on ':0', itself refused by
+						 * range), splitting the zero-valued class
+						 * across two verdict sentences: ':00000/'
+						 * (five digits, parses to 0) answered range
+						 * through the raw screen's < 1 arm while
+						 * ':000000/' answered the dead-end zeros
+						 * sentence. The ocr25-3 rule owns the class
+						 * whole: range outranks zeros — a zero-valued
+						 * spelling has no canonical form, and every
+						 * member answers the range verdict (the
+						 * raw screen's own sentence for the spellings
+						 * that parse).
+						 */
+						if ( '' === $entry_tail && ( (int) $entry_digits[1] > 65535 || (int) $entry_digits[1] < 1 ) ) {
 							throw new InvalidArgumentException( 'The URL port is out of range — an authority port must be 1–65535, and the engine cannot parse one beyond it.' );
 						}
 						if ( '' !== $entry_tail ) {
