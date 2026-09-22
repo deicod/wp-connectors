@@ -1205,7 +1205,6 @@ CHILD;
         exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=1G -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
         $report = implode("\n", $output);
 
-        $key = 'sk-ant-api3-' . str_repeat('q', 30);
         $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
         $this->assertSame(0, $exit, "The 23k-pair scan answers verdicts in the spawned engine, never a fatal: {$report}");
         /*
