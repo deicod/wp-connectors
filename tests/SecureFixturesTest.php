@@ -850,31 +850,46 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          * with no verdict from the scanner and the inspector alike —
          * the glm14-3/glm14-6 class reopened by the glm16-1 mask ride,
          * under the walk's own 2 MB cap. The ride owns its memory
-         * bound now: the dense-worst-case estimate over the LARGEST
-         * PHP-MODE SPAN (a prose run between tags is one
-         * T_INLINE_HTML token — the ledger's code samples, not its
-         * megabytes, are what it tokenizes) against the parsed limit
-         * minus live usage answers the LOUD refusal naming the file,
-         * the glm14-2 vocabulary — never a fatal, and never a clean
-         * verdict over bytes the scan could not tokenize. (The dense
-         * entry is ONE span, and the estimate is deliberately the
-         * WORST case, so this leg is deterministic at the 128M default
-         * however little the process holds: ~1.9 MB x 98 ≈ 186 MB
-         * exceeds the whole limit, not merely the headroom.)
+         * bound now: the dense-worst-case estimate over the PHP-MODE
+         * SPANS (a prose run between tags is one T_INLINE_HTML token —
+         * the ledger's code samples, not its megabytes, are what it
+         * tokenizes; glm17-2: the SUM of the spans, the stream is
+         * materialized whole) against the parsed limit minus live
+         * usage answers the LOUD refusal naming the file, the glm14-2
+         * vocabulary — never a fatal, and never a clean verdict over
+         * bytes the scan could not tokenize. (The dense entry is ONE
+         * span, and the estimate is deliberately the WORST case, so
+         * ~1.9 MB x 98 ≈ 186 MB exceeds a 128M limit whole, not merely
+         * its headroom.)
+         *
+         * glm17-12: the bound this leg asserts is ENVIRONMENT-relative
+         * — the headroom is the parsed memory_limit minus live usage,
+         * so under memory_limit=-1 or a >=~190M limit the same bytes
+         * tokenize fine and the refusal never fires (driven red under
+         * both: the verdict baked to the runner's own limit). The test
+         * PINS its own ceiling — 128M, the default the finding drove —
+         * and restores the runner's limit on every exit (an empty
+         * original spelling restores as -1, the canonical unbounded).
          */
-        $dense = '<?php ' . str_repeat('$x=$x+$x;$y[]=$x;', 118000);
-        $this->assertGreaterThan(1800000, strlen($dense), 'staging: the dense entry must be the ~1.9 MB driven shape.');
-        $this->assertLessThan(2 * 1024 * 1024, strlen($dense), 'staging: the dense entry stays UNDER the walk cap — the bound this leg drives is the token pass, never the 2 MB size screen.');
+        $runner_limit = (string) ini_get('memory_limit');
+        $this->assertNotFalse(ini_set('memory_limit', '128M'), 'The memory ceiling must be pinnable at runtime — the bound this leg asserts derives from it.');
+        try {
+            $dense = '<?php ' . str_repeat('$x=$x+$x;$y[]=$x;', 118000);
+            $this->assertGreaterThan(1800000, strlen($dense), 'staging: the dense entry must be the ~1.9 MB driven shape.');
+            $this->assertLessThan(2 * 1024 * 1024, strlen($dense), 'staging: the dense entry stays UNDER the walk cap — the bound this leg drives is the token pass, never the 2 MB size screen.');
 
-        $findings = wp_connectors_scan_string($dense, 'dense.php');
-        $this->assertSame(
-            array( 'dense.php: over the secret-scan token-memory bound — the secret scan cannot run' ),
-            $findings,
-            'The over-capacity token pass answers a refusal, never a fatal (red at HEAD: memory exhaustion, no verdict).'
-        );
+            $findings = wp_connectors_scan_string($dense, 'dense.php');
+            $this->assertSame(
+                array( 'dense.php: over the secret-scan token-memory bound — the secret scan cannot run' ),
+                $findings,
+                'The over-capacity token pass answers a refusal, never a fatal (red at HEAD: memory exhaustion, no verdict).'
+            );
 
-        // Normal files are unchanged: the bound never trips for them.
-        $this->assertSame(array(), wp_connectors_scan_string("<?php \$ok = 1; // secrets:allow\n", 'ok.php'));
+            // Normal files are unchanged: the bound never trips for them.
+            $this->assertSame(array(), wp_connectors_scan_string("<?php \$ok = 1; // secrets:allow\n", 'ok.php'));
+        } finally {
+            ini_set('memory_limit', '' === $runner_limit ? '-1' : $runner_limit);
+        }
     }
 
     public function testASumOfDenseSpansAnswersTheRefusalNeverTheFatal()
