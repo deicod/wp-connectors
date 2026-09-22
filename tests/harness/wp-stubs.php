@@ -680,7 +680,6 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
     WpHarness::$cron[ $hook ][] = array(
         'timestamp' => (int) $timestamp,
         'args' => $args,
-        'id' => $hook . '-' . count(WpHarness::$cron[ $hook ] ?? array()) . '-' . wp_connectors_harness_uid(),
     );
 
     return true;
@@ -721,7 +720,6 @@ function wp_schedule_event($timestamp, $recurrence, $hook, $args = array())
         'timestamp' => (int) $timestamp,
         'args' => $args,
         'interval' => $interval,
-        'id' => $hook . '-' . count(WpHarness::$cron[ $hook ] ?? array()) . '-' . wp_connectors_harness_uid(),
     );
 
     return true;
@@ -819,13 +817,6 @@ if (! defined('MINUTE_IN_SECONDS')) {
 }
 if (! defined('WEEK_IN_SECONDS')) {
     define('WEEK_IN_SECONDS', 604800);
-}
-
-function wp_connectors_harness_uid()
-{
-    static $counter = 0;
-
-    return 'e' . (++$counter);
 }
 
 /*

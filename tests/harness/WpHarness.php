@@ -470,16 +470,30 @@ final class WpHarness
             /*
              * glm16-8: the member fires UNCONDITIONALLY once
              * snapshotted — the live list is only the registry's own
-             * bookkeeping (glm14-7's index-drift lesson: re-locate the
-             * snapshot entry by its id, core's keyed-array identity, to
-             * REMOVE the fired row). A handler that already
-             * unscheduled the member left nothing to remove, and the
-             * fire still happens: core's wp_cron() never consults the
-             * live registry for permission.
+             * bookkeeping, consulted to REMOVE the fired row. A
+             * handler that already unscheduled the member left
+             * nothing to remove, and the fire still happens: core's
+             * wp_cron() never consults the live registry for
+             * permission.
+             *
+             * glm17-10: the re-location rides the CORE KEY — the
+             * member's own (timestamp, args digest) — never a
+             * synthetic per-entry id. Core's cron array IS keyed
+             * ([ts][hook][md5(args)]) and its wp-cron.php unschedules
+             * by that key, so a handler's unschedule-then-re-add of
+             * the IDENTICAL-KEY event writes the same key back and
+             * the walk's own removal consumes the re-added row: one
+             * fire across passes. The by-id spelling read 'absent'
+             * for the re-added twin (a fresh id under the same key)
+             * and left it standing — the walk fired the snapshot
+             * member AND the twin on the next pass (driven: the
+             * double fire). The synthetic id field is deleted with
+             * the spelling.
              */
+            $args_key = wp_connectors_cron_args_key($args);
             $live_index = false;
             foreach (self::$cron[ $hook ] ?? array() as $index => $live) {
-                if ($live['id'] === $event['id']) {
+                if ($live['timestamp'] === $event['timestamp'] && wp_connectors_cron_args_key($live['args']) === $args_key) {
                     $live_index = $index;
                     break;
                 }

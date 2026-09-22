@@ -1225,6 +1225,46 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1700003600, wp_next_scheduled('glm17_recur'), 'The mid-walk-cancelled recurring member RESCHEDULED from the captured copy — the cancellation stopped the fire-target row, never the recurrence (red at HEAD: false, the re-arm gated on the failed re-location).');
     }
 
+    public function testAnUnscheduleThenReAddOfTheIdenticalKeyEventFiresOnce()
+    {
+        /*
+         * glm17-10: the walk's removal rode a synthetic per-entry id —
+         * a handler's unschedule-then-re-add of the IDENTICAL-KEY
+         * event (same timestamp, same args) wrote the key back under a
+         * FRESH id, the by-id re-location read 'absent', nothing was
+         * removed, and the re-added twin fired AGAIN on the next pass
+         * (driven red at HEAD: the double fire). Core's cron array is
+         * keyed [ts][hook][md5(args)] and wp-cron.php unschedules BY
+         * THAT KEY, so the walk's own removal consumes the re-added
+         * row — one fire across passes, the synthetic id deleted with
+         * the spelling.
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm17_readd', static function () use (&$fires) {
+            ++$fires;
+        });
+        add_action('glm17_readd_actor', static function () {
+            // Fires first (earlier due): removes the victim and
+            // re-adds the IDENTICAL-KEY event.
+            wp_unschedule_event(1700000000, 'glm17_readd');
+            wp_schedule_single_event(1700000000, 'glm17_readd');
+        });
+        wp_schedule_single_event(1700000000 - 60, 'glm17_readd_actor');
+        wp_schedule_single_event(1700000000, 'glm17_readd');
+
+        $this->assertSame(2, WpHarness::runDueEvents(), 'Both snapshot members fire — the actor and the victim (the fire rides the snapshot, glm16-8).');
+        $this->assertSame(1, $fires, 'The victim fired once in THIS pass.');
+
+        // The re-added twin was CONSUMED by the walk's key removal —
+        // the next pass has nothing left to fire (red at HEAD: the
+        // twin survived under its fresh id and fired again).
+        $this->assertSame(array(), wp_get_scheduled_events('glm17_readd'), 'The re-added identical-key row was consumed by the walk\'s own keyed removal (red at HEAD: the twin standing).');
+        $this->assertSame(0, WpHarness::runDueEvents(), 'The next pass fires nothing (red at HEAD: 1, the twin).');
+        $this->assertSame(1, $fires, 'ONE fire across both passes (red at HEAD: 2, the double fire).');
+    }
+
     public function testEqualValuedObjectArgsAreOneCronEventCoreDigest()
     {
         /*
