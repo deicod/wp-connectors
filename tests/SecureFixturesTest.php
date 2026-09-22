@@ -557,6 +557,44 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     }
 
     /**
+     * Runs one scanner-library child script and answers its report —
+     * the ONE spawn owner (glm20-5, hoisted at its FOURTH consumer,
+     * the repo's own recorded threshold: the fresh-process leg, the
+     * 23k-pair whale, the multi-span bound leg, and the INI-pinned
+     * lexing pair — four inline realpath+assertNotFalse-plus-exec
+     * stanzas already drifting, the '";\n"' concat against the sprintf
+     * bind and the -d flags scattered per site).
+     *
+     * The owner carries the t31-ocr25-8 doctrine for every consumer:
+     * the library path is asserted resolved BEFORE the embed — a
+     * realpath() false (a broken checkout, an open_basedir wall) is an
+     * environment problem, never the defect the child would otherwise
+     * fatal as — and the script sprintf-binds the path at its
+     * `require %s;` (never a concat), the caller's INI flags riding
+     * the child's -d options, the output lines collapsed into one
+     * report beside the exit code.
+     *
+     * @param string       $script    PHP code carrying one `require %s;` placeholder for the library path.
+     * @param list<string> $ini_flags INI spellings for the child (e.g. 'memory_limit=1G'); already-shell-safe literals from this file.
+     * @return array{report: string, exit: int} The child's merged stdout/stderr and its exit code.
+     */
+    private function spawnScannerChild(string $script, array $ini_flags = array()): array
+    {
+        $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
+        $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the spawned-engine leg runs — a realpath() false (a broken checkout, an open_basedir wall) is an environment problem, never the defect the child would otherwise carry.');
+        $command = escapeshellarg(PHP_BINARY);
+        foreach ($ini_flags as $flag) {
+            $command .= ' -d ' . $flag;
+        }
+        $command .= ' -r ' . escapeshellarg(sprintf($script, var_export($scannerLibrary, true)));
+        $output = array();
+        $exit = 1;
+        exec($command . ' 2>&1', $output, $exit);
+
+        return array( 'report' => implode("\n", $output), 'exit' => $exit );
+    }
+
+    /**
      * OCR-round-3 pin (t31-ocr3-5): the scanner library is
      * self-contained on its own load path. The prune's fold mechanic
      * (wp_connectors_segment_is_named()) lives in the vocabulary owner
@@ -593,24 +631,20 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             $this->assertNotFalse(file_put_contents($tempDir . '/VENDOR/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$tempDir}/VENDOR/leak.conf must write — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
             $this->assertNotFalse(file_put_contents($tempDir . '/plain/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$tempDir}/plain/leak.conf must write — a staging failure fails as staging, never as the maker verdict (the t31-ocr53-6 sweep).");
             /*
-             * The library path is asserted resolved BEFORE the embed (OCR
-             * round 25, t31-ocr25-8): realpath() answering false (a broken
-             * checkout, an open_basedir wall) used to embed `require
-             * false;` straight into the child script — the child's fatal
-             * then read as the SCANNER's self-containment defect (the
-             * very thing this pin exists to vouch for), never the
-             * environment problem it was. The assertion names its own
-             * subject; the failure channel is the environment's.
+             * The library-path assert and the exec stanza ride the ONE
+             * spawn owner (glm20-5) — its t31-ocr25-8 doctrine carrying
+             * this leg's own subject: the path asserted resolved BEFORE
+             * the embed, so a realpath() false never read as the
+             * SCANNER's self-containment defect this pin exists to
+             * vouch for (an environment failure stays the
+             * environment's).
              */
-            $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
-            $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the fresh-process leg runs — a realpath() false (a broken checkout, an open_basedir wall) is an environment problem, never the scanner self-containment defect the child would otherwise fatal as.');
-            $script = 'require ' . var_export($scannerLibrary, true) . ';'
+            $script = 'require %s;'
                 . ' foreach (wp_connectors_scan_paths(array(' . var_export($tempDir, true) . ')) as $finding) { echo $finding, "\n"; }';
-            $output = array();
-            $exit = 1;
-            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+            $spawned = $this->spawnScannerChild($script);
 
-            $report = implode("\n", $output);
+            $report = $spawned['report'];
+            $exit = $spawned['exit'];
             $this->assertSame(0, $exit, "A fresh process requiring ONLY the scanner library must scan, never fatal mid-walk: {$report}");
             $this->assertStringContainsString('plain' . DIRECTORY_SEPARATOR . 'leak.conf', $report, 'The fresh-process scan finds the live-looking key outside the pruned segments.');
             $this->assertStringContainsString('zai-key', $report);
@@ -1185,9 +1219,9 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the spawned-engine leg cannot run (the 23k-pair scan rides a child process).');
         }
 
-        $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
-        $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the spawned-engine leg runs — a realpath() false is an environment problem, never the linear-walk defect the child would otherwise carry.');
-        $script = 'require ' . var_export($scannerLibrary, true) . ";\n" . <<<'CHILD'
+        // The exec stanza rides the ONE spawn owner (glm20-5), its 1G
+        // ceiling the whale's own INI flag.
+        $script = 'require %s;' . "\n" . <<<'CHILD'
 $key = 'sk-ant-api3-' . str_repeat('q', 30);
 $pair = "<?php \$i = 1; ?> prose {$key} between the pairs <?php \$j = 2; ?>\n";
 $payload = str_repeat($pair, 23000);
@@ -1198,12 +1232,11 @@ echo 'count=', count($findings), "\n";
 echo 'first=', $findings[0], "\n";
 echo 'mid=', $findings[11499], "\n";
 echo 'last=', $findings[22999], "\n";
-echo 'elapsed=', sprintf('%.3f', $elapsed), "\n";
+echo 'elapsed=', sprintf('%%.3f', $elapsed), "\n";
 CHILD;
-        $output = array();
-        $exit = 1;
-        exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=1G -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
-        $report = implode("\n", $output);
+        $spawned = $this->spawnScannerChild($script, array( 'memory_limit=1G' ));
+        $report = $spawned['report'];
+        $exit = $spawned['exit'];
 
         $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
         $this->assertSame(0, $exit, "The 23k-pair scan answers verdicts in the spawned engine, never a fatal: {$report}");
@@ -1261,8 +1294,8 @@ CHILD;
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the memory-bound leg cannot run (the fatal class rides a spawned engine).');
         }
 
-        $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
-        $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the spawned-engine leg runs — a realpath() false is an environment problem, never the bound defect the child would otherwise fatal as.');
+        // The exec stanza rides the ONE spawn owner (glm20-5), the
+        // bound leg's own 128M ceiling its INI flag.
         $script = <<<'CHILD'
 require %s;
 $span = '<?php ' . str_repeat('$x=$x+$x;$y[]=$x;', 6200) . '?>';
@@ -1272,10 +1305,9 @@ foreach (wp_connectors_scan_string($payload, 'multi.php') as $finding) {
     echo $finding, "\n";
 }
 CHILD;
-        $output = array();
-        $exit = 1;
-        exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=128M -r ' . escapeshellarg(sprintf($script, var_export($scannerLibrary, true))) . ' 2>&1', $output, $exit);
-        $report = implode("\n", $output);
+        $spawned = $this->spawnScannerChild($script, array( 'memory_limit=128M' ));
+        $report = $spawned['report'];
+        $exit = $spawned['exit'];
 
         $this->assertSame(0, $exit, "The 24-span dense payload answers the LOUD refusal, never a fatal (red at HEAD: the spawned engine died at the memory limit with no verdict): {$report}");
         $this->assertStringContainsString('multi.php: over the secret-scan token-memory bound — the secret scan cannot run', $report, 'The refusal names the file in the glm14-2 vocabulary.');
@@ -1502,8 +1534,8 @@ CHILD;
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the INI-pinned lexing legs cannot run (both legs ride a spawned engine).');
         }
 
-        $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
-        $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the spawned-engine legs run — a realpath() false is an environment problem, never the census defect the child would otherwise refuse as.');
+        // Both INI-pinned legs ride the ONE spawn owner (glm20-5), the
+        // pinned spelling each call's own INI flag.
         $script = <<<'CHILD'
 require %s;
 $pi = '<?xml-stylesheet type="text/xsl" href="../../style/long/path/sheetnumber7.xsl"?>';
@@ -1518,22 +1550,17 @@ foreach (wp_connectors_scan_string($dense, 'dense.php') as $finding) {
     echo $finding, "\n";
 }
 CHILD;
-        $command = escapeshellarg(PHP_BINARY) . ' -d memory_limit=128M -d short_open_tag=%d -r ' . escapeshellarg(sprintf($script, var_export($scannerLibrary, true)));
 
-        $output = array();
-        $exit = 1;
-        exec(sprintf($command, 0) . ' 2>&1', $output, $exit);
-        $default_ini = implode("\n", $output);
-        $this->assertSame(0, $exit, "Under the production-default short_open_tag=0 the whole payload answers verdicts, never a fatal: {$default_ini}");
+        $default = $this->spawnScannerChild($script, array( 'memory_limit=128M', 'short_open_tag=0' ));
+        $default_ini = $default['report'];
+        $this->assertSame(0, $default['exit'], "Under the production-default short_open_tag=0 the whole payload answers verdicts, never a fatal: {$default_ini}");
         $this->assertStringContainsString('pi-bytes=1840018', $default_ini, 'staging: the PI document must be the 1.84 MB driven shape.');
         $this->assertStringNotContainsString('pi.php:', $default_ini, 'PIs the engine lexes inline never charge the census (red at HEAD: the loud token-memory refusal).');
         $this->assertStringContainsString('dense.php: over the secret-scan token-memory bound — the secret scan cannot run', $default_ini, 'Real <?php spans still charge the census under the same INI — the probe-aware walk refuses exactly what would fatal.');
 
-        $output = array();
-        $exit = 1;
-        exec(sprintf($command, 1) . ' 2>&1', $output, $exit);
-        $short_ini = implode("\n", $output);
-        $this->assertSame(0, $exit, "Under short_open_tag=1 the payload answers the refusal as a verdict, never a fatal: {$short_ini}");
+        $short = $this->spawnScannerChild($script, array( 'memory_limit=128M', 'short_open_tag=1' ));
+        $short_ini = $short['report'];
+        $this->assertSame(0, $short['exit'], "Under short_open_tag=1 the payload answers the refusal as a verdict, never a fatal: {$short_ini}");
         $this->assertStringContainsString('pi.php: over the secret-scan token-memory bound — the secret scan cannot run', $short_ini, 'The same PI bytes ARE spans an INI that opens the short spelling — the honest refusal stands.');
     }
 
