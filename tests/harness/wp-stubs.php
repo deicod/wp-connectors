@@ -527,11 +527,25 @@ function delete_option($option)
 
         return false;
     }
+    /*
+     * glm26-4: core's own hook family (option.php:1227/:1264/:1273,
+     * pinned 7.1.1) — the generic 'delete_option' action fires BEFORE
+     * the delete (the row still present to the observer), and the
+     * keyed 'delete_option_{$option}' + closing 'deleted_option'
+     * pair fires AFTER a SUCCESSFUL delete alone, each at its own
+     * single $option arity; a missing row fires NONE (core's row
+     * check returns before the pre-hook). The seat modeled zero hook
+     * seats — newly load-bearing because glm25-6 routes every
+     * transient deletion through this seat as core's own delegation.
+     */
+    do_action('delete_option', $option);
     if (false !== $transient) {
         unset(WpHarness::$transients[ $transient ]);
     }
     unset(WpHarness::$options[ $option ], WpHarness::$option_autoload[ $option ]);
     WpHarness::$delete_option_attempts[] = $option;
+    do_action("delete_option_{$option}", $option);
+    do_action('deleted_option', $option);
 
     return true;
 }

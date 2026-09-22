@@ -1057,6 +1057,47 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm26-4: delete_option() rides core's own hook family
+     * (option.php:1227/:1264/:1273, pinned 7.1.1): the generic
+     * 'delete_option' action fires BEFORE the delete (the row still
+     * present to the observer), the keyed 'delete_option_{$option}'
+     * and closing 'deleted_option' fire AFTER a SUCCESSFUL delete
+     * alone, each at its own single $option arity — and a MISSING row
+     * fires NONE (core's row check returns before the pre-hook). The
+     * seat modeled zero hook seats; the family is newly load-bearing
+     * because glm25-6 routes every transient deletion through this
+     * seat as core's own delegation (driven red at HEAD: zero hooks
+     * over a live delete).
+     */
+    public function testDeleteOptionRidesCoresHookFamily()
+    {
+        $order = array();
+        $observe = static function (...$args) use (&$order) {
+            $order[] = $args;
+        };
+        add_action('delete_option', $observe, 10, 1);
+        add_action('delete_option_glm26_dopt', $observe, 10, 1);
+        add_action('deleted_option', $observe, 10, 1);
+        $seen_at_pre = null;
+        add_action('delete_option', static function () use (&$seen_at_pre) {
+            $seen_at_pre = get_option('glm26_dopt');
+        });
+
+        $this->assertTrue(add_option('glm26_dopt', 'x'), 'staging: the row saves.');
+        $this->assertTrue(delete_option('glm26_dopt'), 'The live row deletes.');
+        $this->assertSame(
+            array( array( 'glm26_dopt' ), array( 'glm26_dopt' ), array( 'glm26_dopt' ) ),
+            $order,
+            'The three hooks fire in core\'s order — the generic pre-hook, the keyed success action, the closing action — each at its own single-arg arity (red at HEAD: zero hooks).'
+        );
+        $this->assertSame('x', $seen_at_pre, 'The pre-hook observes the row STILL PRESENT — core fires it before the DELETE itself.');
+
+        $order = array();
+        $this->assertFalse(delete_option('glm26_dopt'), 'The missing row answers false.');
+        $this->assertSame(array(), $order, 'A missing row fires NONE of the family — core\'s row check returns before the pre-hook.');
+    }
+
+    /**
      * glm25-1: TTL (re)arming survives the stored-false row's MISSING
      * read — glm24-4's keep-guard keyed on $own_entry alone, but a
      * stored-false row answers $existing FALSE (the get_option-shaped
