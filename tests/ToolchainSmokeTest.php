@@ -771,13 +771,24 @@ final class ToolchainSmokeTest extends TestCase
                 $this->markTestSkipped('This process creates children under a read-only parent (root-shaped) — the refused-mkdir shape cannot be driven here.');
             }
 
+            /*
+             * glm26-5: collect inside, assert OUTSIDE (the t31-ocr8-1
+             * doctrine — my bug in glm25-4): fail() inside the try was
+             * swallowed by the catch (\RuntimeException) itself,
+             * AssertionFailedError being a RuntimeException subclass,
+             * so a normally-returning stageLintRoots() reded at the
+             * class assertion with the misleading warning-family
+             * message instead of the never-returned verdict.
+             */
+            $refusal = null;
             try {
                 WpHarness::stageLintRoots($scratch);
-                $this->fail('A refused declared-root mkdir must answer the staging RuntimeException, never return normally.');
-            } catch (\RuntimeException $refusal) {
-                $this->assertSame(\RuntimeException::class, get_class($refusal), 'The refusal answers the harness\'s OWN named exception — never the engine\'s converted mkdir warning wearing the RuntimeException family (red at HEAD: the warning class escaped first).');
-                $this->assertStringContainsString('staging: the declared root ' . $scratch . '/connectors', $refusal->getMessage(), 'The staging failure names the refused root — an environment problem named before any child spawns, never the gate\'s verdict wearing it.');
+            } catch (\RuntimeException $caught) {
+                $refusal = $caught;
             }
+            $this->assertNotNull($refusal, 'A refused declared-root mkdir must answer the staging RuntimeException, never return normally (glm26-5: the swallowed fail-inside-try answered the wrong message for exactly this shape).');
+            $this->assertSame(\RuntimeException::class, get_class($refusal), 'The refusal answers the harness\'s OWN named exception — never the engine\'s converted mkdir warning wearing the RuntimeException family (red at HEAD: the warning class escaped first).');
+            $this->assertStringContainsString('staging: the declared root ' . $scratch . '/connectors', $refusal->getMessage(), 'The staging failure names the refused root — an environment problem named before any child spawns, never the gate\'s verdict wearing it.');
         } finally {
             @chmod($scratch, 0755);
             WpHarness::releaseScratch($scratch);
