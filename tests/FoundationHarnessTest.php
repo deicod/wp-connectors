@@ -1060,6 +1060,29 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertCount(2, wp_get_scheduled_events('glm17_far'));
     }
 
+    public function testNonPositiveTimestampsRefuseAtBothScheduleEntryPoints()
+    {
+        /*
+         * glm18-6: wp_schedule_event() lacked the head guard
+         * glm17-14 pinned at the single entry point — core answers the
+         * SAME 'Make sure timestamp is a positive integer' false at
+         * BOTH heads (cron.php:48-60 and :252-263, pinned 7.1.1),
+         * before anything is keyed. The stub queued a RECURRING event
+         * at ts 0 or below: a due-now row that fired and re-armed
+         * forever (driven) where core never keys the event at all.
+         */
+        $this->freezeTime(1700000000);
+
+        $this->assertFalse(wp_schedule_event(0, 'hourly', 'glm18_neg'), 'ts=0 recurring refuses, core\'s own head guard (red at HEAD: queued, true).');
+        $this->assertFalse(wp_schedule_event(-1, 'hourly', 'glm18_neg'), 'ts=-1 recurring refuses likewise (red at HEAD: queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm18_neg'), 'Nothing lands in the queue for either spelling (red at HEAD: two due-now rows).');
+        $this->assertSame(0, WpHarness::runDueEvents(), 'No due pass fires anything.');
+
+        // The single entry point keeps glm17-14's refusal.
+        $this->assertFalse(wp_schedule_single_event(0, 'glm18_neg_single'));
+        $this->assertFalse(wp_schedule_single_event(-1, 'glm18_neg_single'));
+    }
+
     public function testCollidedReschedulesReplaceKeyedNeverAppend()
     {
         /*

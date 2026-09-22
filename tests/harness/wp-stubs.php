@@ -696,6 +696,18 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
 
 function wp_schedule_event($timestamp, $recurrence, $hook, $args = array())
 {
+    /*
+     * glm18-6: core's own head guard (cron.php:252-263, pinned 7.1.1)
+     * — the same 'Make sure timestamp is a positive integer' refusal
+     * glm17-14 pinned at the single entry point, judged on the RAW
+     * value (is_numeric + > 0, exactly core's spelling, never a
+     * pre-cast). The stub queued a recurring event at timestamp 0 or
+     * below — a due-now row that fired and re-armed forever while
+     * claiming a recurrence core refuses to key at all (driven).
+     */
+    if (! is_numeric($timestamp) || $timestamp <= 0) {
+        return false;
+    }
     $intervals = wp_get_schedules();
     /*
      * glm15-9: an unknown recurrence REFUSES (false), core's own
