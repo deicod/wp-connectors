@@ -1220,6 +1220,26 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(array(), $fired, 'No hook fires for the unchanged re-save.');
     }
 
+    public function testNonFiniteTimestampsRefuseAtTheScheduleGuard()
+    {
+        /*
+         * glm19-7: INF and NAN pass the raw-value guard — is_numeric
+         * answers true for both, neither compares <= 0 — and the
+         * harness queued zombies: the raw INF NEVER FIRED (INF > now
+         * forever) while core's key truncation lands the row at key
+         * 0, firing every pass, never the claimed time (driven at
+         * HEAD: queued). No honest schedule exists for either — the
+         * guard refuses non-finite values.
+         */
+        $this->freezeTime(1700000000);
+
+        $this->assertFalse(wp_schedule_single_event(INF, 'glm19_inf'), 'INF refuses — no honest schedule exists (red at HEAD: queued, a never-firing zombie).');
+        $this->assertFalse(wp_schedule_single_event(NAN, 'glm19_nan'), 'NAN refuses likewise (red at HEAD: queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm19_inf'), 'Nothing lands for either spelling.');
+        $this->assertSame(array(), wp_get_scheduled_events('glm19_nan'), 'Nothing lands for NAN either.');
+        $this->assertSame(0, WpHarness::runDueEvents(), 'No due pass fires anything.');
+    }
+
     public function testTheSingleHeadGuardJudgesTheRawValueNeverAPreCast()
     {
         /*

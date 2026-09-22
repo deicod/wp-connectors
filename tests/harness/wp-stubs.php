@@ -718,9 +718,20 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
      * value stays numeric downstream — core keys the row on the raw
      * timestamp, never an int-folded twin). The normalization '+= 0'
      * lands AFTER the guard: numeric spellings fold to their numeric
-     * value ('60' the int 60), the fractional ones keep their fraction.
+     * value ('60' the int 60), the fractional ones keep their
+     * fraction (CORRECTED at glm19-6: the row itself rides the
+     * int-truncated key — core's $crons[ts] shape).
+     *
+     * glm19-7: INF and NAN pass the raw-value guard — is_numeric
+     * answers true for both and neither compares <= 0 — where no
+     * honest schedule exists: the stub queued the raw INF as a
+     * NEVER-FIRING zombie (INF > now forever) while core's key
+     * truncation collapses it onto key 0, firing every pass, never
+     * the claimed time. The guard refuses NON-FINITE values
+     * (is_finite on the numeric value — zombies never queue, never
+     * fire-by-truncation-accident).
      */
-    if (! is_numeric($timestamp) || $timestamp <= 0) {
+    if (! is_numeric($timestamp) || $timestamp <= 0 || ! is_finite((float) $timestamp)) {
         return false;
     }
     $timestamp += 0;
