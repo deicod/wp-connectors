@@ -251,7 +251,22 @@ function update_option($option, $value, $autoload = null)
      */
     $value = sanitize_option($option, $value);
     $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
-    if ($old === $value) {
+    /*
+     * glm17-8: core's unchanged compare carries TWO arms (option.php:923,
+     * pinned 7.1.1, pre-verified): the identity compare, then
+     * maybe_serialize() equality — 'if the unserialized data differs,
+     * the (maybe) serialized data is checked to avoid unnecessary
+     * database calls for otherwise identical object instances' (core's
+     * own comment, ticket #38903). Two equal-VALUED but non-identical
+     * arrays/objects are UNCHANGED to core: no write, no hooks, no
+     * autoload flip. The stub rode the identity arm alone — the exact
+     * identity-vs-value class glm16-12 eradicated from the cron key
+     * 350 lines above, reopened on the option path (driven: an
+     * equal-valued ArrayObject save wrote and fired the update
+     * family).
+     */
+    if ($old === $value
+        || ((is_array($value) || is_object($value)) && serialize($value) === serialize($old))) {
         return false;
     }
 

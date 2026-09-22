@@ -146,6 +146,37 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
 
+    public function testUnchangedValuesCompareOverSerializedEqualityCoreArm()
+    {
+        /*
+         * glm17-8: core's unchanged compare is identity OR
+         * maybe_serialize() equality (option.php:923, pinned 7.1.1) —
+         * two equal-VALUED but non-identical arrays/objects are
+         * UNCHANGED: no write, no hooks, no autoload flip (ticket
+         * #38903's own class). The stub rode identity alone (driven
+         * red at HEAD: an equal-valued ArrayObject save wrote the
+         * second instance and fired the update family).
+         */
+        $make = static function () {
+            return new ArrayObject(array( 'k' => 'v' ));
+        };
+        $first = $make();
+        $this->assertTrue(update_option('glm17_obj_opt', $first));
+        $this->assertSame(0, did_action('update_option_glm17_obj_opt'), 'staging: the first save rode the add family, never the update one.');
+
+        $second = $make();
+        $this->assertNotSame($first, $second, 'staging: the pair must be two distinct instances — the serialized-equality arm this leg drives.');
+
+        $this->assertFalse(update_option('glm17_obj_opt', $second), 'An equal-valued non-identical object answers UNCHANGED, core\'s maybe_serialize arm (red at HEAD: true, the write completed).');
+        $this->assertSame(0, did_action('update_option_glm17_obj_opt'), 'No update hooks fired over the unchanged value (red at HEAD: the specific hook fired).');
+        $this->assertSame(0, did_action('updated_option'), 'The closing hook stayed silent too.');
+        $this->assertSame($first, get_option('glm17_obj_opt'), 'Nothing wrote — the stored INSTANCE is still the first one (red at HEAD: the second instance stored).');
+
+        // The control: a genuinely different value still updates.
+        $this->assertTrue(update_option('glm17_obj_opt', array( 'k' => 'changed' )));
+        $this->assertSame(array( 'k' => 'changed' ), get_option('glm17_obj_opt'));
+    }
+
     public function testUpdateOptionHookOrderAndArityMatchCore()
     {
         /*
