@@ -6,6 +6,114 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 24)
+
+Tenth claude-glm pass: 6 correctness findings (5 driven CONFIRMED,
+1 portability PLAUSIBLE) + 9 cleanup, the cleanup folded to six
+commits (two pairs combined). DRIVER ADJUDICATION: correctness
+#1-#6 all accepted; cleanup accepted except the isset/!empty pair
+(refuted on ledger grounds — pin-derived shapes govern, untouched
+and recorded). Twelve numbered commits t31-glm24-1..12, the full
+offline check green after every commit (one run carrying the
+recorded seed-dependent census-refusal blip, every re-run green
+at the settled counts), no push. The round's shape: the transient
+seat's own re-audit (seed-row TTL arming, the mirror's delete
+ownership, the stored-false disarm, the completion actions'
+raw-value contract); the marker grammar's markup-family
+enumeration completed (php/phtml/htm/xhtml); the raw-splice
+driver's portability gate; and the choreography folds — the
+mutation driver onto its spawn owner, the staged lint-roots loop,
+the lock/probe/restore probe choreography, the timeout arming's
+single derivation, the seeded-row save's doubled spellings, and
+the trailroot patch's structural anchor. Suite 1871 → 1875
+tests, 47978 → 47998 assertions, 3 skipped unchanged (every delta
+measured from output).
+
+- **The marker grammar's markup family carries php/phtml/htm/xhtml
+  (t31-glm24-1, bug:low; bin/lib/secret-scanner.php)** — the family
+  array named html/svg/xml/md alone, so a .php template's glued
+  `<!-- secrets:allow -->` flagged while the identical .html bytes
+  exempted, and .htm flagged while .html exempted; a .php template
+  IS a payload whose comment grammar includes HTML comments, the
+  family the payload's grammar — never a hand-list one spelling
+  short. Non-markup extensions keep refusing the glued form.
+- **set_transient() arms the timeout row over a seeded-only row
+  (t31-glm24-2, bug:low; tests/harness/wp-stubs.php)** — core
+  writes the timeout row BEFORE the value row's unchanged refusal
+  whichever row carried the old value; the refresh once guarded
+  on the transient store's own entry, so a seed re-saved with its
+  own value and a TTL answered false but armed nothing, the read
+  falling to false immediately over the standing seed.
+- **delete_transient() owns both stores (t31-glm24-3, bug:low;
+  tests/harness/wp-stubs.php)** — glm23-3's option-row mirror was
+  a second copy the seat's own delete never owned: post-delete
+  get_option() answered the value, the wpdb uninstall enumeration
+  still presented the row, and a re-save fired the UPDATE family
+  where core fires the ADD. The mirror (and its autoload half)
+  dies with the transient.
+- **A zero-expiration re-save never disarms a TTL-armed
+  stored-false row (t31-glm24-4, bug:low; tests/harness/
+  wp-stubs.php)** — the write's expires_at keep-guard keyed on
+  $existing (false for a stored-false value), so the re-save reset
+  the window to false and the row never died, violating glm23-1's
+  own invariant; the guard keys on the transient store's own row.
+- **The completion actions observe the pre-head value
+  (t31-glm24-5, bug:low; tests/harness/wp-stubs.php)** — core's
+  clone and sanitize live inside the delegated by-value twins and
+  never propagate back, so set_transient_<name>/set_transient hand
+  the observer the pre_set-filtered RAW value (the caller's own
+  object instance included); the seat's frame once reassigned
+  $value at both heads, the actions observing the sanitized clone.
+- **The raw-splice mutation driver gates on isPosixHost()
+  (t31-glm24-6, bug:low portability, PLAUSIBLE;
+  tests/SecureFixturesTest.php)** — the driver's single-quoted
+  splice is a POSIX-shell premise and its anchored needle pins
+  this build's INI mangle (the t31-ocr29-7 class glm23-12 closed
+  in the same file); the leg gates with a loud named skip and the
+  docblock names both premises. POSIX behavior unchanged.
+- **The raw-splice driver rides the spawn owner
+  (t31-glm24-7, test-hygiene:medium; tests/SecureFixturesTest.php)**
+  — the driver hand-copied the owner's whole plumbing (the
+  glm23-15 class one round later); the mutation is ONE raw-flags
+  parameter on the owner now, the command byte-identical by
+  construction, a later owner edit unable to strand a stale child.
+- **The staged declared-roots choreography rides ONE owner
+  (t31-glm24-8, test-hygiene:medium; tests/harness/WpHarness.php)**
+  — glm23-13 hoisted the root data but not the loop; the five
+  staged legs' hand-copied loops (is_dir skip, 0755 mkdir,
+  already-diverging messages) fold into
+  WpHarness::stageLintRoots(), a failed mkdir throwing the
+  staging message itself.
+- **The lock/probe/restore choreography rides the probe owner's
+  sibling (t31-glm24-9, test-hygiene:medium; tests/harness/
+  WpHarness.php)** — glm23-14 stopped one layer short: nine sites
+  hand-copied the chmod-0000 lock, the verdict, and the chmod-back
+  (the restore mode already diverging, 0777 vs 0755 — drift, never
+  deliberate). WpHarness::lockForDenialProbe() captures the
+  directory's own pre-state and restores it on the non-denied path
+  (the divergence closed by construction); a denied lock stays
+  locked (the leg's subject), the skip message staying at the site.
+- **The timeout arming reuses the head's own $expires_at
+  (t31-glm24-10, test-hygiene:low; tests/harness/wp-stubs.php)**
+  — the >0/<0 arms were spelled twice (two now() reads that could
+  straddle a tick on an unfrozen clock); one arm, the zero save
+  the derivation's own false.
+- **The seeded-row save's doubled spellings folded
+  (t31-glm24-11, test-hygiene:low; tests/harness/wp-stubs.php,
+  bin/lib/secret-scanner.php)** — one stored copy serves both
+  stores (the agreeing-stores doctrine's own shape, copy-on-write
+  safe), one array_key_exists where two spelled the same key, and
+  the marker pattern's two arms compose from one shared
+  line-comment opener fragment (byte-identical patterns, verified).
+- **The trailroot patch anchored structurally, the pin reusing the
+  loop's read (t31-glm24-12, test-hygiene:low;
+  tests/ToolchainSmokeTest.php, tests/BuildSeamPropertyTest.php)**
+  — the mutation target is the owner's own derivation
+  (`$base . '/connectors'`), never the 12-char substring any
+  future literal could collide with; the structural pin takes the
+  entry-loop's lint-php.php member instead of re-reading ~13 KB
+  fifteen lines later.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 23)
 
 Ninth claude-glm pass: 15 findings (13 CONFIRMED, 2 PLAUSIBLE
