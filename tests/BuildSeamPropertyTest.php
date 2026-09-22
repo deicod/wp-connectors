@@ -1648,18 +1648,49 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * ToolchainSmokeTest pattern): the walk covers the staged bin
          * alone (the two staged sources its own lint charge), the
          * same guard proof at ~0.1 s.
+         *
+         * glm22-10: the staged tree stages ALL FOUR declared roots —
+         * the leg once staged bin/ alone while the walk declares
+         * connectors/, shared/, bin/, tests/, and the walk SILENTLY
+         * skipped the three absent roots (the is_dir guard's
+         * continue): the leg blessed a walk proving less than it
+         * claimed, the exact silent-skip shape glm21-3 refused loudly
+         * at the scanner sibling, a FALSE GREEN (the guard proof must
+         * cover the tree the tool names). The three siblings ride as
+         * empty trees — walked, zero files, every declared root in
+         * the walk's charge — and the summary line is pinned whole:
+         * the two staged sources alone, no failures, no refusals.
          */
         $gpcLintScratch = sys_get_temp_dir() . '/wpct-gpc-lint-' . uniqid('', true);
         try {
             $this->assertTrue(mkdir($gpcLintScratch . '/bin/lib', 0755, true), "staging: {$gpcLintScratch}/bin/lib must create — a staging failure fails as staging, never as the GPC lint verdict.");
             $this->assertTrue(copy($resolvedEntryScripts['/../bin/lint-php.php'], $gpcLintScratch . '/bin/lint-php.php'), "staging: the lint tool must copy into {$gpcLintScratch}/bin — a staging failure fails as staging, never as the GPC lint verdict.");
             $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $gpcLintScratch . '/bin/lib/plugin-tools.php'), "staging: the tool library must copy into {$gpcLintScratch}/bin/lib — a staging failure fails as staging, never as the GPC lint verdict.");
+            foreach (array('connectors', 'shared', 'tests') as $gpcLintRoot) {
+                $this->assertTrue(mkdir($gpcLintScratch . '/' . $gpcLintRoot, 0755, true), "staging: the declared root {$gpcLintRoot} must create — the leg's tree names every root the walk declares (glm22-10), and a staging failure fails as staging, never as the GPC lint verdict.");
+            }
             exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($gpcLintScratch . '/bin/lint-php.php') . ' 2>&1', $gpcLintOutput, $gpcLintExit);
+
+            /*
+             * The driven half of glm22-10: the walk NAMES a declared
+             * root that names nothing — one staged root removed, the
+             * child re-run answers the counted refusal and the red
+             * exit (red at the pre-sweep walk: the silent skip, exit
+             * 0, no FAIL line — the false-green the staging above
+             * once blessed).
+             */
+            $this->assertTrue(rmdir($gpcLintScratch . '/shared'), "staging: the declared root shared must remove again — the driven missing-root leg's own re-stage, and a failed removal fails as staging, never as the refusal verdict.");
+            exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($gpcLintScratch . '/bin/lint-php.php') . ' 2>&1', $gpcMissingRootOutput, $gpcMissingRootExit);
         } finally {
             WpHarness::releaseScratch($gpcLintScratch);
         }
-        $this->assertSame(0, $gpcLintExit);
-        $this->assertStringContainsString('file(s) checked', implode("\n", $gpcLintOutput), 'The lint still runs its walk under GPC.');
+        $this->assertSame(0, $gpcLintExit, 'The fully-staged tree lints green under GPC — every declared root walked: ' . implode("\n", $gpcLintOutput));
+        $this->assertSame(1, preg_match('/^lint-php: 2 file\(s\) checked, 0 failure\(s\), 0 walk refusal\(s\)$/m', implode("\n", $gpcLintOutput)), 'The walk\'s own accounting answers over the tree it names — the two staged sources alone, every declared root walked (the full summary line, never a substring over it).');
+        $this->assertSame(1, $gpcMissingRootExit, 'A declared root that names nothing answers the RED exit (red at HEAD: exit 0, the silent skip) — the walk refuses to certify a tree it did not walk.');
+        $missingRootReport = implode("\n", $gpcMissingRootOutput);
+        $this->assertStringContainsString('declared root not found', $missingRootReport, 'The refusal names the missing-root class in the walk\'s own FAIL vocabulary.');
+        $this->assertStringContainsString($gpcLintScratch . '/bin/../shared', $missingRootReport, 'The refusal names the absent root itself — the walk\'s own spelling of it (bin/../shared, never the normalized path).');
+        $this->assertStringContainsString('1 walk refusal(s)', $missingRootReport, 'The refusal rides the summary count beside the still-green parse of the walked roots — the exit\'s red source named.');
 
         /*
          * OCR round 3 (t31-ocr3-8): scan-secrets.php rides the helper

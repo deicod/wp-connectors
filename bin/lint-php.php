@@ -61,6 +61,19 @@ if (wp_connectors_cli_entry(__FILE__)) {
     $walk_refusals = 0;
     foreach ($roots as $root) {
         if (!is_dir($root)) {
+            /*
+             * glm22-10 (the glm21-3 silent-skip class at the lint
+             * sibling): a declared root that names nothing was
+             * SILENTLY skipped — the walk said 'N file(s) checked'
+             * exit 0 over a tree 3 of whose 4 declared roots were
+             * absent, certifying coverage it did not walk (the exact
+             * shape the scanner sibling refuses loudly: a root that
+             * names nothing must never read clean). The refusal is a
+             * counted walk-refusal in the gate's own FAIL vocabulary
+             * — the summary and the exit both name the red's source.
+             */
+            fwrite(STDERR, "lint-php: FAIL {$root}: declared root not found — the lint walk refuses to certify a tree it did not walk.\n");
+            ++$walk_refusals;
             continue;
         }
         try {

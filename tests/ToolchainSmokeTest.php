@@ -210,6 +210,14 @@ final class ToolchainSmokeTest extends TestCase
              */
             $this->assertTrue(mkdir($scratch . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the lint verdict.');
             /*
+             * glm22-10: every declared root the walk names — the
+             * roots this leg does not drive ride as EMPTY trees (the
+             * walk's missing-root refusal, swept the same round, made
+             * the silent absence of a declared root a red).
+             */
+            $this->assertTrue(mkdir($scratch . '/shared', 0755, true), 'staging: the declared shared root must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/tests', 0755, true), 'staging: the declared tests root must create — a staging failure fails as staging, never as the lint verdict.');
+            /*
              * The staging READ asserts its own success (OCR round 29,
              * t31-ocr29-8, the t31-ocr27-9 doctrine's read twin): the
              * former bare (string) cast turned a failed read into ''
@@ -305,6 +313,9 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertTrue(mkdir($scratch . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php'), 'staging: the lint tool must copy — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php'), 'staging: the tool library must copy — a staging failure fails as staging, never as the lint verdict.');
+            // glm22-10: every declared root the walk names — shared/tests ride as empty trees here.
+            $this->assertTrue(mkdir($scratch . '/shared', 0755, true), 'staging: the declared shared root must create — a staging failure fails as staging, never as the lint verdict.');
+            $this->assertTrue(mkdir($scratch . '/tests', 0755, true), 'staging: the declared tests root must create — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(mkdir($scratch . '/connectors/demo', 0755, true), 'staging: the demo connector tree must create — a staging failure fails as staging, never as the lint verdict.');
             $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/good.php', "<?php\n// lintable connector source\n"), 'staging: the good connector source must write — a staging failure fails as staging, never as the lint verdict.');
             $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/real.php', "<?php\n// the linked source's own bytes\n"), 'staging: the linked source must write — a staging failure fails as staging, never as the lint verdict.');
@@ -481,6 +492,8 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertTrue(mkdir($scratch . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php'), 'staging: the lint tool must copy — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php'), 'staging: the tool library must copy — a staging failure fails as staging, never as the lint verdict.');
+            // glm22-10: the declared shared root rides as an empty tree here.
+            $this->assertTrue(mkdir($scratch . '/shared', 0755, true), 'staging: the declared shared root must create — a staging failure fails as staging, never as the lint verdict.');
             // Real sources: one under tests/ (the root lints), one under
             // connectors/, one under a NESTED tests-named tree (the
             // ocr8-7 coverage — the vocabulary ride skipped it); then
@@ -624,6 +637,8 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertTrue(mkdir($scratch . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(copy(__DIR__ . '/../bin/lint-php.php', $scratch . '/bin/lint-php.php'), 'staging: the lint tool must copy — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php'), 'staging: the tool library must copy — a staging failure fails as staging, never as the lint verdict.');
+            // glm22-10: the declared shared root rides as an empty tree here.
+            $this->assertTrue(mkdir($scratch . '/shared', 0755, true), 'staging: the declared shared root must create — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(mkdir($scratch . '/connectors/demo', 0755, true), 'staging: the demo connector tree must create — a staging failure fails as staging, never as the lint verdict.');
             $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/good.php', "<?php\n// lintable connector source\n"), 'staging: the connector source must write — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(mkdir($scratch . '/tests/unit', 0755, true), 'staging: the scratch tests tree must create — a staging failure fails as staging, never as the lint verdict.');
