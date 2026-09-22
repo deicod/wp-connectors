@@ -6,6 +6,88 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 25)
+
+Eleventh claude-glm pass: 1 confirmed regression + 4 small accepts +
+2 candidates (driver pre-verified BOTH against the local pinned
+7.1.1, option.php:1408-1438) + 5 ledger refutations standing + 1
+deferral (#12 ledgered as a post-M3 design option). DRIVER
+ADJUDICATION: #1 accepted (the reviewer's fix shape approved); #9,
+#6-partial, #11-partial, #10/#14 accepted; candidates #4/#5
+accepted — delete_transient fires delete_transient_<name> BEFORE,
+deleted_transient AFTER success only, returns false over a missing
+row; the mirror closes both directions. Eight numbered commits
+t31-glm25-1..8, the full offline check green after every commit
+(two runs carrying the recorded seed-dependent census-refusal
+blip, every re-run green at the settled counts), no push. The
+round's shape: glm24-4's own keep-guard regression closed at the
+stored-false arming seat; the mid-method skip's folded verdicts
+restored; two documented contracts made live under the
+warning-to-exception regime; and the delete pair riding core's own
+shape with the mirror's ownership symmetry completed. Suite
+1875 → 1882 tests, 47998 → 48049 assertions, 3 skipped unchanged
+(every delta measured from output).
+
+- **TTL (re)arming survives the stored-false row's missing read
+  (t31-glm25-1, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — glm24-4's keep-guard keyed on
+  the transient store's own row alone, but a stored-false row reads
+  missing to the add-vs-update predicate, so the arming block never
+  ran over it and the write was its ONLY expiry seat: keeping the
+  standing expires_at disarmed every TTL-bearing re-save
+  (set('k', false) then set('k', false, 100) never expired;
+  set('f', false, 100) then set('f', false, 300) died at the stale
+  first window). The standing timeout is kept ONLY over a
+  zero-expiration save; an expiration-bearing save takes the head's
+  own derivation whichever row shape carries it.
+- **The raw-splice driver sits in its own top-gated method
+  (t31-glm25-2, test-hygiene:medium; tests/SecureFixturesTest.php)**
+  — the isPosixHost() skip sat one leg deep, so on a non-POSIX host
+  it folded the escaped-flag leg's already-run verdicts (its own
+  gate is the spawn capability alone) and the unquoted-cut twin
+  never ran; the driver carries both gates at the top now, each
+  method's verdicts independent, POSIX behavior unchanged.
+- **A failed lock chmod answers the denial probe honestly
+  (t31-glm25-3, bug:low; tests/harness/WpHarness.php,
+  tests/HarnessDenialProbeTest.php)** — under the suite's
+  warning-to-exception regime an unsuppressed chmod() that fails
+  threw before the probe logic ran, so the documented contract (the
+  skip fires) never lived; both the lock and the paired restore
+  ride the @-suppressed spelling, the refusal driven over a
+  chmod-refused stat-able target.
+- **A refused declared-root mkdir answers the named staging
+  exception (t31-glm25-4, bug:low; tests/harness/WpHarness.php,
+  tests/ToolchainSmokeTest.php)** — mkdir's E_WARNING escaped first
+  as a converted exception (itself a RuntimeException subclass,
+  never the harness's own named class), leaving the documented
+  staging RuntimeException unreachable; the mkdir rides the
+  @-suppressed spelling and the refusal is driven over a read-only
+  base.
+- **The probe's pre-state mask widens to 07777, the dead 0755
+  fallback dropped (t31-glm25-5, tests/harness/WpHarness.php)** —
+  the docblock promises the probed shape's OWN pre-state, and the
+  setgid/setsticky family above 0777 is part of it on the hosts
+  that carry them; the fallback's false arm was dead besides
+  (fileperms' own warning fires first under the regime). Verdicts
+  unchanged on this host; a structural pin holds the spelling.
+- **delete_transient() rides core's own hook shape
+  (t31-glm25-6, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — core (option.php:1408-1438,
+  pinned 7.1.1) fires delete_transient_<name> BEFORE the delete
+  (unconditionally), deleted_transient AFTER a SUCCESSFUL delete
+  alone (`if ($result)`), and returns the delete's own false over a
+  missing row; the seat had modeled zero hook seats and answered
+  true unconditionally.
+- **delete_option() owns the transient-store row too
+  (t31-glm25-7, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — core is one row, and the
+  uninstall path's LIKE-enumeration deletes ride the shape: an
+  option-keyed delete left get_transient() still serving post-delete
+  (glm24-3 had closed only the other direction). The missing-row
+  predicate consults both stores, and delete_transient() folds onto
+  core's own delegation in the same stroke — one deletion spelling,
+  the hook choreography above it exactly as option.php spells it.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 24)
 
 Tenth claude-glm pass: 6 correctness findings (5 driven CONFIRMED,
