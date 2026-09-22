@@ -486,6 +486,24 @@ function get_transient($transient)
 
 function set_transient($transient, $value, $expiration = 0)
 {
+    /*
+     * glm23-2: core's own FIRST STATEMENTS (option.php:1526/:1539,
+     * pinned 7.1.1) — the pre_set_transient_<name> filter rewrites
+     * the value at the head (the rewritten value flows to storage AND
+     * compare, exactly what the delegated add/update_option() would
+     * persist) and the expiration_of_transient_<name> filter follows
+     * it, the rewritten TTL arming the row. The harness seat dropped
+     * the whole family (driven: the filter never ran). The completion
+     * actions — set_transient_<name> ($value, $expiration,
+     * $transient, option.php:1594) then the generic set_transient
+     * ($transient, $value, $expiration, :1605) — fire over a
+     * COMPLETED save alone (`if ( $result )`, :1579): the unchanged
+     * re-save's false (glm22-4) fires neither. The deprecated
+     * 'setted_transient' action (:1618) rides the harness's standing
+     * no-do_action_deprecated simplification.
+     */
+    $value = apply_filters("pre_set_transient_{$transient}", $value, $expiration, $transient);
+    $expiration = apply_filters("expiration_of_transient_{$transient}", $expiration, $value, $transient);
     if ($expiration > 0) {
         $expires_at = WpHarness::now() + $expiration;
     } elseif ($expiration < 0) {
@@ -620,6 +638,11 @@ function set_transient($transient, $value, $expiration = 0)
         do_action("add_option_{$transient_option}", $transient_option, $value);
         do_action('added_option', $transient_option, $value);
     }
+    // glm23-2: the completion family rides the pin's order and arities
+    // (option.php:1594/:1605) over the completed save alone — the
+    // FILTERED value and expiration, `if ( $result )`'s own spelling.
+    do_action("set_transient_{$transient}", $value, $expiration, $transient);
+    do_action('set_transient', $transient, $value, $expiration);
 
     return true;
 }

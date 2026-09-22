@@ -675,6 +675,93 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm23-2: set_transient() answers core's own first statements —
+     * the pre_set_transient_<name> filter rides the HEAD
+     * (option.php:1526, pinned 7.1.1: the rewritten value flows to
+     * storage and compare), the expiration_of_transient_<name> filter
+     * follows it (:1539), and the completion actions
+     * set_transient_<name> ($value, $expiration, $transient, :1594)
+     * and set_transient ($transient, $value, $expiration, :1605) fire
+     * over a COMPLETED save alone — `if ( $result )` (:1579), so an
+     * unchanged re-save (glm22-4's false) fires neither. The harness
+     * seat dropped the whole family (driven red at HEAD: the filter
+     * never ran, 'orig' stored).
+     */
+    public function testSetTransientFiresThePreSetTransientFilterFamily()
+    {
+        $filter_seen = array();
+        $rewrites = 0;
+        add_filter('pre_set_transient_glm23_pre', static function ($value, $expiration, $transient) use (&$filter_seen, &$rewrites) {
+            $filter_seen[] = array( $value, $expiration, $transient );
+
+            return 'rewritten' . (++$rewrites > 1 ? (string) $rewrites : '');
+        }, 10, 3);
+        $completion = array();
+        add_action('set_transient_glm23_pre', static function (...$args) use (&$completion) {
+            $completion[] = array( 'specific', ...$args );
+        }, 10, 3);
+        add_action('set_transient', static function (...$args) use (&$completion) {
+            $completion[] = array( 'generic', ...$args );
+        }, 10, 3);
+
+        // First save: the ADD family persists the REWRITTEN value.
+        $this->assertTrue(set_transient('glm23_pre', 'orig', 100));
+        $this->assertSame(array( 'orig', 100, 'glm23_pre' ), $filter_seen[0] ?? null, 'The pre_set_transient filter rides the head with the pin\'s own arity ($value, $expiration, $transient) — option.php:1526 (red at HEAD: never fires).');
+        $this->assertSame('rewritten', get_transient('glm23_pre'), 'The REWRITTEN value is what stores — the filter\'s answer flows to storage (red at HEAD: \'orig\' stored).');
+
+        // Second save: the rewritten value flows to the COMPARE too — the
+        // update family observes the OLD ('rewritten') against the new
+        // rewrite, exactly the delegated update_option() vantage.
+        $update_args = array();
+        add_action('update_option__transient_glm23_pre', static function (...$args) use (&$update_args) {
+            $update_args[] = $args;
+        }, 10, 3);
+        $this->assertTrue(set_transient('glm23_pre', 'orig2', 100));
+        $this->assertSame(array( 'rewritten', 'rewritten2', '_transient_glm23_pre' ), $update_args[0], 'The update family\'s old/new pair rides the filter\'s answers — the first rewrite observed as the OLD, the second as the new.');
+
+        // The completion actions fired over both COMPLETED saves, in the
+        // pin's order and arities.
+        $this->assertSame(array( 'specific', 'rewritten', 100, 'glm23_pre' ), $completion[0], 'The set_transient_<name> action fires on completion with the pin\'s arity ($value, $expiration, $transient) — option.php:1594.');
+        $this->assertSame(array( 'generic', 'glm23_pre', 'rewritten', 100 ), $completion[1], 'The generic set_transient action follows ($transient, $value, $expiration) — option.php:1605.');
+
+        /*
+         * `if ( $result )` (:1579): the unchanged re-save fires NEITHER
+         * action — the value row refused its own update. The compare
+         * itself rides the FILTERED value: a filter rewriting to the
+         * stored value makes the save unchanged whatever the caller
+         * passed.
+         */
+        add_filter('pre_set_transient_glm23_same', static function () {
+            return 'v1';
+        });
+        $this->assertTrue(set_transient('glm23_same', 'v1'));
+        $specific_before = did_action('set_transient_glm23_same');
+        $generic_before = did_action('set_transient');
+        $this->assertFalse(set_transient('glm23_same', 'anything-else'), 'The compare sees the FILTERED value — \'anything-else\' rewritten to the stored \'v1\' answers the twins\' unchanged false (red at HEAD: \'anything-else\' stored, true).');
+        $this->assertSame($specific_before, did_action('set_transient_glm23_same'), 'The specific completion action stays silent over the refused re-save.');
+        $this->assertSame($generic_before, did_action('set_transient'), 'The generic completion action stays silent too.');
+    }
+
+    /**
+     * glm23-2 (the expiration half of the head family): the
+     * expiration_of_transient_<name> filter rides between the value
+     * filter and the write (option.php:1539) — the rewritten TTL is
+     * the TTL that arms.
+     */
+    public function testSetTransientHonorsTheExpirationOfTransientFilter()
+    {
+        add_filter('expiration_of_transient_glm23_exp', static function () {
+            return 200;
+        });
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm23_exp', 'v1', 100));
+        $this->freezeTime(1150);
+        $this->assertSame('v1', get_transient('glm23_exp'), 'The FILTERED expiration armed the row — alive at t=1150 past the caller\'s 100 (red at HEAD: the filter never ran, the row died at 1100).');
+        $this->freezeTime(1201);
+        $this->assertFalse(get_transient('glm23_exp'), 'The rewritten window ends at its own 200 — dead at t=1201.');
+    }
+
+    /**
      * glm22-5: set_transient() clones an object value at the hook
      * seat — core's add_option()/update_option() each clone BEFORE
      * the family fires, so an observer mutating the hook-passed value
