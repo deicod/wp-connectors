@@ -875,6 +875,40 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     }
 
     /**
+     * Staged ballast — kept alive by the property until the staging
+     * test ends (glm19-10).
+     *
+     * @var string
+     */
+    private $ballast = '';
+
+    /**
+     * Stages live REAL usage past a floor by measured top-up,
+     * answering the LANDED reading (glm19-10).
+     *
+     * memory_get_usage(true) advances in allocator CHUNKS (~2 MiB
+     * jumps), never per 64 KiB append: a loop that assumed smooth
+     * growth could be judged against a reading one whole chunk past
+     * its target — the round-18 ballast leg's ceiling assert answered
+     * a RED where the shape was the allocator's own. The stager stops
+     * at the first landed reading past the floor; the CALLER judges
+     * the landed value against its own ceiling, a jump past it the
+     * named skip (the window unreachable on this allocator), never a
+     * red.
+     *
+     * @param int $floor_bytes The real-usage floor to pass.
+     * @return int The landed real-usage reading.
+     */
+    private function stageBallastPastFloor(int $floor_bytes): int
+    {
+        while (memory_get_usage(true) < $floor_bytes) {
+            $this->ballast .= str_repeat('x', 64 * 1024);
+        }
+
+        return memory_get_usage(true);
+    }
+
+    /**
      * The pinned-128M dense-entry bound leg, shared by the environment
      * pin (glm17-12) and the fatal-band ballast leg (glm18-10).
      *
@@ -957,22 +991,21 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          */
         $runner_limit = (string) ini_get('memory_limit');
         $this->assertNotFalse(ini_set('memory_limit', '1G'), 'The staging ceiling must be pinnable — the ballast cannot be staged from under the runner\'s own default limit.');
-        $ballast = '';
         try {
             if (memory_get_usage(true) >= 127 * 1024 * 1024) {
                 $this->markTestSkipped('This runner already carries more live usage than the band\'s target — the ballast shape is unreachable here.');
             }
             // Measured top-up in REAL bytes (the engine's own limit
-            // accounting): the band is ~2 MB wide — the guard's floor
-            // at 126 MiB, the engine's ini_set ceiling at 128 MiB (it
-            // refuses to lower below live usage) — so the ballast
-            // lands by measuring, never by sizing a one-shot string
-            // against a stale reading.
-            while (memory_get_usage(true) < 127 * 1024 * 1024) {
-                $ballast .= str_repeat('x', 64 * 1024);
+            // accounting), the LANDED reading answered — glm19-10: the
+            // allocator advances in chunks, so the ceiling judgment
+            // rides the landed value, a jump past the drift-headroom
+            // ceiling the named skip (never a red).
+            $landed = $this->stageBallastPastFloor(127 * 1024 * 1024);
+            if ($landed >= 128 * 1024 * 1024 - 512 * 1024) {
+                $this->markTestSkipped(sprintf('Allocator chunking landed the ballast at %d bytes, past the band\'s drift-headroom ceiling — the ballast shape is unreachable on this allocator this pass.', $landed));
             }
-            $this->assertGreaterThan(126 * 1024 * 1024, memory_get_usage(true), 'staging: the ballast must land inside the fatal band — past the guard\'s floor.');
-            $this->assertLessThan(128 * 1024 * 1024 - 512 * 1024, memory_get_usage(true), 'staging: the ballast must stay under the band\'s ceiling with drift headroom — the pin still has to succeed.');
+            $this->assertGreaterThan(126 * 1024 * 1024, $landed, 'staging: the ballast must land inside the fatal band — past the guard\'s floor.');
+            $this->assertLessThan(128 * 1024 * 1024 - 512 * 1024, $landed, 'staging: the ballast must stay under the band\'s ceiling with drift headroom — the pin still has to succeed.');
 
             try {
                 $this->runDenseEntryBoundLeg();
@@ -981,7 +1014,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
                 $this->assertStringContainsString('fatal band', (string) $skip->getMessage(), 'The skip names the band — the suite\'s own loud-skip doctrine, never a silent pass.');
             }
         } finally {
-            unset($ballast);
+            $this->ballast = '';
             ini_set('memory_limit', '' === $runner_limit ? '-1' : $runner_limit);
         }
     }
@@ -998,7 +1031,6 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          */
         $runner_limit = (string) ini_get('memory_limit');
         $this->assertNotFalse(ini_set('memory_limit', '1G'), 'The staging ceiling must be pinnable — the ballast cannot be staged from under the runner\'s own limit.');
-        $ballast = '';
         try {
             if (memory_get_usage(true) >= 128 * 1024 * 1024 + 2 * 1024 * 1024) {
                 $this->markTestSkipped('This runner already carries more live usage than the over-ceiling shape targets — the leg is unreachable here.');
@@ -1006,10 +1038,8 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             // Stage past the pin itself; the allocator's own chunk
             // granularity cannot overshoot anything this leg judges
             // (there is no upper window — only the guard has to fire).
-            while (memory_get_usage(true) < 128 * 1024 * 1024 + 1024 * 1024) {
-                $ballast .= str_repeat('x', 64 * 1024);
-            }
-            $this->assertGreaterThan(128 * 1024 * 1024, memory_get_usage(true), 'staging: live usage sits past the pin — the lowering the engine refuses.');
+            $landed = $this->stageBallastPastFloor(128 * 1024 * 1024 + 1024 * 1024);
+            $this->assertGreaterThan(128 * 1024 * 1024, $landed, 'staging: live usage sits past the pin — the lowering the engine refuses.');
 
             try {
                 $this->runDenseEntryBoundLeg();
@@ -1018,7 +1048,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
                 $this->assertStringContainsString('fatal band', (string) $skip->getMessage(), 'The skip names the band — the suite\'s own loud-skip doctrine, never a spurious red.');
             }
         } finally {
-            unset($ballast);
+            $this->ballast = '';
             ini_set('memory_limit', '' === $runner_limit ? '-1' : $runner_limit);
         }
     }
@@ -1037,20 +1067,16 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          */
         $runner_limit = (string) ini_get('memory_limit');
         $this->assertNotFalse(ini_set('memory_limit', '1G'), 'The staging ceiling must be pinnable — the ballast cannot be staged from under the runner\'s own limit.');
-        $ballast = '';
         try {
             if (memory_get_usage(true) >= 126 * 1024 * 1024) {
                 $this->markTestSkipped('This runner already carries more live usage than the staging-transient window — the leg is unreachable here.');
             }
-            while (memory_get_usage(true) < 125.9 * 1024 * 1024) {
-                $ballast .= str_repeat('x', 64 * 1024);
+            $landed = $this->stageBallastPastFloor((int) (125.9 * 1024 * 1024));
+            if ($landed >= 126 * 1024 * 1024) {
+                $this->markTestSkipped(sprintf('Allocator chunking landed the ballast at %d bytes, past the window\'s ceiling — the leg is unreachable on this allocator this pass.', $landed));
             }
-            $usage = memory_get_usage(true);
-            if ($usage >= 126 * 1024 * 1024) {
-                $this->markTestSkipped(sprintf('Allocator granularity landed the ballast at %d bytes, past the window\'s ceiling — the leg is unreachable on this allocator this pass.', $usage));
-            }
-            $this->assertGreaterThan(125.8 * 1024 * 1024, $usage, 'staging: the ballast lands inside the staging-transient window — past the RESTING-size floor the HEAD guard judged by.');
-            $this->assertLessThan(126 * 1024 * 1024, $usage, 'staging: the ballast stays under the HEAD guard\'s floor — the pin itself still has to succeed at HEAD.');
+            $this->assertGreaterThan(125.8 * 1024 * 1024, $landed, 'staging: the ballast lands inside the staging-transient window — past the RESTING-size floor the HEAD guard judged by.');
+            $this->assertLessThan(126 * 1024 * 1024, $landed, 'staging: the ballast stays under the HEAD guard\'s floor — the pin itself still has to succeed at HEAD.');
 
             try {
                 $this->runDenseEntryBoundLeg();
@@ -1059,9 +1085,34 @@ final class SecureFixturesTest extends WpConnectorsTestCase
                 $this->assertStringContainsString('fatal band', (string) $skip->getMessage(), 'The skip names the band — the loud skip, never the engine\'s own exit 255.');
             }
         } finally {
-            unset($ballast);
+            $this->ballast = '';
             ini_set('memory_limit', '' === $runner_limit ? '-1' : $runner_limit);
         }
+    }
+
+    public function testTheBallastStagerAnswersTheLandedReadingToleratingAllocatorChunkJumps()
+    {
+        /*
+         * glm19-10: the ballast loops assumed ~64 KiB growth per
+         * append, but memory_get_usage(true) advances in allocator
+         * CHUNKS (~2 MiB jumps measured) — the first reading past a
+         * tight target can land a whole chunk beyond it, and the
+         * round-18 leg's ceiling assert answered a RED where the
+         * shape was the allocator's own. The stager answers the
+         * LANDED reading and every ceiling judgment rides it — a jump
+         * past the ceiling is the named skip, never a red. The
+         * allocator's own jump shape cannot be driven from userland;
+         * the unit pin holds the stager's contract instead (the
+         * suite's own doctrine for the undrivable shape).
+         */
+        $before = memory_get_usage(true);
+        $this->assertSame($before, $this->stageBallastPastFloor($before - 1), 'A floor the reading already passes is a no-op — the landed reading answered unchanged, zero appends.');
+        $this->assertSame('', $this->ballast, 'No append happens for an already-passed floor.');
+
+        $floor = $before + 3 * 1024 * 1024;
+        $landed = $this->stageBallastPastFloor($floor);
+        $this->assertGreaterThanOrEqual($floor, $landed, 'The stager answers a LANDED reading at or past the floor — however far the last allocator chunk jumped.');
+        $this->assertNotSame('', $this->ballast, 'The ballast is staged and stays alive with the property until the test ends.');
     }
 
     public function testASumOfDenseSpansAnswersTheRefusalNeverTheFatal()
