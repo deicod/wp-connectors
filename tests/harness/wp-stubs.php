@@ -248,6 +248,46 @@ function wp_connectors_option_stored_copy($value)
     return (is_object($value) || is_array($value)) ? unserialize(serialize($value)) : $value;
 }
 
+/**
+ * Core's clone-at-head over an object value — the ONE owner of the
+ * head shape (glm23-5): update_option() (option.php:882-884, pinned
+ * 7.1.1), add_option() (:1108-1110), and set_transient()'s delegated
+ * branches each clone an object BEFORE the hook family fires, so an
+ * observer at 'add_option'/'update_option' mutates the CLONE, never
+ * the caller's object (glm18-8/glm19-4/glm22-5 — the doctrine each
+ * seat's own comment carries). The head was hand-copied at all three
+ * seats: a core-parity correction landing at the twins alone left the
+ * transient seat silently keeping the old shape (the exact divergence
+ * class glm22-4/5/6 closed). Scalars ride through untouched.
+ *
+ * @param mixed $value The incoming value at the seat's head.
+ * @return mixed The cloned object, or the value verbatim.
+ */
+function wp_connectors_option_head_clone($value)
+{
+    return is_object($value) ? clone $value : $value;
+}
+
+/**
+ * Core's TWO-ARM unchanged compare — the ONE owner of the refusal
+ * predicate (glm23-5): the identity compare, then maybe_serialize()
+ * equality over equal-valued non-identical arrays/objects
+ * (option.php:923, pinned 7.1.1 — glm17-8's doctrine, core's own
+ * comment citing ticket #38903). update_option() and
+ * set_transient()'s update branch spelled the two arms inline; the
+ * twins' next compare correction now lands HERE alone, every seat's
+ * refusal flipping with it.
+ *
+ * @param mixed $old  The stored row's value.
+ * @param mixed $value The sanitized incoming value.
+ * @return bool True when the re-save is UNCHANGED — refuse it.
+ */
+function wp_connectors_value_unchanged($old, $value)
+{
+    return $old === $value
+        || ((is_array($value) || is_object($value)) && serialize($value) === serialize($old));
+}
+
 function update_option($option, $value, $autoload = null)
 {
     /*
@@ -281,10 +321,13 @@ function update_option($option, $value, $autoload = null)
      * objects and maybe_serialize() equality decides, exactly core's
      * compare; an UNCHANGED re-save still answers core's silent
      * false (the glm17-8 second arm, now over detached copies).
+     *
+     * glm23-5: the head clone and the two-arm compare ride their ONE
+     * owners (wp_connectors_option_head_clone() /
+     * wp_connectors_value_unchanged()) — the third hand-copied
+     * spelling at set_transient() below closed with them.
      */
-    if (is_object($value)) {
-        $value = clone $value;
-    }
+    $value = wp_connectors_option_head_clone($value);
     $value = sanitize_option($option, $value);
     $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
     /*
@@ -299,10 +342,10 @@ function update_option($option, $value, $autoload = null)
      * identity-vs-value class glm16-12 eradicated from the cron key
      * 350 lines above, reopened on the option path (driven: an
      * equal-valued ArrayObject save wrote and fired the update
-     * family).
+     * family). glm23-5: the arms ride their ONE owner
+     * (wp_connectors_value_unchanged()).
      */
-    if ($old === $value
-        || ((is_array($value) || is_object($value)) && serialize($value) === serialize($old))) {
+    if (wp_connectors_value_unchanged($old, $value)) {
         return false;
     }
 
@@ -366,10 +409,12 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
      * hooks where core's add-time detached copy completes with the
      * full family (driven — glm18-8's exact class through the other
      * entry point).
+     *
+     * glm23-5: the head clone rides its ONE owner
+     * (wp_connectors_option_head_clone()) beside both twins and the
+     * transient seat below.
      */
-    if (is_object($value)) {
-        $value = clone $value;
-    }
+    $value = wp_connectors_option_head_clone($value);
     /*
      * glm17-9: core sanitizes at the TRUE head — BEFORE the
      * exists-guard (option.php:1113's sanitize_option() precedes the
@@ -545,10 +590,13 @@ function set_transient($transient, $value, $expiration = 0)
      * lands in the STORED row, exactly the twins' shape), and the
      * stored row keeps its own serialized-equal copy (glm19-5/glm21-6)
      * — observers mutate copies, never the caller's value.
+     *
+     * glm23-5: the head clone and the two-arm compare ride their ONE
+     * owners (wp_connectors_option_head_clone() /
+     * wp_connectors_value_unchanged()) with the twins above — this
+     * seat's spelling was the THIRD hand copy.
      */
-    if (is_object($value)) {
-        $value = clone $value;
-    }
+    $value = wp_connectors_option_head_clone($value);
     $transient_option = '_transient_' . $transient;
     /*
      * glm22-6: sanitize at the head — core's delegation rides
@@ -632,10 +680,10 @@ function set_transient($transient, $value, $expiration = 0)
          * (core's update_option over '_transient_timeout_<name>'
          * firing even over an unchanged VALUE row) ride the seam's
          * recorded simplification — no timeout row exists to fire
-         * over.
+         * over. glm23-5: the arms ride their ONE owner
+         * (wp_connectors_value_unchanged()).
          */
-        if ($old === $value
-            || ((is_array($value) || is_object($value)) && serialize($value) === serialize($old))) {
+        if (wp_connectors_value_unchanged($old, $value)) {
             return false;
         }
         do_action('update_option', $transient_option, $old, $value);
