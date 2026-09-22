@@ -7543,17 +7543,48 @@ FIXTURE;
          * from): the census's verdict and the engine's own stay
          * tied — a future engine generation minting or lifting a
          * reserved word redden here first, naming the drift.
+         *
+         * glm21-15: the 81 probes once spawned 81 SERIAL php -l
+         * children (~3.0 s at ~45 ms each) — every probe is
+         * tree-independent, so the probes stage up front into one
+         * scratch tree and a single BATCHED pass lints them
+         * (xargs -P8, eight concurrent engines): each probe's verdict
+         * records beside its own file (php -l's own exit code and
+         * filename-prefixed output), the per-word attribution intact,
+         * the verdicts byte-identical. Non-POSIX hosts keep the
+         * former serial loop — xargs(1) is the POSIX toolchain, and
+         * a POSIX host without it answers its own loud failure at the
+         * missing verdict file (the glm20-6 timeout(1) doctrine).
          */
         if (WpHarness::canSpawnChildren()) {
-            foreach (array_merge($hard_keywords, array(
+            $oracle_words = array_merge($hard_keywords, array(
                 'self', 'parent', 'true', 'false', 'null',
                 'int', 'float', 'bool', 'string', 'void', 'iterable', 'object', 'mixed', 'never',
-            )) as $word) {
-                $probe = tempnam(sys_get_temp_dir(), 'ocr33-alias-');
-                $this->assertNotFalse(file_put_contents($probe, "<?php use A\\B as {$word};\n"), "The oracle probe for '{$word}' must stage — an unwritten probe lints empty bytes.");
-                exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($probe) . ' 2>/dev/null', $oracle_output, $oracle_exit);
-                unlink($probe);
-                $this->assertNotSame(0, $oracle_exit, "php -l refuses '{$word}' in the alias slot — the census's own derivation premise, driven against the engine.");
+            ));
+            $oracle_scratch = sys_get_temp_dir() . '/wpct-alias-oracle-' . uniqid('', true);
+            try {
+                $this->assertTrue(mkdir($oracle_scratch, 0755, true), "staging: {$oracle_scratch} must create — a staging failure fails as staging, never as the alias-oracle verdict.");
+                foreach ($oracle_words as $i => $word) {
+                    $this->assertNotFalse(file_put_contents(sprintf('%s/%03d.php', $oracle_scratch, $i), "<?php use A\\B as {$word};\n"), "The oracle probe for '{$word}' must stage — an unwritten probe lints empty bytes.");
+                }
+                if (WpHarness::isPosixHost()) {
+                    $runner = escapeshellarg(PHP_BINARY) . ' -l "$0" >"$0.out" 2>&1; echo "exit=$?" >>"$0.out"';
+                    exec('cd ' . escapeshellarg($oracle_scratch) . ' && ls *.php | xargs -n1 -P8 sh -c ' . escapeshellarg($runner) . ' 2>&1', $oracle_batch_output, $oracle_batch_exit);
+                }
+                foreach ($oracle_words as $i => $word) {
+                    $probe = sprintf('%s/%03d.php', $oracle_scratch, $i);
+                    if (WpHarness::isPosixHost()) {
+                        $verdict = file_get_contents($probe . '.out');
+                        $this->assertNotFalse($verdict, "The batched verdict for '{$word}' must exist — a POSIX host without xargs(1) answers its own loud failure here (the glm20-6 timeout(1) doctrine), never a silent pass.");
+                        $this->assertSame(1, preg_match('/^exit=([0-9]+)$/m', (string) $verdict, $oracle_exit_match), "The batched verdict for '{$word}' records php -l's own exit code beside its probe.");
+                        $this->assertNotSame('0', $oracle_exit_match[1], "php -l refuses '{$word}' in the alias slot — the census's own derivation premise, driven against the engine.");
+                    } else {
+                        exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($probe) . ' 2>/dev/null', $oracle_output, $oracle_exit);
+                        $this->assertNotSame(0, $oracle_exit, "php -l refuses '{$word}' in the alias slot — the census's own derivation premise, driven against the engine.");
+                    }
+                }
+            } finally {
+                WpHarness::releaseScratch($oracle_scratch);
             }
         }
 
