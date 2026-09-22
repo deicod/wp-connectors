@@ -526,7 +526,29 @@ final class WpHarness
                 $interval = (int) $event['interval'];
                 $rescheduled = $event;
                 $rescheduled['timestamp'] = $now + ($interval - (($now - $event['timestamp']) % $interval));
-                self::$cron[ $hook ][] = $rescheduled;
+                /*
+                 * glm18-5: the reschedule write is KEYED, core's own
+                 * $crons[ts][hook][md5(args)] replace (cron.php:323,
+                 * pinned 7.1.1) — never a raw append. Two due members
+                 * of one recurrence one period apart both re-arm onto
+                 * the SAME grid timestamp (the modulo collapses), and
+                 * the append left both rows standing: the pair
+                 * double-fired on EVERY later pass where core's keyed
+                 * write answers one (driven: pass 1 fired 2, pass 2
+                 * fired 2, forever; core 1). The unfinished half of
+                 * glm15-13's keyed-replace class, closed at the walk.
+                 */
+                $replaced = false;
+                foreach (self::$cron[ $hook ] ?? array() as $index => $live) {
+                    if ($live['timestamp'] === $rescheduled['timestamp'] && wp_connectors_cron_args_key($live['args']) === $args_key) {
+                        self::$cron[ $hook ][ $index ] = $rescheduled;
+                        $replaced = true;
+                        break;
+                    }
+                }
+                if (! $replaced) {
+                    self::$cron[ $hook ][] = $rescheduled;
+                }
             }
             ++$fired;
             do_action($hook, ...$args);

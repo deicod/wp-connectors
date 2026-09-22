@@ -1060,6 +1060,39 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertCount(2, wp_get_scheduled_events('glm17_far'));
     }
 
+    public function testCollidedReschedulesReplaceKeyedNeverAppend()
+    {
+        /*
+         * glm18-5: the walk's reschedule write raw-APPENDED where
+         * core's cron array keys the row ($crons[ts][hook][md5(args)],
+         * cron.php:323, pinned 7.1.1) and REPLACES. Two due hourly
+         * members of one recurrence one period apart both re-arm onto
+         * the SAME grid timestamp — now + (interval − ((now − ts) %
+         * interval)) collapses the modulo for ts values a whole period
+         * apart — so the append left both rows standing and the pair
+         * double-fired on every later pass forever (driven: pass 1
+         * fired 2, pass 2 fired 2; core answers 1 row, 1 fire). The
+         * unfinished half of glm15-13's keyed-replace class, closed at
+         * the walk's own write.
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm18_grid', static function ($m) use (&$fires) {
+            ++$fires;
+        });
+        $this->assertTrue(wp_schedule_event(1700000000 - 3600, 'hourly', 'glm18_grid', array( 'm' => 1 )), 'staging: the first collided member must schedule.');
+        $this->assertTrue(wp_schedule_event(1700000000 - 7200, 'hourly', 'glm18_grid', array( 'm' => 1 )), 'staging: the second collided member must schedule (a whole period apart — its own keyed row).');
+
+        $this->assertSame(2, WpHarness::runDueEvents(), 'Both due members fire on the collision pass — core fires both too.');
+        $this->assertSame(2, $fires);
+        $this->assertCount(1, wp_get_scheduled_events('glm18_grid'), 'The two grid-collided re-arms are ONE keyed row (red at HEAD: the append left two).');
+
+        $this->advanceTime(3600);
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The next due pass fires the keyed row once (red at HEAD: the appended twin double-fired).');
+        $this->assertSame(3, $fires);
+    }
+
     public function testAStoredFalseRowCompletesCoreSOnDuplicateKeyUpdateShape()
     {
         /*
