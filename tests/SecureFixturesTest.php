@@ -836,7 +836,15 @@ final class SecureFixturesTest extends WpConnectorsTestCase
              */
             $findings = wp_connectors_scan_paths(array( $readable, $lockedRoot ));
             $report = implode("\n", $findings);
-            $this->assertStringContainsString("{$readable}/leak.conf:1 zai-key", $report, 'The readable root\'s finding stands beside the refusal — the partial count stays loud, never laundered by the abort.');
+            /*
+             * glm23-12: the needle composes the separator — the
+             * finding's label is the iterator's HOST-joined pathname,
+             * so a '/'-hardcoded fragment reds over the platform's
+             * separator vocabulary on a '\' host, through no defect of
+             * the fence the leg pins (the fresh-process sibling's
+             * composed-spelling idiom, t31-ocr29-7's class).
+             */
+            $this->assertStringContainsString($readable . DIRECTORY_SEPARATOR . 'leak.conf:1 zai-key', $report, 'The readable root\'s finding stands beside the refusal — the partial count stays loud, never laundered by the abort.');
             $this->assertStringContainsString("{$lockedRoot}: unreadable directory — the secret scan cannot run (", $report, 'The chmod-000 ROOT answers the walk\'s own named refusal (red at HEAD: the constructor\'s uncaught UnexpectedValueException), the SPL message parenthetically.');
             $this->assertStringNotContainsString($zaiKey, $report, 'Findings still never echo the secret itself.');
 
