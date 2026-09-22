@@ -1060,6 +1060,29 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertCount(2, wp_get_scheduled_events('glm17_far'));
     }
 
+    public function testTheSingleHeadGuardJudgesTheRawValueNeverAPreCast()
+    {
+        /*
+         * glm18-7: the single's standing (int) coercion rode AHEAD of
+         * the glm17-14 guard, inverting core on both sides of the
+         * 'Make sure timestamp is a positive integer' judge
+         * (cron.php:48-60: '! is_numeric( $timestamp ) || $timestamp
+         * <= 0' on the RAW value) — a true or a '60abc' coerced to a
+         * positive integer and QUEUED where core refuses (is_numeric
+         * answers false for both before any cast), and a 0.5 coerced
+         * to 0 and REFUSED where core schedules the event and keeps
+         * the fractional timestamp downstream.
+         */
+        $this->freezeTime(1700000000);
+
+        $this->assertFalse(wp_schedule_single_event(true, 'glm18_raw'), 'A boolean true refuses — is_numeric answers false before any cast (red at HEAD: coerced to 1, queued).');
+        $this->assertFalse(wp_schedule_single_event('60abc', 'glm18_raw'), 'A glued numeric string refuses likewise (red at HEAD: coerced to 60, queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm18_raw'), 'Nothing lands in the queue for either spelling (red at HEAD: two rows).');
+
+        $this->assertTrue(wp_schedule_single_event(0.5, 'glm18_raw_half'), 'A fractional positive timestamp schedules — core keys the event on the raw value (red at HEAD: coerced to 0, refused).');
+        $this->assertSame(0.5, wp_next_scheduled('glm18_raw_half'), 'The queued timestamp stays numeric downstream, never an int-folded twin.');
+    }
+
     public function testNonPositiveTimestampsRefuseAtBothScheduleEntryPoints()
     {
         /*

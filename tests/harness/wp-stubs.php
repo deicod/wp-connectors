@@ -635,16 +635,27 @@ function wp_connectors_cron_args_key($args)
 
 function wp_schedule_single_event($timestamp, $hook, $args = array())
 {
-    $timestamp = (int) $timestamp;
     /*
      * glm17-14: core's own head guard (cron.php:48-60, pinned 7.1.1)
      * — 'Make sure timestamp is a positive integer': a timestamp at
      * or below zero answers FALSE, never a queued event (the stub
      * queued both and the epoch/past-due entries fired as due).
+     *
+     * glm18-7: the guard judges the RAW value, core's own spelling —
+     * '! is_numeric( $timestamp ) || $timestamp <= 0'. The standing
+     * (int) coercion rode AHEAD of the guard, so a true or '60abc'
+     * coerced to a positive integer and QUEUED where core refuses
+     * (is_numeric answers false for both before any cast), and a 0.5
+     * coerced to 0 and REFUSED where core schedules the event (the
+     * value stays numeric downstream — core keys the row on the raw
+     * timestamp, never an int-folded twin). The normalization '+= 0'
+     * lands AFTER the guard: numeric spellings fold to their numeric
+     * value ('60' the int 60), the fractional ones keep their fraction.
      */
-    if ($timestamp <= 0) {
+    if (! is_numeric($timestamp) || $timestamp <= 0) {
         return false;
     }
+    $timestamp += 0;
     $args_key = wp_connectors_cron_args_key($args);
     /*
      * glm15-13/glm16-7/glm17-5: core's duplicate window for singles —
@@ -687,7 +698,7 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
         }
     }
     WpHarness::$cron[ $hook ][] = array(
-        'timestamp' => (int) $timestamp,
+        'timestamp' => $timestamp,
         'args' => $args,
     );
 
