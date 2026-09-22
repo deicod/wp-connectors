@@ -780,17 +780,34 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          * leg that cannot go red is a vacuous green — skip, naming the
          * premise. The probe restores its own permissions so the
          * finally's release owns it either way.
+         *
+         * glm23-10: the probe stages INSIDE its own try/finally (the
+         * ocr30-3 sibling's shape): a false staging answer mid-probe —
+         * a chmod the bits refuse, a mkdir that lands nowhere — once
+         * leaks the /wpct-scan-perm-<uniqid> tree per failed run,
+         * possibly at mode 0000. The restore stays AHEAD of the
+         * finally's release (the asserted chmod-back, the skip's own
+         * ordering preserved), and the finally's @chmod is the
+         * idempotent belt that keeps releaseScratch able to list
+         * whatever mode the tree died at — construction-evident: the
+         * release call follows the probe in the finally now, every
+         * exit shape covered.
          */
         $probe = sys_get_temp_dir() . '/wpct-scan-perm-' . uniqid('', true);
-        $this->assertTrue(mkdir($probe, 0755, true), "staging: the probe directory must create — a staging failure fails as staging, never as the capability verdict.");
-        $this->assertTrue(chmod($probe, 0000), "staging: the probe directory must lock — a staging failure fails as staging, never as the capability verdict.");
-        $probe_open = @opendir($probe);
-        $denied = false === $probe_open;
-        if (false !== $probe_open) {
-            closedir($probe_open);
+        $denied = false;
+        try {
+            $this->assertTrue(mkdir($probe, 0755, true), "staging: the probe directory must create — a staging failure fails as staging, never as the capability verdict.");
+            $this->assertTrue(chmod($probe, 0000), "staging: the probe directory must lock — a staging failure fails as staging, never as the capability verdict.");
+            $probe_open = @opendir($probe);
+            $denied = false === $probe_open;
+            if (false !== $probe_open) {
+                closedir($probe_open);
+            }
+            $this->assertTrue(chmod($probe, 0755), "staging: the probe directory must unlock again — a staging failure fails as staging, never as the finally's cleanup.");
+        } finally {
+            @chmod($probe, 0755);
+            WpHarness::releaseScratch($probe);
         }
-        $this->assertTrue(chmod($probe, 0755), "staging: the probe directory must unlock again — a staging failure fails as staging, never as the finally's cleanup.");
-        WpHarness::releaseScratch($probe);
         if (! $denied) {
             $this->markTestSkipped('This process walks a chmod-000 directory open (permissions cannot deny it — root-shaped), so the unreadable-directory leg can never drive its refusal: the walk would read the tree and answer as the readable control.');
         }
