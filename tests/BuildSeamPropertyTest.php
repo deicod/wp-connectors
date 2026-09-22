@@ -1694,7 +1694,15 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
                 }
                 $this->assertTrue(mkdir($gpcLintRoot, 0755, true), "staging: the declared root {$gpcLintRoot} must create — the leg's tree names every root the walk declares (glm22-10), and a staging failure fails as staging, never as the GPC lint verdict.");
             }
-            exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($gpcLintScratch . '/bin/lint-php.php') . ' 2>&1', $gpcLintOutput, $gpcLintExit);
+            /*
+             * glm23-15: the green run and the driven re-run share ONE
+             * command by construction — the leg once re-spelled the
+             * exec verbatim, so a later edit to one spelling left the
+             * re-run spawning a stale child, a false verdict on the
+             * leg whose purpose is proving the refusal.
+             */
+            $gpcLintCommand = escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($gpcLintScratch . '/bin/lint-php.php') . ' 2>&1';
+            exec($gpcLintCommand, $gpcLintOutput, $gpcLintExit);
 
             /*
              * The driven half of glm22-10: the walk NAMES a declared
@@ -1705,7 +1713,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
              * once blessed).
              */
             $this->assertTrue(rmdir($gpcLintScratch . '/shared'), "staging: the declared root shared must remove again — the driven missing-root leg's own re-stage, and a failed removal fails as staging, never as the refusal verdict.");
-            exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($gpcLintScratch . '/bin/lint-php.php') . ' 2>&1', $gpcMissingRootOutput, $gpcMissingRootExit);
+            exec($gpcLintCommand, $gpcMissingRootOutput, $gpcMissingRootExit);
         } finally {
             WpHarness::releaseScratch($gpcLintScratch);
         }
