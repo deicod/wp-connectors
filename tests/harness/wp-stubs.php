@@ -485,13 +485,31 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
 
 function delete_option($option)
 {
-    if (! array_key_exists($option, WpHarness::$options)) {
+    /*
+     * glm25-7: core is ONE row — a '_transient_'-prefixed key names
+     * the row the transient store may model, so the delete owns that
+     * half of the mirror too (glm24-3 closed the transient-to-option
+     * direction; this is the option-to-transient one, the uninstall
+     * path's LIKE-enumeration deletes the shape — the wpdb stub
+     * presents transient rows in their _transient_<name> option_name
+     * form). The missing-row predicate consults BOTH stores: the row
+     * exists whichever store carries it. The '_transient_timeout_'
+     * family rides the seat's standing no-such-row simplification
+     * (nothing creates those rows).
+     */
+    $transient = 0 === strpos($option, '_transient_') ? substr($option, strlen('_transient_')) : false;
+    if (! array_key_exists($option, WpHarness::$options)
+        && ! ($transient && array_key_exists($transient, WpHarness::$transients))
+    ) {
         // Core still runs the DELETE (and its caches) for a missing row;
         // record the ATTEMPT so tests can pin "no needless delete" call
         // shapes (e.g. availability state cleanup).
         WpHarness::$delete_option_attempts[] = $option;
 
         return false;
+    }
+    if ($transient) {
+        unset(WpHarness::$transients[ $transient ]);
     }
     unset(WpHarness::$options[ $option ], WpHarness::$option_autoload[ $option ]);
     WpHarness::$delete_option_attempts[] = $option;
@@ -818,26 +836,20 @@ function delete_transient($transient)
      * AFTER a SUCCESSFUL delete alone (`if ($result)` gates it), and
      * the return is the delete's own: false over a missing row (the
      * seat once modeled zero hook seats and answered true
-     * unconditionally, driven). The missing-row predicate consults
-     * BOTH stores per the mirror doctrine — the row exists whichever
-     * store models it; core's timeout-row delete_option beside the
-     * result rides the standing no-such-row simplification.
+     * unconditionally, driven). glm25-7: the delete itself is core's
+     * own DELEGATION — delete_option() consults BOTH stores per the
+     * mirror doctrine (the row exists whichever store models it), so
+     * ONE deletion spelling owns the paired unset; core's
+     * timeout-row delete_option beside the result rides the standing
+     * no-such-row simplification.
      */
-    $transient_option = '_transient_' . $transient;
     do_action("delete_transient_{$transient}", $transient);
-    if (! array_key_exists($transient, WpHarness::$transients)
-        && ! array_key_exists($transient_option, WpHarness::$options)
-    ) {
-        return false;
+    $result = delete_option('_transient_' . $transient);
+    if ($result) {
+        do_action('deleted_transient', $transient);
     }
-    unset(
-        WpHarness::$transients[ $transient ],
-        WpHarness::$options[ $transient_option ],
-        WpHarness::$option_autoload[ $transient_option ]
-    );
-    do_action('deleted_transient', $transient);
 
-    return true;
+    return $result;
 }
 
 /*

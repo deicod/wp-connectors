@@ -952,6 +952,40 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm25-7: delete_option() over a '_transient_'-prefixed key owns
+     * the transient-store row too — core is ONE row (the delete kills
+     * the transient), and glm24-3 closed only the transient-to-option
+     * direction; the option-to-transient direction left the transient
+     * store's row standing: get_transient() still served post-delete
+     * (driven red at HEAD). The uninstall path's LIKE-enumeration
+     * deletes ride this shape (the wpdb stub presents the transient
+     * rows in their _transient_<name> option_name form). Non-transient
+     * deletes unchanged.
+     */
+    public function testDeleteOptionOverATransientKeyOwnsTheTransientStoreRow()
+    {
+        $this->assertTrue(set_transient('glm25_opt', 'v'), 'staging: the transient-store row saves.');
+        $this->assertSame('v', get_transient('glm25_opt'), 'staging: the row serves.');
+
+        $this->assertTrue(delete_option('_transient_glm25_opt'), 'The delete owns the row the transient store models — core\'s ONE row, whichever store carries it (red at HEAD: false — the options store alone held the key).');
+        $this->assertFalse(get_transient('glm25_opt'), 'The transient store\'s row dies at the option-keyed delete (red at HEAD: still serving).');
+        $this->assertSame(
+            array(),
+            $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
+                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
+                $GLOBALS['wpdb']->esc_like('_transient_glm25_opt') . '%'
+            )),
+            'The uninstall enumeration answers EMPTY post-delete — the LIKE-enumeration shape rides the mirror.'
+        );
+        $this->assertFalse(delete_option('_transient_glm25_opt'), 'The row is gone from BOTH stores — the second delete answers the missing-row false.');
+
+        // Non-transient deletes unchanged.
+        $this->assertTrue(add_option('glm25_plain_opt', 'x'));
+        $this->assertTrue(delete_option('glm25_plain_opt'));
+        $this->assertFalse(get_option('glm25_plain_opt'), 'A non-transient delete keeps its own shape.');
+    }
+
+    /**
      * glm25-1: TTL (re)arming survives the stored-false row's MISSING
      * read — glm24-4's keep-guard keyed on $own_entry alone, but a
      * stored-false row answers $existing FALSE (the get_option-shaped
