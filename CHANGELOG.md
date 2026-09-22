@@ -6,6 +6,137 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 18)
+
+Fourth claude-glm pass over the round-17 fixes. The review: 15
+findings (1-4 driven regressions of round 17's own commits, 3-5+7-10
+tripping recorded re-open rules, 11 self-doctrine, 12-15 the cleanup
+class). Driver adjudication: findings 1-11 accepted; 12-15 (the keyed
+re-location collapse to wp_unschedule_event, the strpos fast path,
+the redundant re-blank loop + stale docblock, the @var id) DEFERRED
+to the cleanup sweep per precedent — ELEVEN numbered commits
+t31-glm18-1..11, the full offline check green after every commit, no
+push. The round's shape: glm17-3's routing traded false-negatives for
+a false-positive class and an over-refusal, and all four driven legs
+closed; glm17-1's "no consumer reads a newline as a code byte" claim
+falsified and corrected; the core-parity cluster (keyed reschedule
+write, the schedule_event ts guard, the raw-value timestamp judge,
+the clone-at-head, the hook-before-write) resolved against the pinned
+WP 7.1.1; the fatal-band pin; and the pair-bounded routing residual
+closed. Suite 1832 → 1843 tests, 47475 → 47538 assertions, 3 skipped
+unchanged (every delta measured from output).
+
+- **Unclosed text-family samples mask their string-data interiors
+  (t31-glm18-1, security:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — glm17-3's ledger claim that unclosed
+  samples "keep the line-local arm exactly as the pre-diff behavior
+  read them" was false for string-DATA markers: a marker inside an
+  unclosed sample's multi-line string interior laundered the live key
+  beside it (driven: 0 findings at HEAD, 1 at base). The tail rides
+  the masked view from its open tag's line onward; the prose above
+  keeps the line-local arm; the tokenized tail rides the token-memory
+  census (the >1.3 MB unclosed .md leg's clean verdict, purchased by
+  never tokenizing the tail, corrected to the honest loud refusal —
+  glm17-2's own recorded premise). The glm17-3 ledger line carries
+  its in-place CORRECTED pointer.
+- **A directly-named file scans by CONTENT shape, not extension
+  (t31-glm18-2, security:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — the file-root arm fed a php-headed
+  'config.inc' into the extension-aware gate, whose arms never saw a
+  closed short-echo script: its string interiors laundered through
+  the line-local arm (driven: clean, exit 0, where the pre-ride base
+  flagged the key). Explicitly named = operator intent: a php-headed
+  named target rides the CODE arm whatever its extension spells
+  (wp_connectors_head_opens_php(), INI-independent open spellings);
+  the walk never sets the flag and keeps its extension screen.
+- **The foreach header collector rides /s (t31-glm18-3, bug:low;
+  bin/lib/plugin-tools.php, tests/SelfContainmentLoopWritesTest.php)**
+  — the header regex had no /s while the as-split one line below
+  always did, so a multi-line string region inside a foreach header
+  (whose interior newline glm17-1's line-preserving mask now keeps)
+  killed the match, the VALUE binding went uncollected, and the
+  include over it phantom-flagged (driven: 0 violations at base, 1 at
+  HEAD on identical input) — glm17-1's "no consumer reads a newline
+  as a code byte" claim falsified by the one consumer whose regex
+  never said so. The glm17-1 ledger line carries its in-place
+  CORRECTED pointer.
+- **The span census rides the host's ACTUAL open-tag lexing
+  (t31-glm18-4, security:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — the census charged every '<?'…'?>' byte
+  pair the dense ~98x factor whether or not the engine opens it:
+  23k '<?xml-stylesheet …?>' processing instructions in a 1.84 MB .php
+  document lex as ONE inline-HTML run under the production-default
+  short_open_tag=0 (measured cost ~1x) while the census answered the
+  loud refusal — glm16-2's own re-open rule, tripped (driven in a
+  spawned engine). wp_connectors_engine_opener_lexing() probes the
+  host's own answer (two tiny token_get_all() calls, cached); a
+  non-opener's bytes never enter the total. The legs pin both
+  directions under pinned INI.
+- **The walk's reschedule write is KEYED (t31-glm18-5, bug:medium;
+  tests/harness/WpHarness.php, tests/FoundationHarnessTest.php)** —
+  the re-arm raw-appended where core's $crons[ts][hook][md5(args)]
+  REPLACES (cron.php:323): two due hourly members one period apart
+  both re-arm onto the SAME grid timestamp, the append left both rows
+  standing, and the pair double-fired on every later pass forever
+  (driven: 2/2; core 1 row, 1 fire). The write rides the member's own
+  core key, the same predicate the removal owns.
+- **wp_schedule_event() refuses non-positive timestamps
+  (t31-glm18-6, bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — glm17-14 pinned core's guard at the
+  single entry point only; the recurring entry queued ts=0/-1 as a
+  due-now row that fired and re-armed forever (driven). Core's own
+  head guard (cron.php:252-263), before anything is keyed, at both
+  schedule entry points now.
+- **The single's head guard judges the RAW value (t31-glm18-7,
+  bug:low; tests/harness/wp-stubs.php, tests/FoundationHarnessTest.php)**
+  — the standing (int) coercion rode ahead of the guard, inverting
+  core both ways: true and '60abc' coerced positive and queued where
+  core's is_numeric judge refuses; 0.5 coerced to 0 and refused where
+  core schedules and keys the fractional timestamp downstream
+  (driven: every leg inverted). The guard is core's own spelling, a
+  '+= 0' normalization behind it, the queued row numeric.
+- **update_option() clones an object value at the head
+  (t31-glm18-8, bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — the harness stores live references,
+  so a caller mutating the object they saved and re-saving it hit the
+  identity arm with the SAME reference on both sides: false, zero
+  hooks, where core completes with the full family (driven; core
+  clones at option.php:882-884 and its row is serialized bytes). The
+  glm17-8 pin's stored-INSTANCE assertion — the reference-storage
+  artifact the clone falsifies — carries its in-place CORRECTED
+  pointer.
+- **add_option() fires the GENERIC hook BEFORE the write
+  (t31-glm18-9, bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — the stub wrote first, so an observer
+  at 'add_option' read the NEW value through get_option() where core
+  reads the OLD one (option.php:1140's do_action precedes :1142's
+  INSERT; driven). The generic action rides ahead of the write; the
+  specific and closing hooks stay post-write.
+- **The dense-bound pin verifies its ceiling BEFORE the staging
+  allocations (t31-glm18-10, test-hygiene:medium; tests/
+  SecureFixturesTest.php)** — glm17-12's pin left a fatal band: with
+  live usage in the ~(126, 128) MiB window the ini_set still succeeds
+  and the leg's own ~1.9 MB staging kills phpunit at exit 255 before
+  any verdict (mechanism driven on a 512M host). The guard measures
+  REAL usage (the engine's own limit accounting) and skips loudly
+  past the band's floor, never lowering into the window; a
+  ballast-staged leg drives the band itself, the skip caught and
+  pinned green.
+- **A complete-pair MENTION routes only the sample region
+  (t31-glm18-11, security:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — prose mentioning a complete
+  '<?php … ?>' pair routed the WHOLE text-family file onto the masked
+  view, blanking the mention's surrounding prose and a marked
+  fixture's marker with it (identical at base, pre-existing,
+  unrecorded — the residual closed). The routing is PAIR-BOUNDED:
+  wp_connectors_php_sample_regions() answers every matched pair plus
+  the unclosed tail, wp_connectors_sample_region_line_view() composes
+  each line (region bytes masked, outside bytes line-local,
+  glm18-1's hybrid the mixed-line special case of the one
+  compositor), and the census rides the full host-aware walk. The
+  glued-opener spelling stays line-local under every INI — the
+  recorded lexer-refused-opener corner's OFF-host half closes.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 17)
 
 Third claude-glm pass over the round-16 fixes. The review: 15
