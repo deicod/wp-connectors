@@ -1049,6 +1049,42 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertStringContainsString('zai-key', implode("\n", wp_connectors_scan_string(bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8)) . '// secrets:allow', 'glued-line')), 'A value glued to a // marker is NOT exempt — the line-comment arms keep the whitespace guard.');
         $this->assertSame(array(), wp_connectors_scan_string($key . ' // secrets:allow', 'spaced-line'), 'The spaced // spelling exempts exactly as before.');
         $this->assertSame(array(), wp_connectors_scan_string('# secrets:allow ' . $key, 'spaced-hash'), 'The spaced # spelling exempts exactly as before.');
+
+        /*
+         * glm23-6: the glue-broadened '<!--' boundary is the MARKUP
+         * family's alone — an HTML comment is a comment form markup
+         * payloads genuinely carry (.html/.svg/.xml/.md, the family
+         * glm21-4/glm22-3's premise holds over); in .env/.json/.txt
+         * and every non-markup extension it is not, and the glued
+         * boundary class (the quote/tag closers) LAUNDERED keys there:
+         * `api_key="<live-key>"<!-- secrets:allow -->` answered ZERO
+         * findings in a .env while the unmarked control flagged (red
+         * at HEAD: 0 findings — the '"' before the '<!--' rode the
+         * boundary class). The '<!--' spelling requires the
+         * line-comment/whitespace boundary exactly as before in
+         * non-markup; the SPACED spelling keeps exempting everywhere
+         * it did.
+         */
+        $this->assertSame(
+            array( "launder.env:1 {$expect}" ),
+            wp_connectors_scan_string("api_key=\"{$key}\"<!-- secrets:allow -->\n", 'launder.env'),
+            'A quote-glued <!-- marker in a .env does NOT exempt (red at HEAD: 0 findings) — .env carries no HTML comment form, and the glue-broadened boundary launders live keys there.'
+        );
+        $this->assertSame(
+            array( "launder.json:1 {$expect}" ),
+            wp_connectors_scan_string("\"api_key\": \"{$key}\"<!-- secrets:allow -->\n", 'launder.json'),
+            'The quote-glued marker in a .json does not exempt either — the extension split refuses the laundering shape in every non-markup family member.'
+        );
+        $this->assertSame(
+            array(),
+            wp_connectors_scan_string("api_key = {$key} <!-- secrets:allow -->\n", 'spaced.env'),
+            'The SPACED <!-- spelling keeps exempting in a .env exactly as before — the split refuses the GLUED boundary alone, never the spaced enclosure.'
+        );
+        $this->assertSame(
+            array(),
+            wp_connectors_scan_string("api_key = {$key} <!-- secrets:allow -->\n", 'spaced.txt'),
+            'The spaced spelling in a .txt answers identically — the boundary doctrine changes nothing for the spellings that always exempted.'
+        );
     }
 
     public function testScannerExemptsOnlyStrictMarkerAndFakeValues()

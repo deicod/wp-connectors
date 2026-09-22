@@ -100,10 +100,28 @@ function wp_connectors_secret_patterns()
  * at; the line-comment spellings keep the whitespace guard (a glued
  * `key// secrets:allow` in code is not a comment the grammar owes).
  *
+ * glm23-6: the glue-broadened '<!--' boundary is the MARKUP family's
+ * ALONE — an HTML comment is a comment form markup payloads
+ * genuinely carry (.html/.svg/.xml/.md, the family the premise
+ * above holds over); in .env/.json/.txt and every non-markup
+ * extension it is not, and the glued boundary class there LAUNDERED
+ * keys: `api_key="<live-key>"<!-- secrets:allow -->` answered zero
+ * findings in a .env while the unmarked control flagged (driven) —
+ * the exact laundering the 'markers count only in REAL comments'
+ * doctrine (glm19-2) refuses. In non-markup extensions the '<!--'
+ * spelling joins the line-comment arm's own boundary (start or
+ * whitespace, never a glued edge); the SPACED spelling exempts
+ * everywhere it did.
+ *
+ * @param string $extension The payload's lowercased extension ('' when none).
  * @return string PCRE pattern matching the marker inside a comment.
  */
-function wp_connectors_allow_marker_pattern()
+function wp_connectors_allow_marker_pattern($extension = '')
 {
+    if (! in_array($extension, array( 'html', 'svg', 'xml', 'md' ), true)) {
+        return '/(?:^|\s)(?:\/\/|#|\/\*|\*|<!--)\s*secrets:allow\b/';
+    }
+
     return '/(?:^|\s)(?:\/\/|#|\/\*|\*)\s*secrets:allow\b|(?:^|[\s>"\'])<!--\s*secrets:allow\b/';
 }
 
@@ -496,7 +514,6 @@ function wp_connectors_engine_opener_lexing()
 function wp_connectors_scan_string($contents, $label, $named_target = false)
 {
     $findings = array();
-    $allowMarker = wp_connectors_allow_marker_pattern();
     /*
      * glm16-2: the ride owns its memory bound. The same strpos gate is
      * the pre-gate (every non-PHP payload never reaches the tokenizer
@@ -576,6 +593,10 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * bytes outside them keep the line-local arm.
      */
     $label_ext = strtolower((string) pathinfo($label, PATHINFO_EXTENSION));
+    // glm23-6: the marker grammar is extension-aware — the '<!--'
+    // enclosure's glue-broadened boundary is the markup family's alone
+    // (the owner's own split, stated in its docblock).
+    $allowMarker = wp_connectors_allow_marker_pattern($label_ext);
     /*
      * glm18-2: a DIRECTLY-NAMED file is judged by content shape, not
      * extension — 'scan-secrets.php config.inc' over pure-PHP bytes
