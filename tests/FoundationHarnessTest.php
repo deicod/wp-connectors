@@ -792,6 +792,32 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm24-2: the timeout row ARMS over a seeded-only row — core's
+     * update branch writes the '_transient_timeout_<name>' row
+     * BEFORE the value row's own unchanged refusal
+     * (option.php:1562-1571, pinned 7.1.1 — the write-before-refusal
+     * ordering), so a seed re-saved with its own value and a TTL
+     * answers the twins' unchanged FALSE while the row still serves
+     * the seed until the armed window ends; the harness's refresh
+     * block guarded on $own_entry alone, so a seed-only row (no
+     * transient-store entry) never armed and get_transient answered
+     * false IMMEDIATELY over the standing option seed (driven red at
+     * HEAD).
+     */
+    public function testSetTransientArmsTheTimeoutRowOverASeededRow()
+    {
+        $this->freezeTime(1000);
+        $this->assertTrue(add_option('_transient_glm24_seed_ttl', 'seed'));
+        $before_update = did_action('update_option__transient_glm24_seed_ttl');
+        $this->assertFalse(set_transient('glm24_seed_ttl', 'seed', 100), 'The value row keeps the twins\' own unchanged false over the seeded row — the arming rides ahead of the compare, never through it (glm22-4 stands).');
+        $this->assertSame($before_update, did_action('update_option__transient_glm24_seed_ttl'), 'ZERO value-family hooks over the refused re-save — the timeout row arms ahead of the refusal, exactly core\'s own order.');
+        $this->freezeTime(1050);
+        $this->assertSame('seed', get_transient('glm24_seed_ttl'), 'The seeded row serves its own value until the armed window ends (red at HEAD: false immediately — the seed-only row never armed a timeout).');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm24_seed_ttl'), 'The armed window ends at its own 100 — the refused save still wrote the timeout row, and the row dies at it.');
+    }
+
+    /**
      * glm22-5: set_transient() clones an object value at the hook
      * seat — core's add_option()/update_option() each clone BEFORE
      * the family fires, so an observer mutating the hook-passed value

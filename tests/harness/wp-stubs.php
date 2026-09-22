@@ -657,14 +657,34 @@ function set_transient($transient, $value, $expiration = 0)
          * the delete-plus-re-add of option.php:1563-1567 — rides the
          * same simplification: the seat updates in place whatever
          * timeout half the row models.
+         *
+         * glm24-2: the timeout row arms over a SEEDED-ONLY row too —
+         * the write-before-refusal ordering is the row's, never the
+         * store's: core writes the timeout row before the value row's
+         * own unchanged refusal whichever row carried the old value,
+         * so a seed re-saved with its own value and a TTL answers the
+         * twins' false while the row serves the seed until the armed
+         * window ends (the refresh once guarded on $own_entry alone
+         * and a seed-only row never armed, get_transient answering
+         * false immediately — driven). The armed entry carries the
+         * seed as its value (the only row the seat has read); a
+         * CHANGED re-save overwrites the whole row at the write below.
          */
-        if ($own_entry) {
-            if ($expiration > 0) {
-                WpHarness::$transients[ $transient ]['expires_at'] = WpHarness::now() + $expiration;
-            } elseif ($expiration < 0) {
-                // Core treats a negative TTL as already expired (the head
-                // comment's own standing) — the refresh keeps that reading.
-                WpHarness::$transients[ $transient ]['expires_at'] = WpHarness::now() - 1;
+        if ($expiration > 0) {
+            $armed_at = WpHarness::now() + $expiration;
+        } elseif ($expiration < 0) {
+            // Core treats a negative TTL as already expired (the head
+            // comment's own standing) — the refresh keeps that reading.
+            $armed_at = WpHarness::now() - 1;
+        }
+        if (isset($armed_at)) {
+            if ($own_entry) {
+                WpHarness::$transients[ $transient ]['expires_at'] = $armed_at;
+            } else {
+                WpHarness::$transients[ $transient ] = array(
+                    'value' => $old,
+                    'expires_at' => $armed_at,
+                );
             }
         }
         /*
