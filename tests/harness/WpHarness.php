@@ -988,9 +988,16 @@ final class WpHarness
          * walks it open, the owner answers false, the site's own skip
          * fires) and the paired restore over the never-locked
          * directory stays quiet the same way.
+         *
+         * glm25-5: the pre-state mask is 07777 and the 0755 fallback
+         * is dropped — the docblock promises the shape's OWN
+         * pre-state, and the setgid/setsticky family above 0777 is
+         * part of it on the hosts that carry them; the fallback's
+         * false arm was dead besides (fileperms()'s own warning fires
+         * under the same regime before the ternary could take it),
+         * and a fabricated 0755 is never the shape's own.
          */
-        $perms = fileperms($dir);
-        $pre_state = false === $perms ? 0755 : ($perms & 0777);
+        $pre_state = fileperms($dir) & 07777;
         @chmod($dir, 0000);
         if (self::canDenyDirectoryOpen($dir)) {
             return true;

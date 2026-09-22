@@ -43,4 +43,33 @@ final class HarnessDenialProbeTest extends TestCase
         );
         $this->assertSame($current, fileperms($refusal) & 07777, 'The refused target is untouched — neither chmod changed a byte it could not.');
     }
+
+    /**
+     * glm25-5: the restore is the probed shape's OWN pre-state down to
+     * the bits above 0777 — the mask is 07777 (setgid/setsticky ride
+     * with the rwx family on the hosts that carry them; a 0777 mask
+     * silently dropped them at the restore), and the 0755 fallback is
+     * gone (its false arm was dead — fileperms()'s own warning fires
+     * under the regime before the ternary could take it — and a
+     * fabricated 0755 is never the shape's own). The restore path
+     * itself only runs where the lock fails to deny this process
+     * (uid-0/DAC-override hosts), so the pin rides the owner's own
+     * spelling — the structural evidence, exactly-once.
+     */
+    public function testTheRestoreMaskKeepsTheShapesOwnPreStateBits(): void
+    {
+        $source = file_get_contents(__DIR__ . '/harness/WpHarness.php');
+        $this->assertNotFalse($source, 'staging: the harness source must read — a staging failure fails as staging, never as the structural verdict.');
+
+        $this->assertSame(
+            1,
+            substr_count($source, 'fileperms($dir) & 07777'),
+            'The pre-state capture masks 07777 — the shape\'s OWN bits including the setgid/setsticky family above 0777 (a 0777 mask silently dropped them at the restore).'
+        );
+        $this->assertSame(
+            0,
+            substr_count($source, '? 0755 :'),
+            'The dead 0755 fallback is gone — the false arm never ran (fileperms\'s own warning fires first) and a fabricated mode is never the shape\'s own pre-state.'
+        );
+    }
 }
