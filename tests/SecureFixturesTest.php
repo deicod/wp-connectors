@@ -888,8 +888,28 @@ final class SecureFixturesTest extends WpConnectorsTestCase
      * spaces, a command substitution, backgrounding, and a pipe — at
      * HEAD the raw splice answered the shell's own syntax error, exit
      * 2, the child never running), and the child answers its verdict
-     * with the flag applied (php's own -d parser keeps the value's
-     * pre-space run — the engine's semantics, never the shell's).
+     * with the flag applied.
+     *
+     * glm22-9: the pin rides the REAL boundary now — the round-21
+     * poison carried a ';', and php's own -d parser keeps only an
+     * UNQUOTED value's pre-semicolon run (INI comment semantics, the
+     * engine's own grammar — ';' ends the value, '&'/'|'/'('/')' are
+     * the INI expression operators, driven: the unquoted poison
+     * answers the parser's own "syntax error, unexpected ')'"), so
+     * the old needle 'flag-token=wpct' proved the pre-space run
+     * reached the child while every byte past the ';' never did: the
+     * pin held only because the poison contained a semicolon. The
+     * poison now rides the engine's own QUOTED-value spelling (the
+     * INI single quote, as a php.ini author spells a value carrying
+     * the grammar's own bytes) and the needle is the WHOLE value —
+     * the anchored full-line match proves the SHELL boundary carried
+     * every byte un-mangled and un-expanded to the engine's own
+     * parser (a truncated or expanded tail fails it, the glm20-2
+     * anchored-needle idiom), and an executed substitution would
+     * REWRITE the line and fail the same needle — the non-execution
+     * proof riding the same line. The unquoted semicolon cut stays
+     * pinned beside it: the engine's semantics, stated, never the
+     * shell's.
      */
     public function testTheSpawnOwnerEscapesItsIniFlagsAtTheExecBoundary()
     {
@@ -897,19 +917,35 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the escaped-flag leg cannot run (the probe rides a spawned engine).');
         }
 
-        $poison = 'wpct probe; $(echo pwned) & |';
+        $poison = 'wpct $(echo pwned) "quoted" & |';
         $spawned = $this->spawnScannerChild(
             'require %s; echo "flag-token=", ini_get("user_agent"), "\n";',
-            array( 'user_agent=' . $poison )
+            array( "user_agent='" . $poison . "'" )
         );
 
-        $this->assertSame(0, $spawned['exit'], "The child runs with the metacharacter-bearing flag on its command line — one token at the exec boundary (red at HEAD: the shell's own syntax error, exit 2, no child): {$spawned['report']}");
+        $this->assertSame(0, $spawned['exit'], "The child runs with the metacharacter-bearing flag on its command line — one token at the exec boundary (red at the raw splice: the shell's own syntax error, exit 2, no child): {$spawned['report']}");
         $this->assertSame(
             1,
-            preg_match('/^flag-token=wpct/m', $spawned['report']),
-            'The child answers its verdict line — the -r script itself ran, which the raw splice could never reach.'
+            preg_match('/^' . preg_quote('flag-token=' . $poison, '/') . '$/m', $spawned['report']),
+            'The WHOLE metacharacter-bearing value reaches the engine un-mangled and un-expanded — spaces, command substitution, double quotes, backgrounding, and pipe every byte intact through the shell boundary and the engine\'s own quoted-value grammar (the anchored full-line needle; the round-21 substring pin was vacuous for this class, and an executed substitution would rewrite the line and fail it).'
         );
-        $this->assertStringNotContainsString('pwned', $spawned['report'], 'The poison command substitution never executed — the shell read none of the flag as its own grammar.');
+
+        /*
+         * The UNQUOTED semicolon cut the corrected docblock states,
+         * pinned at the engine itself: ';' is the INI comment byte —
+         * the pre-semicolon run alone is the value, the round-21
+         * pin's hidden premise stated and driven.
+         */
+        $spawned_cut = $this->spawnScannerChild(
+            'require %s; echo "flag-token=", ini_get("user_agent"), "\n";',
+            array( 'user_agent=wpct probe; $(echo pwned) & |' )
+        );
+        $this->assertSame(0, $spawned_cut['exit'], "The unquoted semicolon-bearing twin runs too — one token at the boundary: {$spawned_cut['report']}");
+        $this->assertSame(
+            1,
+            preg_match('/^flag-token=wpct probe$/m', $spawned_cut['report']),
+            'A semicolon cuts an unquoted INI value at the engine\'s own comment grammar — the pre-semicolon run alone reaches the child, the hidden premise of the round-21 pin stated and pinned.'
+        );
     }
 
     public function testScannerDoesNotBypassOnGenericProseWords()
