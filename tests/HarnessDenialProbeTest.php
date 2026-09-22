@@ -55,7 +55,13 @@ final class HarnessDenialProbeTest extends TestCase
             WpHarness::lockForDenialProbe($refusal),
             'A failed lock chmod answers the probe honestly — the directory never locked, opendir() walks it open, the site\'s own skip fires (red at HEAD: the unsuppressed E_WARNING converted to an exception before the probe ran).'
         );
-        $this->assertSame($current, fileperms($refusal) & 07777, 'The refused target is untouched — neither chmod changed a byte it could not.');
+        /*
+         * glm26-7: no closing fileperms() assertSame — it read as
+         * restore coverage it could never be (the vacuous-pin class):
+         * the chmod pre-flight already proved this process cannot
+         * chmod the target, so no chmod in the choreography could
+         * have changed a byte and the assertion could not fail.
+         */
     }
 
     /**
