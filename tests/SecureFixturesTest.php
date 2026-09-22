@@ -1128,28 +1128,56 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          * the last stopped — O(lines + regions), verdicts
          * byte-identical. The leg pins the equivalence (the verdicts)
          * and the bounded wall clock on the driven shape.
+         *
+         * glm19-11b (the post-round red): the leg first ran the 23k
+         * scan IN-PROCESS — its whole-call peak (~105M above entry
+         * usage: the token streams the census's span factor bounds
+         * PLUS the payload, the masked view, the 46,000-entry regions
+         * array, and the 23,000 findings) fataled a 128M runner
+         * mid-suite under random order (driven: 'Allowed memory size
+         * exhausted' at the region walk's tokenize), and the
+         * pinned-ceiling shape could not restore either — the arena
+         * retains the freed token-stream pages, the engine refuses
+         * the lowering, and the limit left elevated poisoned every
+         * later census-relative leg (driven: the >1.3 MB unclosed-tail
+         * refusal never firing). The scan rides a SPAWNED ENGINE now,
+         * the suite's glm17-2/glm18-4 doctrine: the whale memory is
+         * process-isolated, the verdicts and the wall clock printed
+         * by the child under its own 1G ceiling.
          */
-        $key = 'sk-ant-api3-' . str_repeat('q', 30);
-        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
-        $pair = "<?php \$i = 1; ?> prose {$key} between the pairs <?php \$j = 2; ?>\n";
-        $payload = str_repeat($pair, 23000);
-        // The environment-relative guard, the suite's own doctrine: a
-        // runner whose token headroom cannot carry the pairs' census
-        // answers the loud refusal, never this leg's verdicts.
-        $spans_per_pair = 2 * (strlen('<?php $i = 1; ?>'));
-        if ($spans_per_pair * 23000 * 98 > wp_connectors_scan_token_memory_headroom()) {
-            $this->markTestSkipped('This runner\'s token headroom cannot carry the 23k-pair census — the linear-walk leg is unreachable here.');
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the spawned-engine leg cannot run (the 23k-pair scan rides a child process).');
         }
 
-        $started = microtime(true);
-        $findings = wp_connectors_scan_string($payload, 'pairs.md');
-        $elapsed = microtime(true) - $started;
+        $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
+        $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the spawned-engine leg runs — a realpath() false is an environment problem, never the linear-walk defect the child would otherwise carry.');
+        $script = 'require ' . var_export($scannerLibrary, true) . ";\n" . <<<'CHILD'
+$key = 'sk-ant-api3-' . str_repeat('q', 30);
+$pair = "<?php \$i = 1; ?> prose {$key} between the pairs <?php \$j = 2; ?>\n";
+$payload = str_repeat($pair, 23000);
+$started = microtime(true);
+$findings = wp_connectors_scan_string($payload, 'pairs.md');
+$elapsed = microtime(true) - $started;
+echo 'count=', count($findings), "\n";
+echo 'first=', $findings[0], "\n";
+echo 'mid=', $findings[11499], "\n";
+echo 'last=', $findings[22999], "\n";
+echo 'elapsed=', sprintf('%.3f', $elapsed), "\n";
+CHILD;
+        $output = array();
+        $exit = 1;
+        exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=1G -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+        $report = implode("\n", $output);
 
-        $this->assertCount(23000, $findings, 'Every prose key between the pairs flags — the linear walk launders nothing and finds everything the re-walk found (verdict equivalence).');
-        $this->assertSame("pairs.md:1 {$expect}", $findings[0], 'The first line\'s verdict is the pair-bounded one.');
-        $this->assertSame("pairs.md:11500 {$expect}", $findings[11499], 'A middle line\'s verdict is identical.');
-        $this->assertSame(sprintf('pairs.md:%d %s', 23000, $expect), $findings[22999], 'The last line\'s verdict is identical.');
-        $this->assertLessThan(10.0, $elapsed, sprintf('The 23k-pair scan answers in bounded time (%.2fs measured) — the cursor walk is O(lines + regions), never the per-line re-walk from index 0 (red at HEAD: ~13.9 s measured).', $elapsed));
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+        $this->assertSame(0, $exit, "The 23k-pair scan answers verdicts in the spawned engine, never a fatal: {$report}");
+        $this->assertStringContainsString('count=23000', $report, 'Every prose key between the pairs flags — the linear walk launders nothing and finds everything the re-walk found (verdict equivalence).');
+        $this->assertStringContainsString("first=pairs.md:1 {$expect}", $report, 'The first line\'s verdict is the pair-bounded one.');
+        $this->assertStringContainsString("mid=pairs.md:11500 {$expect}", $report, 'A middle line\'s verdict is identical.');
+        $this->assertStringContainsString("last=pairs.md:23000 {$expect}", $report, 'The last line\'s verdict is identical.');
+        $this->assertSame(1, preg_match('/^elapsed=([0-9.]+)$/m', $report, $clock), "The child reports its own wall clock: {$report}");
+        $this->assertLessThan(10.0, (float) $clock[1], sprintf('The 23k-pair scan answers in bounded time (%ss measured in the child) — the cursor walk is O(lines + regions), never the per-line re-walk from index 0 (red at HEAD: ~13.9 s measured).', $clock[1]));
     }
 
     public function testASumOfDenseSpansAnswersTheRefusalNeverTheFatal()
