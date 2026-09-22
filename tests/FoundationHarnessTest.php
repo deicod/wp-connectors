@@ -1039,6 +1039,24 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm26-3: the prefix parse excludes the '_transient_timeout_'
+     * family — the timeout half's option spelling aliases the VALUE
+     * row of a transient named 'timeout_<name>', and the parse once
+     * resolved it onto that row: delete_option('_transient_timeout_
+     * demo') answered true and killed the transient 'timeout_demo'
+     * where core answers false over the absent timeout row (driven
+     * red at HEAD — the seat's own no-such-row comment claim was
+     * false, the alias the falsifier).
+     */
+    public function testTheTimeoutFamilySpellingIsNotATransientValueRow()
+    {
+        $this->assertTrue(set_transient('timeout_demo', 'v'), 'staging: the aliased name saves.');
+
+        $this->assertFalse(delete_option('_transient_timeout_demo'), 'The timeout spelling answers the missing-row false — the timeout half is no transient of its own (red at HEAD: true over the aliased live row).');
+        $this->assertSame('v', get_transient('timeout_demo'), 'No row dies — the aliased value row the transient store models is untouched (red at HEAD: the alias deleted it).');
+    }
+
+    /**
      * glm25-1: TTL (re)arming survives the stored-false row's MISSING
      * read — glm24-4's keep-guard keyed on $own_entry alone, but a
      * stored-false row answers $existing FALSE (the get_option-shaped

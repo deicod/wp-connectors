@@ -503,8 +503,20 @@ function delete_option($option)
      * truthiness gates let their deletes answer the missing-row false
      * over a live row, the row surviving its own delete (driven; the
      * PHP-truthiness class this loop has closed repeatedly).
+     *
+     * glm26-3: the parse excludes the '_transient_timeout_<name>'
+     * family — the timeout half's option spelling ALIASES the value
+     * row of a transient named 'timeout_<name>', and the parse once
+     * resolved it onto that transient's row: delete_option over the
+     * timeout spelling answered true and killed the aliased transient
+     * where core answers false over the absent timeout row (driven).
+     * The family rides the seat's standing no-such-row simplification
+     * honestly now — nothing creates those rows (glm22-4's seam), and
+     * the parse no longer routes the spelling past it.
      */
-    $transient = 0 === strpos($option, '_transient_') ? substr($option, strlen('_transient_')) : false;
+    $transient = (0 === strpos($option, '_transient_') && 0 !== strpos($option, '_transient_timeout_'))
+        ? substr($option, strlen('_transient_'))
+        : false;
     if (! array_key_exists($option, WpHarness::$options)
         && ! (false !== $transient && array_key_exists($transient, WpHarness::$transients))
     ) {
