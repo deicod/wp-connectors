@@ -910,6 +910,17 @@ final class SecureFixturesTest extends WpConnectorsTestCase
      * proof riding the same line. The unquoted semicolon cut stays
      * pinned beside it: the engine's semantics, stated, never the
      * shell's.
+     *
+     * glm23-9 CORRECTS the round's own red claim: at the raw splice
+     * of THIS test's INI-quoted flag spelling exec answers EXIT 0
+     * with the child's own INI diagnostic printed and the value
+     * arriving MANGLED — never the 'shell's own syntax error, exit
+     * 2, no child' the round documented (that shape held for the
+     * round-21 UNQUOTED poison alone; driven below). The exit-0
+     * assertion is green over the mutation; the ANCHORED NEEDLE is
+     * the one red, and the mutation driver below pins the child-side
+     * evidence it rides: the flag-token line at the raw splice does
+     * NOT carry the whole value.
      */
     public function testTheSpawnOwnerEscapesItsIniFlagsAtTheExecBoundary()
     {
@@ -923,11 +934,47 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             array( "user_agent='" . $poison . "'" )
         );
 
-        $this->assertSame(0, $spawned['exit'], "The child runs with the metacharacter-bearing flag on its command line — one token at the exec boundary (red at the raw splice: the shell's own syntax error, exit 2, no child): {$spawned['report']}");
+        $this->assertSame(0, $spawned['exit'], "The child runs with the metacharacter-bearing flag on its command line — one token at the exec boundary: {$spawned['report']}");
         $this->assertSame(
             1,
             preg_match('/^' . preg_quote('flag-token=' . $poison, '/') . '$/m', $spawned['report']),
             'The WHOLE metacharacter-bearing value reaches the engine un-mangled and un-expanded — spaces, command substitution, double quotes, backgrounding, and pipe every byte intact through the shell boundary and the engine\'s own quoted-value grammar (the anchored full-line needle; the round-21 substring pin was vacuous for this class, and an executed substitution would rewrite the line and fail it).'
+        );
+
+        /*
+         * glm23-9: the MUTATION DRIVER — this test's own flag spelling
+         * spliced RAW (the escapeshellarg the owner rides removed, the
+         * seam's mutation): the shell passes the single-quoted token
+         * whole, php RUNS, and the value arrives MANGLED — the
+         * engine's own parser cutting it and printing its own
+         * diagnostic (driven: exit 0, 'PHP:  syntax error, unexpected
+         * \')\'', the flag-token line short of the whole value). The
+         * exit-0 fact falsifies glm22-9's documented red claim ('exit
+         * 2, no child' — the unquoted poison's shape alone); the
+         * child-side evidence that actually distinguishes the seam is
+         * the flag-token line, and the anchored needle above is the
+         * one assertion that goes red over this splice — proven here
+         * by the needle FAILING to match the mangled arrival.
+         */
+        $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
+        $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the raw-splice driver runs — an environment problem, never the splice verdict.');
+        $raw_output = array();
+        $raw_exit = 1;
+        exec(
+            (WpHarness::isPosixHost() ? 'timeout 30 ' : '')
+            . escapeshellarg(PHP_BINARY)
+            . " -d user_agent='" . $poison . "'"
+            . ' -r ' . escapeshellarg(sprintf('require %s; echo "flag-token=", ini_get("user_agent"), "\n";', var_export($scannerLibrary, true)))
+            . ' 2>&1',
+            $raw_output,
+            $raw_exit
+        );
+        $raw_report = implode("\n", $raw_output);
+        $this->assertSame(0, $raw_exit, "The FALSE PREMISE corrected, driven: at the raw splice of the INI-quoted flag the shell passes the token whole and php RUNS — exit 0 with the child's own INI diagnostic printed ({$raw_report}) — never round-22's claimed shell exit 2, so the exit assertion alone can never catch this mutation.");
+        $this->assertSame(
+            0,
+            preg_match('/^' . preg_quote('flag-token=' . $poison, '/') . '$/m', $raw_report),
+            "The child-side evidence the pin rides: the flag-token line at the raw splice does NOT carry the whole value ({$raw_report}) — the mangled arrival is exactly what the anchored needle above goes red over, the one distinguishing assertion at this mutation."
         );
 
         /*
