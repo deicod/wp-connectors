@@ -847,6 +847,20 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'userinfo does not hide it' => 'https://user:pw@host.example:0443/',
             'bracket host rides the same screen' => 'http://[::1]:0443/token',
             'multi-@ authority rides the same screen' => 'https://user@evil@host.example:0443/',
+            /*
+             * glm21-5: the PARSE-FALSE half of the class — parse_url()
+             * answers false outright for a port spelled with more than
+             * five digits even when the VALUE sits in range, so these
+             * spellings land on the ENTRY screen and once fell through
+             * to the scheme/host sentence (red at HEAD: two verdict
+             * sentences across one malformed class, violating the
+             * sentence const's own 'one malformed class, one verdict'
+             * contract). The entry screen's digit/zero arm names the
+             * leading zeros now, over every digit count.
+             */
+            'six-digit in-range value' => 'https://host.example:065535/',
+            'seven-digit in-range value' => 'https://host.example:0065535/',
+            'five-digit twin parses and rides the raw screen' => 'https://host.example:06553/',
         );
 
         foreach ($hostile_urls as $label => $url) {
@@ -854,7 +868,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
                 Url::parse_validated($url);
                 $this->fail(sprintf('A leading-zero port spelling (%s) must be refused by the shared URL owner — url() would keep the raw zeros while the authority spells the int value.', $label));
             } catch (\InvalidArgumentException $e) {
-                $this->assertStringContainsString('without leading zeros', $e->getMessage());
+                $this->assertStringContainsString('without leading zeros', $e->getMessage(), "One malformed class, one verdict sentence — the parse-false spellings answer the leading-zeros sentence too ({$label}).");
             }
 
             try {
@@ -866,25 +880,42 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
 
         /*
-         * ENGINE PREMISE, probed: the over-long spelling refuses one
-         * screen EARLIER on this build — parse_url() itself answers
-         * false for a port spelled with more than five digits
-         * (':000443' probed false, ':00443' probed 443), so the entry
-         * screen's own sentence fires before the leading-zero screen
-         * ever sees the spelling. The class is closed either way (the
-         * spelling never constructs); the belt for a build whose
-         * parse_url() accepts it is the leading-zero screen above, per
-         * the t31-ocr1-2 doctrine over build-dependent parse_url()
-         * answers.
+         * ENGINE PREMISE, probed and closed at glm21-5: parse_url()
+         * itself answers false for a port spelled with more than five
+         * digits (':000443' probed false, ':00443' probed 443), so the
+         * over-long spelling reaches the ENTRY screen on this build —
+         * which once sent it to the scheme/host sentence, splitting the
+         * class across two verdicts. The entry screen's leading-zero
+         * arm names the sentence on every build this engine shape
+         * gives it; the belt for a build whose parse_url() ACCEPTS the
+         * over-long spelling is the raw screen's own arm, answering the
+         * same sentence — the class is one verdict either way now (the
+         * t31-ocr1-2 doctrine over build-dependent parse_url()
+         * answers).
          */
         try {
             Url::parse_validated('https://host.example:000443/');
             $this->fail('An over-long leading-zero port must be refused by whichever screen fires first.');
         } catch (\InvalidArgumentException $e) {
-            $this->assertTrue(
-                false !== strpos($e->getMessage(), 'without leading zeros') || false !== strpos($e->getMessage(), 'absolute with a scheme and host'),
-                'The over-long spelling refuses through this build\'s entry screen (parse_url() answers false past five port digits) or the leading-zero screen — never constructs.'
+            $this->assertStringContainsString(
+                'without leading zeros',
+                $e->getMessage(),
+                'The over-long spelling answers the ONE leading-zeros sentence through whichever screen its build reaches — never the scheme/host sentence the class once split across (red at HEAD: the either/or shape this pin used to allow).'
             );
+        }
+
+        /*
+         * glm21-5 precedence: the out-of-range arm keeps the success
+         * path's own order on the failed parse too — an over-range
+         * leading-zero spelling wears the RANGE sentence, never the
+         * leading-zeros one (':000' has no canonical form to write;
+         * complying lands on the range refusal — the ocr25-3 rule).
+         */
+        try {
+            Url::parse_validated('https://host.example:065536/');
+            $this->fail('An out-of-range leading-zero port must be refused.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('out of range', $e->getMessage(), 'The range verdict outranks the leading-zeros verdict on the failed parse exactly as it does on the success path.');
         }
 
         // The canonical spellings stay green and agree with themselves:

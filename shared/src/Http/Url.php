@@ -42,6 +42,26 @@ final class Url {
 	private const PORT_MUST_BE_DIGITS_MESSAGE = 'The URL port must be digits — parse_url() mishandles a glued tail (":443x" truncates to 443, ":65534x" fails the parse outright) while the URL string carries the raw text, and the two must agree.';
 
 	/**
+	 * The ONE leading-zero-port sentence, shared by the success-path
+	 * canonical-spelling screen and the failed-parse entry screen
+	 * (glm21-5).
+	 *
+	 * The engine answers FALSE outright for a port spelled with more
+	 * than five digits — probed: ':06553/' parses (6553), ':065535/'
+	 * and ':0065535/' fail even though their VALUES sit in range — so
+	 * the in-range leading-zero class split across two screens and two
+	 * verdict sentences exactly the way the glued-tail class did before
+	 * glm15-6: ':0443/' answered this sentence through the raw screen
+	 * while ':065535/' fell through the failed parse to the
+	 * scheme/host message. The entry screen names the leading zeros for
+	 * the parse-false spellings now (its digit/zero class judging
+	 * before the absolute-scheme fallback), one malformed class, one
+	 * verdict, on every build — a build whose parse_url() accepts the
+	 * over-long spelling reaches the raw screen's own arm below.
+	 */
+	private const PORT_MUST_NOT_HAVE_LEADING_ZEROS_MESSAGE = 'The URL port must be spelled without leading zeros — ":0443" reads as 443 while the URL string keeps the raw spelling, and the two must agree (write ":443").';
+
+	/**
 	 * The ONE backslash sentence, shared by the whole-input screen on the
 	 * success path and the failed-parse entry screen (glm16-11).
 	 *
@@ -301,6 +321,26 @@ final class Url {
 							// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
 							throw new InvalidArgumentException( self::PORT_MUST_BE_DIGITS_MESSAGE );
 						}
+
+						/*
+						 * glm21-5: the parse-false half of the
+						 * leading-zero class — the engine refuses the
+						 * PARSE over digit count while the VALUE sits
+						 * in range, and this screen once let it fall
+						 * through to the scheme/host sentence below
+						 * (driven: ':065535/' and ':0065535/' wore it
+						 * while ':0443/' answered the leading-zeros
+						 * sentence through the raw screen). The
+						 * digit/zero class judges before the
+						 * absolute-scheme fallback, the range arm above
+						 * keeping its precedence (':065536/' stays the
+						 * out-of-range verdict, the success path's own
+						 * order — the ocr25-3 range-first rule).
+						 */
+						if ( strlen( $entry_digits[1] ) > 1 && '0' === $entry_digits[1][0] ) {
+							// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+							throw new InvalidArgumentException( self::PORT_MUST_NOT_HAVE_LEADING_ZEROS_MESSAGE );
+						}
 					}
 				}
 			}
@@ -523,7 +563,8 @@ final class Url {
 			 * remediation.
 			 */
 			if ( strlen( $raw_port ) > 1 && '0' === $raw_port[0] ) {
-				throw new InvalidArgumentException( 'The URL port must be spelled without leading zeros — ":0443" reads as 443 while the URL string keeps the raw spelling, and the two must agree (write ":443").' );
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data (ONE sentence with the entry screen since glm21-5).
+				throw new InvalidArgumentException( self::PORT_MUST_NOT_HAVE_LEADING_ZEROS_MESSAGE );
 			}
 		}
 
