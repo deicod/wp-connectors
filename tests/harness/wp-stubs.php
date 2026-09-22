@@ -2076,6 +2076,26 @@ function get_settings_errors($setting_code = '', $sanitize = false)
     if ($sanitize) {
         sanitize_option($setting_code, get_option($setting_code));
     }
+    /*
+     * glm23-4: the PASS-BACK merge — core's own shape between the
+     * sanitize head and the reads (template.php:1928-1931, pinned
+     * 7.1.1): over a settings-updated request with rows parked in the
+     * 'settings_errors' transient (options.php's save redirect), the
+     * passed-back rows merge INTO the one store every caller reads —
+     * in-process rows first, passed-back appended (core's array_merge
+     * order) — and the transient is CONSUMED by the merge, exactly
+     * once. The harness answered in-process rows alone (driven). The
+     * settings_errors() seat's $hide_on_update head answers BEFORE
+     * the twin runs, so the hidden path neither merges nor consumes —
+     * core's own order preserved.
+     */
+    if (isset($_GET['settings-updated']) && $_GET['settings-updated']) {
+        $passed_back = get_transient('settings_errors');
+        if ($passed_back) {
+            WpHarness::$settings_errors = array_merge(WpHarness::$settings_errors, (array) $passed_back);
+            delete_transient('settings_errors');
+        }
+    }
     if ('' === $setting_code) {
         return WpHarness::$settings_errors;
     }

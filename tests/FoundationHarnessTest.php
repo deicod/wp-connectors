@@ -905,6 +905,45 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm23-4: the settings-updated PASS-BACK merge rides the twin —
+     * core's get_settings_errors() merges the rows options.php parked
+     * in the 'settings_errors' transient over a settings-updated
+     * request (template.php:1928-1931, pinned 7.1.1: array_merge of
+     * the in-process rows and the passed-back rows, then
+     * delete_transient), where the harness answered in-process rows
+     * alone (driven red at HEAD). The merged rows land in the one
+     * errors store every caller reads — record order in-process
+     * first, passed-back appended — and the transient is consumed by
+     * the merge, exactly once.
+     */
+    public function testTheSettingsErrorsTwinMergesThePassBackTransientOverASettingsUpdatedRequest()
+    {
+        $_GET['settings-updated'] = '1';
+        set_transient('settings_errors', array(
+            array( 'setting' => 'glm23_pb', 'code' => 'pb_code', 'message' => 'The passed-back row', 'type' => 'error' ),
+            array( 'setting' => 'other', 'code' => 'pb_other', 'message' => 'The other passed-back row', 'type' => 'error' ),
+        ));
+        add_settings_error('glm23_pb', 'inproc_code', 'The in-process row');
+
+        $rows = settings_errors('glm23_pb', false, false);
+        $this->assertCount(2, $rows, 'The pass-back rows merge beside the in-process rows over a settings-updated request (red at HEAD: the in-process row alone).');
+        $this->assertSame('The in-process row', $rows[0]['message'], 'Core\'s merge order — the in-process rows first.');
+        $this->assertSame('The passed-back row', $rows[1]['message'], 'The passed-back rows append, template.php\'s array_merge shape.');
+        $this->assertCount(1, settings_errors('other', false, false), 'The other slug\'s passed-back row answers through its own filter — the merge lands in the one store every caller reads.');
+        $this->assertFalse(get_transient('settings_errors'), 'The transient is CONSUMED by the merge (core deletes it) — never merged twice.');
+        $this->assertCount(2, settings_errors('glm23_pb', false, false), 'A second call answers the standing MERGED store without duplicating it — the merge fired exactly once (a second merge would answer 3: core\'s global lands the rows, the transient is gone).');
+
+        // The hidden path never reaches the twin: $hide_on_update keeps
+        // its glm22-7 empty array without consuming the pass-back row.
+        set_transient('settings_errors', array(
+            array( 'setting' => 'glm23_pb', 'code' => 'pb2', 'message' => 'Another passed-back row', 'type' => 'error' ),
+        ));
+        $this->assertSame(array(), settings_errors('glm23_pb', false, true), 'The $hide_on_update head answers first — core\'s own order, the rows hidden before the twin can merge.');
+        $this->assertNotFalse(get_transient('settings_errors'), 'The hidden path consumed nothing — the merge is the twin\'s own, never the seat\'s.');
+        unset($_GET['settings-updated']);
+    }
+
+    /**
      * glm22-7: settings_errors() honors its $sanitize/$hide_on_update
      * arguments — both were accepted and silently dropped, the exact
      * argument-dropping class glm21-8 closed for $setting at the same
