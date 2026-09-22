@@ -311,6 +311,18 @@ final class WpHarness
             $_POST = self::$request_superglobals_snapshot['POST'];
             $_REQUEST = self::$request_superglobals_snapshot['REQUEST'];
         }
+
+        /*
+         * glm21-7: the REQUEST-URI member clears with the same restore
+         * — $_SERVER['REQUEST_URI'] is the one request superglobal
+         * member the stubs read (add_query_arg()'s two-scalar
+         * resolution), and reset() once left a test-assigned value
+         * standing: one test away from order-dependent verdicts under
+         * --order-by=random, the exact leak class the full-restore
+         * snapshot exists to close (a fresh CLI process carries no
+         * REQUEST_URI, so clearing is the pristine state).
+         */
+        unset($_SERVER['REQUEST_URI']);
     }
 
     /**

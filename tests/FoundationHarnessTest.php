@@ -586,6 +586,25 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(2, did_action('add_option__transient_glm21_false'), 'A stored-false row reads missing through the delegation predicate — both saves fire the add family.');
     }
 
+    /**
+     * glm21-7: WpHarness::reset() clears the request-URI superglobal
+     * member — $_SERVER['REQUEST_URI'] is the one member the stubs
+     * read (add_query_arg()'s two-scalar resolution), and a test's
+     * assignment once survived into the next test's verdicts under
+     * --order-by=random (the full-restore snapshot's own leak class:
+     * reset() restored GET/POST/REQUEST only).
+     */
+    public function testResetClearsTheRequestUriSuperglobalMember()
+    {
+        $_SERVER['REQUEST_URI'] = '/polluted?session=leaked';
+        $this->assertSame('/polluted?session=leaked&p=v', add_query_arg('p', 'v'), 'staging: the polluted member drives the two-scalar resolution before the reset.');
+
+        WpHarness::reset();
+
+        $this->assertSame('/?p=v', add_query_arg('p', 'v'), 'After reset() the request-URI member is cleared — the two-scalar resolution answers from the pristine root (red at HEAD: /polluted?session=leaked&p=v).');
+        $this->assertArrayNotHasKey('REQUEST_URI', $_SERVER, 'The member is unset, not emptied — a fresh CLI process carries no REQUEST_URI.');
+    }
+
     public function testDueEventsFireInTimestampOrderAndAnOverdueRecurringEventFiresOnce()
     {
         /*
