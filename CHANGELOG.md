@@ -6,6 +6,93 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 22)
+
+Eighth claude-glm pass: 15 findings, #1-#9 accepted by driver
+adjudication — #1 closing the standing scan_paths residual as its
+own round commit — plus the GPC-leg roots-validity piece from #13
+as its own commit (a staged leg blessing a walk that silently skips
+3 of its 4 declared roots is a false-green, not cleanup); the rest
+of #10-#15 deferred to the cleanup sweep. Ten numbered commits
+t31-glm22-1..10, the full offline check green after every commit,
+no push. The round's shape: the scan_paths walk residual closed at
+last by its own convention; the next round's re-audit of the
+round-21 entries (the zero-port one-arm miss, the glued-markup
+boundary, the transient delegation's three missing twins, the
+INI-semicolon doc-truth, the GPC leg's false-green roots — five
+round-21 ledger lines corrected in place); and the settings seat's
+two remaining members. Suite 1860 → 1865 tests, 47838 → 47917
+assertions, 3 skipped unchanged (every delta measured from output).
+
+- **The scan_paths walk fences its boundary aborts — the standing
+  residual closed (t31-glm22-1, bug:medium; bin/lib/secret-scanner.php,
+  tests/SecureFixturesTest.php)** — a chmod-000 root or entry aborted
+  the bare iterator walk with an uncaught UnexpectedValueException and
+  the whole scan died at exit 255 with no verdict; the walk rides the
+  sibling fence idiom (construction inside the try, the boundary abort
+  a named refusal in the glm14-2 vocabulary with the SPL message
+  parenthetically, the readable trees' findings kept, per-entry
+  RuntimeExceptions untouched), driven both boundary shapes.
+- **The entry screen's port range check is two-sided — the zero-valued
+  class unified under the range verdict (t31-glm22-2, bug:low;
+  shared/src/Http/Url.php)** — ':00000/' answered range through the
+  raw screen while ':000000/' (parse-false) answered the leading-zeros
+  sentence whose remediation is dead (stripping zeros lands on ':0',
+  itself refused); the < 1 side joins the > 65535, glm21-5's one-arm
+  miss corrected.
+- **The allow-marker's comment-form arm carries its own markup boundary
+  class (t31-glm22-3, bug:low; bin/lib/secret-scanner.php)** — compact
+  markup ('</text><!-- secrets:allow -->') was not a marker while the
+  spaced spelling was, a legitimately marked .svg false-finding; the
+  markup edge (tag- and quote-closers beside start/whitespace) joins
+  the comment-form arm, the ///# line-comment spellings keeping the
+  whitespace guard.
+- **set_transient() answers the twins' unchanged short-circuit
+  (t31-glm22-4, bug:medium; tests/harness/wp-stubs.php)** — an
+  identical re-save fired the full update family and answered true
+  where core's delegation answers false with zero hooks; the glm17-8
+  two-arm compare rides the update branch, the serialized-equality
+  arm deciding over the detached row.
+- **set_transient() clones an object value at the hook seat
+  (t31-glm22-5, bug:medium; tests/harness/wp-stubs.php)** — a
+  mutating add_option observer reached the caller's object through
+  the transient seat; the glm18-8/glm19-4 clone rides the
+  delegation's head, a hook-seat mutation landing in the stored row
+  (core's pre-INSERT vantage) and never the caller's value.
+- **set_transient() sanitizes at the head
+  (t31-glm22-6, bug:medium; tests/harness/wp-stubs.php)** — the
+  transient row's own filter (sanitize_option__transient_<name>)
+  never fired; one run per save whichever family persists it, the
+  sanitized value comparing, storing, and riding every hook.
+- **settings_errors() honors its $sanitize/$hide_on_update arguments
+  (t31-glm22-7, bug:low; tests/harness/wp-stubs.php)** — both were
+  accepted and silently dropped, the argument-dropping class glm21-8
+  closed for $setting one member over; $hide_on_update at core's own
+  head, $sanitize delegated to the twin's second parameter (the
+  callback's own settings errors surfacing by default).
+- **get_settings_errors() answers core's dense-append shape
+  (t31-glm22-8, bug:low; tests/harness/wp-stubs.php)** — the filtered
+  rows were keyed by their store indices (a sparse 0/2 list for two
+  errors on one setting) where core appends densely; the append
+  replaces the key preservation, record order intact.
+- **The escaping proof rides the real INI boundary, the doc-truth
+  corrected (t31-glm22-9, test-hygiene:medium;
+  tests/SecureFixturesTest.php)** — glm21-11's 'pre-space run'
+  premise was false: the engine keeps an unquoted value's
+  PRE-SEMICOLON run (INI comment semantics), so the pin held only
+  because its poison carried a ';'; the poison now rides the engine's
+  own quoted-value spelling with the whole value as the anchored
+  full-line needle, the unquoted cut pinned beside it.
+- **The lint walk names a declared root that names nothing — the GPC
+  leg's false-green roots (t31-glm22-10, test-hygiene:medium;
+  bin/lint-php.php, tests/BuildSeamPropertyTest.php,
+  tests/ToolchainSmokeTest.php)** — the GPC staged leg blessed a walk
+  silently skipping 3 of its 4 declared roots; the walk answers a
+  counted refusal and the red exit for a missing declared root, the
+  leg stages every root it declares with the summary pinned whole,
+  and the four ToolchainSmokeTest lint legs stage their undeclared
+  roots as empty trees.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 21)
 
 Seventh claude-glm pass: 15 findings (14 CONFIRMED, 1 PLAUSIBLE
