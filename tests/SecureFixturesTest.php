@@ -1120,6 +1120,65 @@ CHILD;
         $this->assertSame(array(), wp_connectors_scan_string($code, 'code.md'), 'A real code-comment marker keeps exempting its own line.');
     }
 
+    public function testTheSpanCensusRidesTheHostsActualLexingNotTheIniBlindByteWalk()
+    {
+        /*
+         * glm18-4: the span walk counted every '<?'...'?>' byte pair as
+         * a span regardless of whether the ENGINE opens it — the
+         * short_open_tag INI is ON on dev boxes and OFF on the
+         * production default, and 23k '<?xml-stylesheet …?>' processing
+         * instructions in a 1.84 MB .php doc lex as ONE inline-HTML
+         * run under the default (measured token cost ~1x, ~1.8 MB)
+         * while the census charged the dense ~98x factor and answered
+         * the loud refusal over bytes the tokenizer never opens
+         * (driven in a spawned engine at HEAD). The census classifies
+         * each open spelling against the host's own probed lexing
+         * (wp_connectors_engine_opener_lexing()) — and the legs pin
+         * BOTH directions under pinned INI, so the verdict never
+         * depends on the host this suite happens to run on: under
+         * short_open_tag=0 the PI doc scans and real '<?php' spans
+         * still refuse; under short_open_tag=1 the very same PI bytes
+         * ARE spans the engine opens and the refusal is honest.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the INI-pinned lexing legs cannot run (both legs ride a spawned engine).');
+        }
+
+        $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
+        $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the spawned-engine legs run — a realpath() false is an environment problem, never the census defect the child would otherwise refuse as.');
+        $script = <<<'CHILD'
+require %s;
+$pi = '<?xml-stylesheet type="text/xsl" href="../../style/long/path/sheetnumber7.xsl"?>';
+$doc = "<?php\n// head\n" . str_repeat($pi, 23000) . "\n?>\n";
+echo 'pi-bytes=', strlen($doc), "\n";
+foreach (wp_connectors_scan_string($doc, 'pi.php') as $finding) {
+    echo $finding, "\n";
+}
+$span = '<?php ' . str_repeat('$x=$x+$x;$y[]=$x;', 6200) . '?>';
+$dense = str_repeat($span . "\nprose run between the samples\n", 24);
+foreach (wp_connectors_scan_string($dense, 'dense.php') as $finding) {
+    echo $finding, "\n";
+}
+CHILD;
+        $command = escapeshellarg(PHP_BINARY) . ' -d memory_limit=128M -d short_open_tag=%d -r ' . escapeshellarg(sprintf($script, var_export($scannerLibrary, true)));
+
+        $output = array();
+        $exit = 1;
+        exec(sprintf($command, 0) . ' 2>&1', $output, $exit);
+        $default_ini = implode("\n", $output);
+        $this->assertSame(0, $exit, "Under the production-default short_open_tag=0 the whole payload answers verdicts, never a fatal: {$default_ini}");
+        $this->assertStringContainsString('pi-bytes=1840018', $default_ini, 'staging: the PI document must be the 1.84 MB driven shape.');
+        $this->assertStringNotContainsString('pi.php:', $default_ini, 'PIs the engine lexes inline never charge the census (red at HEAD: the loud token-memory refusal).');
+        $this->assertStringContainsString('dense.php: over the secret-scan token-memory bound — the secret scan cannot run', $default_ini, 'Real <?php spans still charge the census under the same INI — the probe-aware walk refuses exactly what would fatal.');
+
+        $output = array();
+        $exit = 1;
+        exec(sprintf($command, 1) . ' 2>&1', $output, $exit);
+        $short_ini = implode("\n", $output);
+        $this->assertSame(0, $exit, "Under short_open_tag=1 the payload answers the refusal as a verdict, never a fatal: {$short_ini}");
+        $this->assertStringContainsString('pi.php: over the secret-scan token-memory bound — the secret scan cannot run', $short_ini, 'The same PI bytes ARE spans an INI that opens the short spelling — the honest refusal stands.');
+    }
+
     public function testTheMemoryLimitParserIsWidthAwareAndNeverWraps()
     {
         /*

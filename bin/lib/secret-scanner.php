@@ -281,6 +281,46 @@ function wp_connectors_head_opens_php($contents)
 }
 
 /**
+ * The HOST engine's actual open-tag lexing, probed once (glm18-4).
+ *
+ * Whether a bare '<?' opens PHP mode is the short_open_tag INI — ON on
+ * dev boxes, OFF on the production default — and the token-memory
+ * census must charge only the spans THIS engine would really tokenize:
+ * 23k '<?xml-stylesheet …?>' processing instructions in a 1.84 MB
+ * document lex as ONE inline-HTML run on a default host (measured
+ * token cost ~1x, ~1.8 MB) but were charged the dense ~98x factor as
+ * 'spans', answering the loud refusal over bytes the tokenizer never
+ * opens. The probe is the engine's own answer — two tiny
+ * token_get_all() calls, cached for the process — never an INI-string
+ * re-derivation; '<?php' with core's follower class is INI-independent
+ * and never rides the probe.
+ *
+ * @return array{bare: bool, echo: bool} Whether the engine opens a
+ *         bare '<?' spelling, and whether it opens '<?='.
+ */
+function wp_connectors_engine_opener_lexing()
+{
+    static $probe = null;
+    if (null === $probe) {
+        $probe = array( 'bare' => false, 'echo' => false );
+        foreach (token_get_all('<?x') as $token) {
+            if (T_OPEN_TAG === (is_array($token) ? $token[0] : null)) {
+                $probe['bare'] = true;
+                break;
+            }
+        }
+        foreach (token_get_all('<?=') as $token) {
+            if (T_OPEN_TAG_WITH_ECHO === (is_array($token) ? $token[0] : null)) {
+                $probe['echo'] = true;
+                break;
+            }
+        }
+    }
+
+    return $probe;
+}
+
+/**
  * Scans one file's contents for secret patterns.
  *
  * @param string $contents     File contents.
@@ -396,10 +436,35 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
         $open_prefix = false === $last_nl ? $sample_open : $sample_open - ($last_nl + 1);
     }
     if ($has_php) {
+        /*
+         * glm18-4: every span the census charges must be a span THIS
+         * engine would really tokenize — the walk classifies each '<?'
+         * spelling against the host's probed open-tag lexing
+         * (wp_connectors_engine_opener_lexing(), short_open_tag-aware):
+         * '<?php' with core's follower class opens under every INI, a
+         * bare '<?' (an '<?xml' processing instruction included) and a
+         * glued '<?phpecho' only where the engine's probe says the
+         * short spelling opens. A non-opener's bytes — and its '?>',
+         * prose on a default host — never enter the total.
+         */
+        $opener = wp_connectors_engine_opener_lexing();
         $span_total = 0;
         $at = 0;
         while (false !== ($open = strpos($contents, '<?', $at))) {
-            $close = strpos($contents, '?>', $open + 2);
+            $after = $open + 2;
+            if ('=' === ($contents[ $after ] ?? '')) {
+                $opens = $opener['bare'] || $opener['echo'];
+            } elseif ('php' === wp_connectors_ascii_lower((string) substr($contents, $after, 3))) {
+                $follower = $contents[ $after + 3 ] ?? '';
+                $opens = '' === $follower || str_contains(" \t\r\n", $follower) || $opener['bare'];
+            } else {
+                $opens = $opener['bare'];
+            }
+            if (! $opens) {
+                $at = $after;
+                continue;
+            }
+            $close = strpos($contents, '?>', $after);
             $end = false === $close ? strlen($contents) : $close;
             $span_total += $end - $open;
             $at = false === $close ? strlen($contents) : $close + 2;
