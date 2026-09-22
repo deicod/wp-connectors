@@ -6,6 +6,128 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 19)
+
+Fifth claude-glm pass over the round-18 fixes. The review: 10
+CONFIRMED correctness + 1 measured efficiency; items 12-14 the
+cleanup class. Driver adjudication: findings 1-11 accepted; 12-14
+(the open-tag classifier consolidation, the cron find-row helper, the
+dead short-echo probe arm) DEFERRED to the cleanup sweep per
+precedent — ELEVEN numbered commits t31-glm19-1..11, the full
+offline check green after every commit, no push. The round's shape:
+three driven regressions of round 18's own commits closed (the
+in-string close splitting the region walk, the mixed-line marker
+crossing, the alternative-syntax /s glue); the core-parity cluster
+resolved against the pinned WP 7.1.1 — glm18-7's own fractional-
+acceptance premise falsified by core's key truncation and corrected
+in the ledger; the fatal-band pin's three gaps; and the compositor's
+quadratic class made linear with a measured equivalence pin. Suite
+1843 → 1853 tests, 47538 → 47586 assertions, 3 skipped unchanged
+(every delta measured from output).
+
+- **An in-string close tag no longer splits the sample region
+  (t31-glm19-1, security:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — the region walk closed each region at
+  the first byte-level `?>`, so a close spelled inside a quoted
+  interior split it and the code after the in-string close fell to
+  the line-local arm, its marker honoring there (the glm18-1
+  laundering class reopened; driven: 0 findings at HEAD, 1 at base).
+  The close rides the tokenizer now — the engine's lexer the one
+  owner of where PHP mode ends — and the census judges before the
+  tokenizing walk through a byte-level INI-independent open
+  pre-screen (verdict-identical routing, the loud refusal never
+  traded for a mid-walk fatal).
+- **The line-skip never crosses a region boundary (t31-glm19-2,
+  security:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — the composed code view fed the whole
+  mixed line to the marker judge, so a prose marker outside the
+  region exempted a key inside it (driven: `<?php $k = "<key>"; ?>
+  // secrets:allow` answered 0 at HEAD, 1 at base). The exemption is
+  per-arm now: each match is exempt only by the marker of its own
+  arm (the region's code view for region bytes, the line-local arm's
+  own marker for prose bytes), never crossed in either direction.
+- **The foreach header capture is alternation-aware
+  (t31-glm19-3, bug:low; bin/lib/plugin-tools.php, tests/
+  SelfContainmentLoopWritesTest.php)** — glm18-3's `/s` let the lazy
+  capture glue across an `endforeach` boundary onto a later
+  foreach's `) {`, consuming the real header and phantom-flagging
+  the include over it (driven: 1 violation at HEAD, 0 at base). The
+  capture is tempered by the endforeach token and an
+  alternative-syntax header matches its own `:` close, its binding
+  collecting like any brace-syntax twin.
+- **add_option() clones at the true head, core's both-heads shape
+  (t31-glm19-4, bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — the stub's direct-add path stored
+  the caller's live reference, so a mutate-in-place re-save through
+  the other entry point answered false with zero hooks where core's
+  add-time detached copy completes (driven — glm18-8's exact class
+  through the other entry point; core clones at option.php:1108-1110
+  beside :882-884, pinned 7.1.1).
+- **The stored row is serialized-equal (t31-glm19-5, bug:low;
+  tests/harness/wp-stubs.php, tests/FoundationHarnessTest.php)** —
+  the head clone is shallow and core's row is serialized bytes at
+  the database layer, so no nested reference survives the write; the
+  harness's shallow clone kept nested objects shared and a nested
+  mutation answered false with zero hooks where core's serialized
+  row completes (driven). The serialization detachment rides the
+  write (unserialize over serialize) at both INSERT sites, the hooks
+  still observing the caller-shaped value at core's pre-INSERT
+  vantage.
+- **The fractional schedule lands at the int-truncated key
+  (t31-glm19-6, bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — glm18-7's premise that core "keys
+  the fractional timestamp downstream" is falsified against the
+  pinned 7.1.1: the `$crons[$event->timestamp]` key truncates 0.5
+  onto key 0, next-scheduled's falsy-key guard answers false, and
+  the stub's raw-0.5 row stranded cancellation permanently (driven
+  at the round-18 pin). The row rides the int-truncated key now
+  (core's own key shape), next_scheduled answers the falsy-key
+  false, and the stranded-cancellation shape dies; the glm18-7 pin
+  and ledger line carry their in-place CORRECTED pointers.
+- **Non-finite timestamps refuse at the schedule guard
+  (t31-glm19-7, bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — INF and NAN pass the raw-value
+  guard (is_numeric true, neither `<= 0`) where no honest schedule
+  exists: the raw INF queued as a never-firing zombie while core's
+  key truncation fires it every pass, and the int-truncated storage
+  cast drew the engine's own "float INF is not representable"
+  complaint (driven). The guard refuses non-finite values, covering
+  the over-width numeric-string spellings too.
+- **The fatal-band guard rides before the ini_set (t31-glm19-8,
+  test-hygiene:medium; tests/SecureFixturesTest.php)** — a runner
+  with live usage past the 128M pin itself gets a refused lowering
+  (false plus an E_WARNING PHPUnit converts), so the pin line
+  answered a spurious red, never the named skip (driven with
+  ballast staged past the pin). The guard now judges first, its band
+  covering the refusal shape whole; the @-suppression road refused.
+- **The fatal-band floor derives from the staging peak
+  (t31-glm19-9, test-hygiene:medium; tests/SecureFixturesTest.php)**
+  — the floor was the pin minus the staging's resting size, but the
+  dense concat holds two ~1.91 MiB copies transiently: a
+  (125.8, 126.0) MiB window passed the guard and the very staging
+  killed the engine at exit 255 (driven: the exhaustion inside the
+  leg's own allocation, no verdict). The floor derives from the
+  fixture's own arithmetic — the same expression that builds the
+  entry, charged twice, plus a drift margin.
+- **The ballast stager answers the landed reading (t31-glm19-10,
+  test-hygiene:low; tests/SecureFixturesTest.php)** — the ballast
+  loops assumed ~64 KiB growth per append but the real-usage
+  reading advances in allocator chunks (~2 MiB jumps), so a ceiling
+  assert could answer a red where the shape was the allocator's
+  own. One stager owns the top-up (stageBallastPastFloor()), every
+  ceiling judgment rides the landed reading — a jump past the
+  ceiling is the named skip — and the unit pin holds the stager's
+  contract, the suite's doctrine for the userland-undrivable shape.
+- **The pair-bounded compositor stays linear (t31-glm19-11,
+  efficiency:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — the compositor re-walked all regions
+  from index 0 for every line (O(lines × regions); a 23,000-pair
+  .md answered in ~13.9 s, measured twice independently). The walk
+  rides a by-ref region cursor now — O(lines + regions), 0.92 s
+  measured on this host against 25.3 s for the reverted re-walk —
+  verdicts byte-identical, the driven leg pinning 23,000 findings
+  over the pairs payload beside the bounded wall clock.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 18)
 
 Fourth claude-glm pass over the round-17 fixes. The review: 15
