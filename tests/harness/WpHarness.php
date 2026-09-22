@@ -61,7 +61,16 @@ final class WpHarness
     /**
      * Scheduled events, WP-style: hook => list of event arrays.
      *
-     * @var array<string, list<array{timestamp: int, args: array, id: string}>>
+     * glm21-12: the annotation matches both producers' row shape —
+     * singles carry {timestamp, args} (wp_schedule_single_event),
+     * recurring rows add the resolved interval member
+     * (wp_schedule_event and the walk's grid-aligned reschedule); the
+     * former 'id: string' member this docblock once promised was
+     * deleted with the glm17-10 keyed re-location (the synthetic id
+     * spelled), and the docblock is the only contract here
+     * (phpstan-excluded).
+     *
+     * @var array<string, list<array{timestamp: int, args: array, interval?: int}>>
      */
     public static $cron = array();
 
