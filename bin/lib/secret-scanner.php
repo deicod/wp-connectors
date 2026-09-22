@@ -824,14 +824,24 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
  *                      line per file whose read failed (glm14-2), one
  *                      "unreadable scan root — the secret scan cannot
  *                      run" line per root that names nothing at all —
- *                      missing or a dangling symlink (glm21-3), and
- *                      one "over the 2 MB secret-scan size limit" line
- *                      per over-limit file — walked (glm14-3) or named
- *                      directly at the file-root arm (glm20-1):
- *                      the scan verdict is never clean over bytes it
- *                      did not read; both consumers — the CLI's exit
- *                      code and the inspector's violations — derive
- *                      their refusal from this list.
+ *                      missing or a dangling symlink (glm21-3), one
+ *                      "unreadable directory — the secret scan cannot
+ *                      run" line per walked root whose iteration
+ *                      aborted at a directory this process cannot
+ *                      open (glm22-1), and one "over the 2 MB
+ *                      secret-scan size limit" line per over-limit
+ *                      file — walked (glm14-3) or named directly at
+ *                      the file-root arm (glm20-1): the scan verdict
+ *                      is never clean over bytes it did not read;
+ *                      both consumers — the CLI's exit code and the
+ *                      inspector's violations — derive their refusal
+ *                      from this list.
+ * @throws RuntimeException When a per-entry read fails at the
+ *                          engine's own layer — the SPL iterator's
+ *                          RuntimeExceptions (getPathname()/getSize())
+ *                          pass untouched; the glm22-1 fence owns only
+ *                          the UnexpectedValueException boundary abort,
+ *                          never the per-entry class beside it.
  */
 function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
 {
@@ -902,107 +912,132 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
             $findings[] = sprintf('%s: unreadable scan root — the secret scan cannot run', $root);
             continue;
         }
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
-        );
-        // The prune judges segments BELOW the root only (verifier round
-        // t31-ocr1-12) — the lint walk's shape: the full pathname's
-        // ANCESTORS are not this walk's dev tree, and judging them let a
-        // 'dist'-shaped checkout ancestor blind the whole scan silently
-        // (reproduced: 0 findings under a Dist/ ancestor, 1 under Dst/
-        // — the exact-case shape was pre-round, the fold widened it to
-        // every casing).
         /*
-         * The prefix arithmetic strips BOTH separator spellings (OCR
-         * round 31, t31-ocr31-5, the t31-ocr29-3 vocabulary class):
-         * rtrim($root, DIRECTORY_SEPARATOR) consulted only the native
-         * one, so a '/'-suffixed root on a separator host kept its
-         * trailing separator in the length while the iterator below
-         * treats '/' as a separator there too — $below_root one byte
-         * over, and every walked relative lost its first byte. The
-         * strip judges the spelling CLASS, never the host it runs on:
-         * on POSIX the '\' arm costs residue only for a path
-         * literally named with a trailing backslash byte (the
-         * ocr29-3 trade, residue over victim), and on this POSIX host
-         * the arithmetic is byte-identical to the former rtrim.
+         * glm22-1 (the standing scan_paths residual since OCR round 24,
+         * closing by its own convention): a chmod-000 root or entry
+         * aborts the bare walk with the iterator's own
+         * UnexpectedValueException — from the RecursiveDirectoryIterator
+         * constructor or mid-recursion through getChildren() — and
+         * nothing caught it: the whole scan died with NO verdict (the
+         * CLI call site hands this walk an unfenced tree by
+         * construction, exit 255 on the uncaught SPL fatal). The walk
+         * rides the ocr33-6/ocr36-2 fence idiom every sibling walker
+         * already carries (check-conventions' glm17-17,
+         * inspect-artifact's t31-ocr24-2, the lint walk's
+         * t31-ocr30-3): the CONSTRUCTION rides the try (the ocr23 rd-1
+         * doctrine — the iteration seam's own first statement), the
+         * boundary abort converts to the walk's own named refusal in
+         * the glm14-2 vocabulary with the SPL message parenthetically,
+         * the findings collected from the readable trees before the
+         * abort stay (the partial count stays loud), and the
+         * per-entry RuntimeExceptions pass untouched (the fence owns
+         * the directory-OPEN boundary class alone).
          */
-        $below_root = strlen(rtrim($root, '/\\')) + 1;
-        foreach ($iterator as $file) {
-            /** @var SplFileInfo $file */
-            // The segment walk exists ONLY to prune, and pruning is
-            // constant for the whole walk: with $prune_dev_segments
-            // false (the artifact scan) the inner guard was provably
-            // never true, yet the explode+segment loop still ran per
-            // file — skipped entirely now (t31-ocr9-6; behavior
-            // identical: nothing prunes either way).
-            if ($prune_dev_segments) {
-                $parts = explode(DIRECTORY_SEPARATOR, (string) substr($file->getPathname(), $below_root));
-                foreach ($parts as $part) {
-                    if (wp_connectors_segment_is_named($part, $excluded)) {
-                        continue 2;
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
+            );
+            // The prune judges segments BELOW the root only (verifier round
+            // t31-ocr1-12) — the lint walk's shape: the full pathname's
+            // ANCESTORS are not this walk's dev tree, and judging them let a
+            // 'dist'-shaped checkout ancestor blind the whole scan silently
+            // (reproduced: 0 findings under a Dist/ ancestor, 1 under Dst/
+            // — the exact-case shape was pre-round, the fold widened it to
+            // every casing).
+            /*
+             * The prefix arithmetic strips BOTH separator spellings (OCR
+             * round 31, t31-ocr31-5, the t31-ocr29-3 vocabulary class):
+             * rtrim($root, DIRECTORY_SEPARATOR) consulted only the native
+             * one, so a '/'-suffixed root on a separator host kept its
+             * trailing separator in the length while the iterator below
+             * treats '/' as a separator there too — $below_root one byte
+             * over, and every walked relative lost its first byte. The
+             * strip judges the spelling CLASS, never the host it runs on:
+             * on POSIX the '\' arm costs residue only for a path
+             * literally named with a trailing backslash byte (the
+             * ocr29-3 trade, residue over victim), and on this POSIX host
+             * the arithmetic is byte-identical to the former rtrim.
+             */
+            $below_root = strlen(rtrim($root, '/\\')) + 1;
+            foreach ($iterator as $file) {
+                /** @var SplFileInfo $file */
+                // The segment walk exists ONLY to prune, and pruning is
+                // constant for the whole walk: with $prune_dev_segments
+                // false (the artifact scan) the inner guard was provably
+                // never true, yet the explode+segment loop still ran per
+                // file — skipped entirely now (t31-ocr9-6; behavior
+                // identical: nothing prunes either way).
+                if ($prune_dev_segments) {
+                    $parts = explode(DIRECTORY_SEPARATOR, (string) substr($file->getPathname(), $below_root));
+                    foreach ($parts as $part) {
+                        if (wp_connectors_segment_is_named($part, $excluded)) {
+                            continue 2;
+                        }
                     }
                 }
-            }
-            if (! $file->isFile()) {
-                continue;
-            }
-            /*
-             * glm14-4: 'phtml' joins the allowlist the same round the
-             * ONE is-a-source owner (wp_connectors_is_php_source())
-             * gained the template class — the r6 ledger line's reopen
-             * condition ("a real producer") was met by a driven
-             * 'form.phtml' entry carrying a live token past this
-             * screen. '.php5'/'.php7'/'.inc' stay out until a driven
-             * producer ships one (the r6 bar).
-             *
-             * glm21-2: the allowlist rides BEFORE the size cap — the
-             * cap once fired first, so a legitimate 3 MB assets/big.png
-             * inside a shipped artifact rejected the WHOLE inspection
-             * ('9 violations, exit 1') over bytes the extension screen
-             * would never read (driven: the oversized .png answered the
-             * loud cap finding where the walk never charges .png at
-             * all). The cap fires only for extensions the scan would
-             * actually read — the over-refusal direction of the cap's
-             * own memory-bound purpose (glm14-3/glm20-1).
-             */
-            $extension = strtolower($file->getExtension());
-            if ($extension !== '' && ! in_array($extension, array( 'php', 'phtml', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
-                continue;
-            }
-            if ($file->getSize() > 2 * 1024 * 1024) {
+                if (! $file->isFile()) {
+                    continue;
+                }
                 /*
-                 * glm14-3: the 2 MB cap is a deliberate memory bound —
-                 * the scan is line-based over the whole file's
-                 * contents, so the bound exists to keep a hostile
-                 * multi-gigabyte entry from exhausting the process
-                 * before a verdict lands (CORRECTED at glm20-1: the
-                 * file-root arm above once had no cap under this
-                 * paragraph's 'a caller naming one file owns that
-                 * choice' premise — the whole-call undercharge kept the
-                 * fatal window the caller's naming could not close, and
-                 * the named target rides the same loud refusal now; the
-                 * WALK still judges trees it did not choose).
-                 * The skip is LOUD, never silent: an over-limit file
-                 * answers a finding line in the glm14-2 vocabulary, so
-                 * the verdict never reads clean over bytes the scan
-                 * did not read — a zip shipping a >2 MB entry now
-                 * fails the inspector's credential screen instead of
-                 * passing ACCEPTED (driven red at HEAD: exactly 1
-                 * finding, the oversized twin invisible).
+                 * glm14-4: 'phtml' joins the allowlist the same round the
+                 * ONE is-a-source owner (wp_connectors_is_php_source())
+                 * gained the template class — the r6 ledger line's reopen
+                 * condition ("a real producer") was met by a driven
+                 * 'form.phtml' entry carrying a live token past this
+                 * screen. '.php5'/'.php7'/'.inc' stay out until a driven
+                 * producer ships one (the r6 bar).
+                 *
+                 * glm21-2: the allowlist rides BEFORE the size cap — the
+                 * cap once fired first, so a legitimate 3 MB assets/big.png
+                 * inside a shipped artifact rejected the WHOLE inspection
+                 * ('9 violations, exit 1') over bytes the extension screen
+                 * would never read (driven: the oversized .png answered the
+                 * loud cap finding where the walk never charges .png at
+                 * all). The cap fires only for extensions the scan would
+                 * actually read — the over-refusal direction of the cap's
+                 * own memory-bound purpose (glm14-3/glm20-1).
                  */
-                $findings[] = sprintf('%s: over the 2 MB secret-scan size limit — the secret scan cannot run', $file->getPathname());
-                continue;
+                $extension = strtolower($file->getExtension());
+                if ($extension !== '' && ! in_array($extension, array( 'php', 'phtml', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
+                    continue;
+                }
+                if ($file->getSize() > 2 * 1024 * 1024) {
+                    /*
+                     * glm14-3: the 2 MB cap is a deliberate memory bound —
+                     * the scan is line-based over the whole file's
+                     * contents, so the bound exists to keep a hostile
+                     * multi-gigabyte entry from exhausting the process
+                     * before a verdict lands (CORRECTED at glm20-1: the
+                     * file-root arm above once had no cap under this
+                     * paragraph's 'a caller naming one file owns that
+                     * choice' premise — the whole-call undercharge kept the
+                     * fatal window the caller's naming could not close, and
+                     * the named target rides the same loud refusal now; the
+                     * WALK still judges trees it did not choose).
+                     * The skip is LOUD, never silent: an over-limit file
+                     * answers a finding line in the glm14-2 vocabulary, so
+                     * the verdict never reads clean over bytes the scan
+                     * did not read — a zip shipping a >2 MB entry now
+                     * fails the inspector's credential screen instead of
+                     * passing ACCEPTED (driven red at HEAD: exactly 1
+                     * finding, the oversized twin invisible).
+                     */
+                    $findings[] = sprintf('%s: over the 2 MB secret-scan size limit — the secret scan cannot run', $file->getPathname());
+                    continue;
+                }
+                /*
+                 * glm14-2 (the walk arm of the file-root arm above): a
+                 * false read is a finding, never a laundered empty scan.
+                 */
+                $contents = @file_get_contents($file->getPathname());
+                if (false === $contents) {
+                    $findings[] = sprintf('%s: unreadable file — the secret scan cannot run', $file->getPathname());
+                    continue;
+                }
+                $findings = array_merge($findings, wp_connectors_scan_string($contents, $file->getPathname()));
             }
-            /*
-             * glm14-2 (the walk arm of the file-root arm above): a
-             * false read is a finding, never a laundered empty scan.
-             */
-            $contents = @file_get_contents($file->getPathname());
-            if (false === $contents) {
-                $findings[] = sprintf('%s: unreadable file — the secret scan cannot run', $file->getPathname());
-                continue;
-            }
-            $findings = array_merge($findings, wp_connectors_scan_string($contents, $file->getPathname()));
+        } catch (UnexpectedValueException $walk_refusal) {
+            $findings[] = sprintf('%s: unreadable directory — the secret scan cannot run (%s)', $root, $walk_refusal->getMessage());
         }
     }
 

@@ -756,6 +756,94 @@ final class SecureFixturesTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm22-1 [#1, driven — the standing scan_paths residual since OCR
+     * round 24 closes here by its own convention]: the walk names an
+     * unreadable directory instead of dying as an uncaught SPL fatal.
+     * A chmod-000 root or entry aborts the bare RecursiveDirectoryIterator
+     * walk with its own UnexpectedValueException — from the constructor
+     * or mid-recursion through getChildren() — and nothing caught it:
+     * the CLI call site (scan-secrets.php) hands this walk an unfenced
+     * tree by construction, so the whole scan died at exit 255 with NO
+     * verdict (red at HEAD: the uncaught exception itself). The walk
+     * rides the ocr33-6/ocr36-2 fence idiom its sibling walkers carry:
+     * the boundary abort converts to the walk's own named refusal in
+     * the glm14-2 vocabulary (the SPL message parenthetically), the
+     * readable roots' findings stay beside it, and the walk keeps
+     * answering past the abort.
+     */
+    public function testTheScanPathsWalkNamesAnUnreadableDirectoryInsteadOfDyingUncaught()
+    {
+        /*
+         * The permission-denial probe (the t31-ocr30-3 capability
+         * shape): a process the permissions cannot deny (root walks a
+         * chmod-000 directory open) can never drive the refusal, and a
+         * leg that cannot go red is a vacuous green — skip, naming the
+         * premise. The probe restores its own permissions so the
+         * finally's release owns it either way.
+         */
+        $probe = sys_get_temp_dir() . '/wpct-scan-perm-' . uniqid('', true);
+        $this->assertTrue(mkdir($probe, 0755, true), "staging: the probe directory must create — a staging failure fails as staging, never as the capability verdict.");
+        $this->assertTrue(chmod($probe, 0000), "staging: the probe directory must lock — a staging failure fails as staging, never as the capability verdict.");
+        $probe_open = @opendir($probe);
+        $denied = false === $probe_open;
+        if (false !== $probe_open) {
+            closedir($probe_open);
+        }
+        $this->assertTrue(chmod($probe, 0755), "staging: the probe directory must unlock again — a staging failure fails as staging, never as the finally's cleanup.");
+        WpHarness::releaseScratch($probe);
+        if (! $denied) {
+            $this->markTestSkipped('This process walks a chmod-000 directory open (permissions cannot deny it — root-shaped), so the unreadable-directory leg can never drive its refusal: the walk would read the tree and answer as the readable control.');
+        }
+
+        $zaiKey = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+        $readable = $this->scanScratchRoot('wp-connectors-scan-fence');
+        $lockedRoot = $this->scanScratchRoot('wp-connectors-scan-fence');
+        $lockedChild = $this->scanScratchRoot('wp-connectors-scan-fence');
+        try {
+            $this->assertTrue(mkdir($readable, 0755, true), "staging: {$readable} must create — a staging failure fails as staging, never as the fence verdict.");
+            $this->assertNotFalse(file_put_contents($readable . '/leak.conf', "api_key = {$zaiKey}\n"), "staging: {$readable}/leak.conf must write — a staging failure fails as staging, never as the fence verdict.");
+            $this->assertTrue(mkdir($lockedRoot, 0755, true), "staging: {$lockedRoot} must create — a staging failure fails as staging, never as the fence verdict.");
+            $this->assertTrue(chmod($lockedRoot, 0000), "staging: {$lockedRoot} must lock — a staging failure fails as staging, never as the fence verdict.");
+            $this->assertTrue(mkdir($lockedChild . '/locked', 0755, true), "staging: {$lockedChild}/locked must create — a staging failure fails as staging, never as the fence verdict.");
+            $this->assertNotFalse(file_put_contents($lockedChild . '/locked/Hidden.conf', "api_key = {$zaiKey}\n"), "staging: the locked-tree source must write — a staging failure fails as staging, never as the fence verdict.");
+            $this->assertTrue(chmod($lockedChild . '/locked', 0000), "staging: {$lockedChild}/locked must lock — a staging failure fails as staging, never as the fence verdict.");
+
+            /*
+             * The ROOT-order legs are order-deterministic (the input
+             * array's own order — never the readdir hash order a
+             * same-root sibling leg would depend on): the readable
+             * root's finding stays BESIDE the locked root's refusal
+             * (the partial count stays loud, the walk answering past
+             * the abort — red at HEAD: the exception killed the scan
+             * before any verdict).
+             */
+            $findings = wp_connectors_scan_paths(array( $readable, $lockedRoot ));
+            $report = implode("\n", $findings);
+            $this->assertStringContainsString("{$readable}/leak.conf:1 zai-key", $report, 'The readable root\'s finding stands beside the refusal — the partial count stays loud, never laundered by the abort.');
+            $this->assertStringContainsString("{$lockedRoot}: unreadable directory — the secret scan cannot run (", $report, 'The chmod-000 ROOT answers the walk\'s own named refusal (red at HEAD: the constructor\'s uncaught UnexpectedValueException), the SPL message parenthetically.');
+            $this->assertStringNotContainsString($zaiKey, $report, 'Findings still never echo the secret itself.');
+
+            /*
+             * The CHILD leg: a chmod-000 child aborts the walk
+             * MID-RECURSION (getChildren(), not the constructor) and
+             * the root carries the same named refusal — the
+             * unreachable source itself is never scanned (the tree is
+             * judged whole or not at all), and never a fatal.
+             */
+            $childFindings = wp_connectors_scan_paths(array( $lockedChild ));
+            $this->assertCount(1, $childFindings, 'The locked-child root answers exactly the one refusal line — the tree is named, never a stack trace (red at HEAD: the uncaught mid-recursion fatal).');
+            $this->assertStringContainsString("{$lockedChild}: unreadable directory — the secret scan cannot run (", $childFindings[0], 'The mid-recursion abort names the walked root in the glm14-2 vocabulary, the SPL message parenthetically.');
+            $this->assertStringContainsString('locked', $childFindings[0], 'The SPL message carries the unreadable entry itself.');
+        } finally {
+            @chmod($lockedRoot, 0755);
+            @chmod($lockedChild . '/locked', 0755);
+            WpHarness::releaseScratch($readable);
+            WpHarness::releaseScratch($lockedRoot);
+            WpHarness::releaseScratch($lockedChild);
+        }
+    }
+
+    /**
      * glm20-6: the spawn is bounded — a never-terminating child
      * regression fails loudly at the bound, never hangs phpunit.
      */
