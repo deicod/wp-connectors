@@ -1115,6 +1115,43 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertNotSame('', $this->ballast, 'The ballast is staged and stays alive with the property until the test ends.');
     }
 
+    public function testThePairBoundedCompositorStaysLinearOverThousandsOfPairs()
+    {
+        /*
+         * glm19-11 (measured twice independently by the review): the
+         * compositor re-walked ALL regions from index 0 for EVERY
+         * line — O(lines × regions) — and a 23,000-pair .md answered
+         * in ~13.9 s where the cursor shape answers in well under a
+         * second. The walk rides a by-ref region CURSOR now (regions
+         * sorted, line starts monotonic): a region closed on an
+         * earlier line is consumed for good, each line starting where
+         * the last stopped — O(lines + regions), verdicts
+         * byte-identical. The leg pins the equivalence (the verdicts)
+         * and the bounded wall clock on the driven shape.
+         */
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+        $pair = "<?php \$i = 1; ?> prose {$key} between the pairs <?php \$j = 2; ?>\n";
+        $payload = str_repeat($pair, 23000);
+        // The environment-relative guard, the suite's own doctrine: a
+        // runner whose token headroom cannot carry the pairs' census
+        // answers the loud refusal, never this leg's verdicts.
+        $spans_per_pair = 2 * (strlen('<?php $i = 1; ?>'));
+        if ($spans_per_pair * 23000 * 98 > wp_connectors_scan_token_memory_headroom()) {
+            $this->markTestSkipped('This runner\'s token headroom cannot carry the 23k-pair census — the linear-walk leg is unreachable here.');
+        }
+
+        $started = microtime(true);
+        $findings = wp_connectors_scan_string($payload, 'pairs.md');
+        $elapsed = microtime(true) - $started;
+
+        $this->assertCount(23000, $findings, 'Every prose key between the pairs flags — the linear walk launders nothing and finds everything the re-walk found (verdict equivalence).');
+        $this->assertSame("pairs.md:1 {$expect}", $findings[0], 'The first line\'s verdict is the pair-bounded one.');
+        $this->assertSame("pairs.md:11500 {$expect}", $findings[11499], 'A middle line\'s verdict is identical.');
+        $this->assertSame(sprintf('pairs.md:%d %s', 23000, $expect), $findings[22999], 'The last line\'s verdict is identical.');
+        $this->assertLessThan(10.0, $elapsed, sprintf('The 23k-pair scan answers in bounded time (%.2fs measured) — the cursor walk is O(lines + regions), never the per-line re-walk from index 0 (red at HEAD: ~13.9 s measured).', $elapsed));
+    }
+
     public function testASumOfDenseSpansAnswersTheRefusalNeverTheFatal()
     {
         /*
