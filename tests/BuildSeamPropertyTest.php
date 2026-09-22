@@ -1687,13 +1687,10 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
              * root or a rename would leave this staging naming a tree
              * the walk no longer declares (the certify-less-than-
              * declared shape glm22-10 closed, one seam over).
+             * glm24-8: the staging loop rides the ONE choreography
+             * owner beside the data (WpHarness::stageLintRoots()).
              */
-            foreach (wp_connectors_lint_roots($gpcLintScratch) as $gpcLintRoot) {
-                if (is_dir($gpcLintRoot)) {
-                    continue;
-                }
-                $this->assertTrue(mkdir($gpcLintRoot, 0755, true), "staging: the declared root {$gpcLintRoot} must create — the leg's tree names every root the walk declares (glm22-10), and a staging failure fails as staging, never as the GPC lint verdict.");
-            }
+            WpHarness::stageLintRoots($gpcLintScratch);
             /*
              * glm23-15: the green run and the driven re-run share ONE
              * command by construction — the leg once re-spelled the

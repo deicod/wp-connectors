@@ -1621,6 +1621,36 @@ final class WpHarness
     }
 
     /**
+     * Stages every lint root the walk declares — the ONE staging
+     * choreography owner over the declared-root DATA owner
+     * (glm24-8; glm23-13 hoisted wp_connectors_lint_roots() but the
+     * five staged legs still hand-copied the LOOP — the is_dir skip,
+     * the 0755 mkdir, the staging-fails-as-staging message — the
+     * message text already diverging across the copies). Each root
+     * the walk names that does not exist is created (the leg's own
+     * CONTENT staging keeps its own trees untouched, the is_dir skip
+     * standing); a mkdir that fails throws the harness's own loud
+     * RuntimeException naming the root — an environment problem
+     * named before any child spawns, never the gate's verdict
+     * wearing it.
+     *
+     * @param string $base The scratch base the declared roots hang from.
+     * @return void
+     * @throws RuntimeException When a declared root's mkdir fails.
+     */
+    public static function stageLintRoots(string $base): void
+    {
+        foreach (wp_connectors_lint_roots($base) as $root) {
+            if (is_dir($root)) {
+                continue;
+            }
+            if (! mkdir($root, 0755, true)) {
+                throw new \RuntimeException("staging: the declared root {$root} must create — a staging failure fails as staging, never as the lint verdict.");
+            }
+        }
+    }
+
+    /**
      * Recursively copies a directory tree's FILES (test helper — the ONE
      * scratch-tree copy owner, t31-ocr1-9: UnusedImportScannerTest carried
      * this private beside its own @-suppressed removeTree twin; both moved

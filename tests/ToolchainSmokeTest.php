@@ -214,16 +214,11 @@ final class ToolchainSmokeTest extends TestCase
              * roots this leg does not drive ride as EMPTY trees (the
              * walk's missing-root refusal, swept the same round, made
              * the silent absence of a declared root a red).
-             * glm23-13: the declared set rides the ONE owner the walk
-             * consults (wp_connectors_lint_roots()) — the leg names
-             * whatever the walk names, never its own hand copy.
+             * glm23-13/glm24-8: the declared set AND the staging loop
+             * ride the ONE choreography owner — the leg names whatever
+             * the walk names, never its own hand copy.
              */
-            foreach (wp_connectors_lint_roots($scratch) as $declared_root) {
-                if (is_dir($declared_root)) {
-                    continue;
-                }
-                $this->assertTrue(mkdir($declared_root, 0755, true), "staging: the declared root {$declared_root} must create — a staging failure fails as staging, never as the lint verdict.");
-            }
+            WpHarness::stageLintRoots($scratch);
             /*
              * The staging READ asserts its own success (OCR round 29,
              * t31-ocr29-8, the t31-ocr27-9 doctrine's read twin): the
@@ -326,15 +321,11 @@ final class ToolchainSmokeTest extends TestCase
             $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $scratch . '/bin/lib/plugin-tools.php'), 'staging: the tool library must copy — a staging failure fails as staging, never as the lint verdict.');
             /*
              * glm22-10: every declared root the walk names — shared
-             * and tests ride as empty trees here. glm23-13: the set
-             * rides the ONE owner the walk consults.
+             * and tests ride as empty trees here. glm23-13/glm24-8:
+             * the set and the staging loop ride the ONE choreography
+             * owner the walk consults.
              */
-            foreach (wp_connectors_lint_roots($scratch) as $declared_root) {
-                if (is_dir($declared_root)) {
-                    continue;
-                }
-                $this->assertTrue(mkdir($declared_root, 0755, true), "staging: the declared root {$declared_root} must create — a staging failure fails as staging, never as the lint verdict.");
-            }
+            WpHarness::stageLintRoots($scratch);
             $this->assertTrue(mkdir($scratch . '/connectors/demo', 0755, true), 'staging: the demo connector tree must create — a staging failure fails as staging, never as the lint verdict.');
             $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/good.php', "<?php\n// lintable connector source\n"), 'staging: the good connector source must write — a staging failure fails as staging, never as the lint verdict.');
             $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/real.php', "<?php\n// the linked source's own bytes\n"), 'staging: the linked source must write — a staging failure fails as staging, never as the lint verdict.');
@@ -514,16 +505,11 @@ final class ToolchainSmokeTest extends TestCase
             /*
              * glm22-10: the declared shared root rides as an empty
              * tree here (tests/connectors stage with content below).
-             * glm23-13: the set rides the ONE owner the walk consults
-             * (wp_connectors_lint_roots()) — the leg names whatever
-             * the walk names, never its own hand copy.
+             * glm23-13/glm24-8: the set and the staging loop ride the
+             * ONE choreography owner the walk consults — the leg
+             * names whatever the walk names, never its own hand copy.
              */
-            foreach (wp_connectors_lint_roots($scratch) as $declared_root) {
-                if (is_dir($declared_root)) {
-                    continue;
-                }
-                $this->assertTrue(mkdir($declared_root, 0755, true), "staging: the declared root {$declared_root} must create — a staging failure fails as staging, never as the lint verdict.");
-            }
+            WpHarness::stageLintRoots($scratch);
             // Real sources: one under tests/ (the root lints), one under
             // connectors/, one under a NESTED tests-named tree (the
             // ocr8-7 coverage — the vocabulary ride skipped it); then
@@ -670,16 +656,11 @@ final class ToolchainSmokeTest extends TestCase
             /*
              * glm22-10: the declared shared root rides as an empty
              * tree here (tests/connectors stage with content below).
-             * glm23-13: the set rides the ONE owner the walk consults
-             * (wp_connectors_lint_roots()) — the leg names whatever
-             * the walk names, never its own hand copy.
+             * glm23-13/glm24-8: the set and the staging loop ride the
+             * ONE choreography owner the walk consults — the leg
+             * names whatever the walk names, never its own hand copy.
              */
-            foreach (wp_connectors_lint_roots($scratch) as $declared_root) {
-                if (is_dir($declared_root)) {
-                    continue;
-                }
-                $this->assertTrue(mkdir($declared_root, 0755, true), "staging: the declared root {$declared_root} must create — a staging failure fails as staging, never as the lint verdict.");
-            }
+            WpHarness::stageLintRoots($scratch);
             $this->assertTrue(mkdir($scratch . '/connectors/demo', 0755, true), 'staging: the demo connector tree must create — a staging failure fails as staging, never as the lint verdict.');
             $this->assertNotFalse(file_put_contents($scratch . '/connectors/demo/good.php', "<?php\n// lintable connector source\n"), 'staging: the connector source must write — a staging failure fails as staging, never as the lint verdict.');
             $this->assertTrue(mkdir($scratch . '/tests/unit', 0755, true), 'staging: the scratch tests tree must create — a staging failure fails as staging, never as the lint verdict.');
