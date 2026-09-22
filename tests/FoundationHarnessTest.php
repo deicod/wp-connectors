@@ -840,10 +840,7 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(get_option('_transient_glm24_del'), 'The MIRRORED option row dies with it (red at HEAD: \'x\' standing) — core deletes its one row, whichever store the harness models it in.');
         $this->assertSame(
             array(),
-            $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
-                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
-                $GLOBALS['wpdb']->esc_like('_transient_glm24_del') . '%'
-            )),
+            $this->censusTransientRows('glm24_del'),
             'The uninstall enumeration answers EMPTY post-delete (red at HEAD: the mirrored row still presented) — no second copy survives the seat\'s own delete.'
         );
 
@@ -878,20 +875,14 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(get_transient('glm24_sf'), 'The row serves its stored false inside the window — the false answer is the VALUE, never the expiry.');
         $this->assertSame(
             array( '_transient_glm24_sf' ),
-            $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
-                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
-                $GLOBALS['wpdb']->esc_like('_transient_glm24_sf') . '%'
-            )),
+            $this->censusTransientRows('glm24_sf'),
             'INSIDE the window the row LIVES (t=1050 < 1100) — the enumeration census proves the false read was the stored value.'
         );
         $this->freezeTime(1101);
         $this->assertFalse(get_transient('glm24_sf'), 'Past the window the read answers false — the death itself is the census below.');
         $this->assertSame(
             array(),
-            $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
-                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
-                $GLOBALS['wpdb']->esc_like('_transient_glm24_sf') . '%'
-            )),
+            $this->censusTransientRows('glm24_sf'),
             'The stored-false row DIES at its original expiry (red at HEAD: never dies — the keep-guard keyed on $existing reset expires_at to false over the stored-false shape and the row stood forever).'
         );
     }
@@ -971,10 +962,7 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(get_transient('glm25_opt'), 'The transient store\'s row dies at the option-keyed delete (red at HEAD: still serving).');
         $this->assertSame(
             array(),
-            $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
-                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
-                $GLOBALS['wpdb']->esc_like('_transient_glm25_opt') . '%'
-            )),
+            $this->censusTransientRows('glm25_opt'),
             'The uninstall enumeration answers EMPTY post-delete — the LIKE-enumeration shape rides the mirror.'
         );
         $this->assertFalse(delete_option('_transient_glm25_opt'), 'The row is gone from BOTH stores — the second delete answers the missing-row false.');
@@ -1114,12 +1102,6 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      */
     public function testTtlArmingSurvivesTheStoredFalseRowsMissingRead()
     {
-        $census = static function (string $transient): array {
-            return $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
-                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
-                $GLOBALS['wpdb']->esc_like('_transient_' . $transient) . '%'
-            ));
-        };
 
         /*
          * Shape 1 — ARM over a stored-false row that carried no TTL:
@@ -1130,10 +1112,10 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertTrue(set_transient('glm25_arm', false, 100), 'The TTL-bearing re-save completes over the stored-false row — the ADD family its own shape (the false row reads missing).');
         $this->freezeTime(1050);
         $this->assertFalse(get_transient('glm25_arm'), 'Inside the armed window the row serves its stored false — the false answer is the VALUE, never the expiry.');
-        $this->assertSame(array( '_transient_glm25_arm' ), $census('glm25_arm'), 'The read above unsets nothing inside the window — the row LIVES at t=1050 < 1100.');
+        $this->assertSame(array( '_transient_glm25_arm' ), $this->censusTransientRows('glm25_arm'), 'The read above unsets nothing inside the window — the row LIVES at t=1050 < 1100.');
         $this->freezeTime(1101);
         $this->assertFalse(get_transient('glm25_arm'), 'Past the armed window the read answers false — the death itself is the census below.');
-        $this->assertSame(array(), $census('glm25_arm'), 'The ARM-OVER-FALSE row dies at the save\'s own 100 (red at HEAD: never armed, the row stood forever).');
+        $this->assertSame(array(), $this->censusTransientRows('glm25_arm'), 'The ARM-OVER-FALSE row dies at the save\'s own 100 (red at HEAD: never armed, the row stood forever).');
 
         /*
          * Shape 2 — RE-ARM over an armed stored-false row: the second
@@ -1144,10 +1126,10 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertTrue(set_transient('glm25_rearm', false, 300), 'The TTL-bearing re-save completes — the new window is the save\'s own, never the stale first one.');
         $this->freezeTime(1150);
         $this->assertFalse(get_transient('glm25_rearm'), 'Past the FIRST window the read answers false — whether the row died is the census below.');
-        $this->assertSame(array( '_transient_glm25_rearm' ), $census('glm25_rearm'), 'The RE-ARMED window stands — the row lives at t=1150 < 1300 (red at HEAD: dead at the stale 1100).');
+        $this->assertSame(array( '_transient_glm25_rearm' ), $this->censusTransientRows('glm25_rearm'), 'The RE-ARMED window stands — the row lives at t=1150 < 1300 (red at HEAD: dead at the stale 1100).');
         $this->freezeTime(1301);
         $this->assertFalse(get_transient('glm25_rearm'));
-        $this->assertSame(array(), $census('glm25_rearm'), 'The re-armed row dies at the SECOND save\'s own 300.');
+        $this->assertSame(array(), $this->censusTransientRows('glm25_rearm'), 'The re-armed row dies at the SECOND save\'s own 300.');
 
         /*
          * Shape 3 — glm24-4's zero-expiration keep restated beside the
@@ -1161,10 +1143,10 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertTrue(set_transient('glm25_keep', false), 'The zero-expiration re-save completes — it names no expiration to keep or move.');
         $this->freezeTime(1099);
         $this->assertFalse(get_transient('glm25_keep'));
-        $this->assertSame(array( '_transient_glm25_keep' ), $census('glm25_keep'), 'The zero-expiration re-save keeps the standing window — the row lives at t=1099 < 1100.');
+        $this->assertSame(array( '_transient_glm25_keep' ), $this->censusTransientRows('glm25_keep'), 'The zero-expiration re-save keeps the standing window — the row lives at t=1099 < 1100.');
         $this->freezeTime(1101);
         $this->assertFalse(get_transient('glm25_keep'));
-        $this->assertSame(array(), $census('glm25_keep'), 'The kept window ends at the FIRST save\'s own 100 (glm24-4 stands over the widened guard).');
+        $this->assertSame(array(), $this->censusTransientRows('glm25_keep'), 'The kept window ends at the FIRST save\'s own 100 (glm24-4 stands over the widened guard).');
 
         /*
          * Shape 4 — the plain rows: an expiration-bearing re-save moves
@@ -2795,5 +2777,26 @@ echo class_exists("InMemoryTokenStorage") ? "TOKEN-PRESENT\n" : "TOKEN-ABSENT\n"
         } finally {
             WpHarness::releaseScratch($scratch);
         }
+    }
+
+    /**
+     * The wpdb uninstall-enumeration census (glm26-10): the ONE owner
+     * of the LIKE query the transient legs once hand-copied — the
+     * query, the esc_like() literal, and the trailing '%' wildcard
+     * spelled once (the round-25 diff added a $census closure AND an
+     * inline twin beside the standing spellings; a query drift now
+     * lands in one place). Deliberately the LITERAL spelling, never
+     * the stub's own owner: an oracle that inherited the stub's
+     * convention helper could not catch the helper drifting.
+     *
+     * @param string $transient Transient name (unprefixed).
+     * @return list<string> The matching option_name rows (sorted).
+     */
+    private function censusTransientRows(string $transient): array
+    {
+        return $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
+            "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
+            $GLOBALS['wpdb']->esc_like('_transient_' . $transient) . '%'
+        ));
     }
 }
