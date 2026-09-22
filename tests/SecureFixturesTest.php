@@ -1208,12 +1208,27 @@ CHILD;
         $key = 'sk-ant-api3-' . str_repeat('q', 30);
         $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
         $this->assertSame(0, $exit, "The 23k-pair scan answers verdicts in the spawned engine, never a fatal: {$report}");
-        $this->assertStringContainsString('count=23000', $report, 'Every prose key between the pairs flags — the linear walk launders nothing and finds everything the re-walk found (verdict equivalence).');
-        $this->assertStringContainsString("first=pairs.md:1 {$expect}", $report, 'The first line\'s verdict is the pair-bounded one.');
-        $this->assertStringContainsString("mid=pairs.md:11500 {$expect}", $report, 'A middle line\'s verdict is identical.');
-        $this->assertStringContainsString("last=pairs.md:23000 {$expect}", $report, 'The last line\'s verdict is identical.');
+        /*
+         * glm20-2: the verdict needles are ANCHORED full-line matches —
+         * the spawn move left substring pins at the child boundary, so
+         * a drifted count=230001 report false-passed 'count=23000'
+         * (and a drifted first=pairs.md:10 the :1 needle), the
+         * verdict-equivalence pin the old assertCount/assertSame shape
+         * carried gone with the boundary. Each needle answers exactly
+         * one full line of the child's report; the drifted-report
+         * mutant below pins the needle's own contract.
+         */
+        $countNeedle = '/^count=23000$/m';
+        $this->assertSame(1, preg_match($countNeedle, $report), "Every prose key between the pairs flags — the linear walk launders nothing and finds everything the re-walk found (verdict equivalence): {$report}");
+        $this->assertSame(1, preg_match('/^' . preg_quote("first=pairs.md:1 {$expect}", '/') . '$/m', $report), "The first line's verdict is the pair-bounded one, the full line exact: {$report}");
+        $this->assertSame(1, preg_match('/^' . preg_quote("mid=pairs.md:11500 {$expect}", '/') . '$/m', $report), "A middle line's verdict is identical, the full line exact: {$report}");
+        $this->assertSame(1, preg_match('/^' . preg_quote("last=pairs.md:23000 {$expect}", '/') . '$/m', $report), "The last line's verdict is identical, the full line exact: {$report}");
         $this->assertSame(1, preg_match('/^elapsed=([0-9.]+)$/m', $report, $clock), "The child reports its own wall clock: {$report}");
         $this->assertLessThan(10.0, (float) $clock[1], sprintf('The 23k-pair scan answers in bounded time (%ss measured in the child) — the cursor walk is O(lines + regions), never the per-line re-walk from index 0 (red at HEAD: ~13.9 s measured).', $clock[1]));
+        // The needle's own contract: the drifted count report the
+        // substring pin false-passed (red at HEAD's pin shape) answers
+        // ZERO matches — an anchored needle false-passes nothing.
+        $this->assertSame(0, preg_match($countNeedle, "count=230001\n"), 'The anchored count needle never false-passes a drifted count — the substring pin answered 1 for this exact report line.');
     }
 
     public function testASumOfDenseSpansAnswersTheRefusalNeverTheFatal()
