@@ -177,6 +177,33 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(array( 'k' => 'changed' ), get_option('glm17_obj_opt'));
     }
 
+    public function testTheExistingRowAddStillRunsTheSanitizerCoreOrder()
+    {
+        /*
+         * glm17-9: core sanitizes at the TRUE head of add_option() —
+         * BEFORE the exists-guard (option.php:1113 precedes :1121,
+         * pinned 7.1.1) — so the guard's no-op add still counts the
+         * add-head run. The stub had the guard first, silently
+         * skipping the sanitizer on the existing-row path (driven red
+         * at HEAD: the callback ran zero times over the no-op add).
+         */
+        $runs = 0;
+        register_setting('glm17', 'glm17_head_opt', array(
+            'sanitize_callback' => static function ($v) use (&$runs) {
+                ++$runs;
+
+                return $v;
+            },
+        ));
+
+        update_option('glm17_head_opt', 'stored');
+        $this->assertSame(2, $runs, 'staging: the first save ran the sanitizer at BOTH heads (glm16-5\'s pin).');
+
+        $this->assertFalse(add_option('glm17_head_opt', 'attempt'), 'The non-false duplicate keeps the silent no-op (glm17-4\'s guard).');
+        $this->assertSame(3, $runs, 'The add HEAD ran before the guard — the no-op add still sanitizes (red at HEAD: the guard returned first, 2).');
+        $this->assertSame('stored', get_option('glm17_head_opt'), 'The no-op wrote nothing, as before.');
+    }
+
     public function testUpdateOptionHookOrderAndArityMatchCore()
     {
         /*

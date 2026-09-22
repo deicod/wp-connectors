@@ -316,6 +316,16 @@ function update_option($option, $value, $autoload = null)
 function add_option($option, $value = '', $deprecated = '', $autoload = null)
 {
     /*
+     * glm17-9: core sanitizes at the TRUE head — BEFORE the
+     * exists-guard (option.php:1113's sanitize_option() precedes the
+     * :1121 guard, pinned 7.1.1) — so an add over an existing row
+     * still counts the add-head run before it answers the guard's
+     * false. The stub had the guard first, silently skipping the
+     * sanitizer on the no-op path (driven: the existing-row add ran
+     * the registered callback zero times).
+     */
+    $value = sanitize_option($option, $value);
+    /*
      * glm17-4 CORRECTS glm16-4's premise: core's INSERT does NOT die
      * in a duplicate-key collision — it rides ON DUPLICATE KEY UPDATE
      * (option.php:1142 in the pinned WP 7.1.1, pre-verified against
@@ -336,21 +346,16 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
     }
 
     /*
-     * glm15-3: core calls sanitize_option() at the head of add_option()
-     * too (option.php:1113, WP 7.1.1) — the registered settings callback
-     * runs before the row exists and before any hook fires, exactly the
-     * production save a Task-3.2+ settings test emulates.
-     *
-     * glm16-5 CORRECTED the round-15 spec this comment carried: the
-     * head-of placement does NOT keep the callback at one run per save
-     * — core runs sanitize at BOTH heads of a first save
-     * (update_option()'s own head AND the add_option() it delegates
-     * to), so a delegated first save runs the callback exactly TWICE,
-     * structural through the natural delegation (never a forced
-     * double call), and every subsequent save exactly once. The
-     * runs=1 spec was wrong; core parity wins.
+     * glm15-3/glm16-5 (the head-of sanitize moved above the guard at
+     * glm17-9, core's own order — the runs arithmetic this comment
+     * carries is unchanged by the move): core calls sanitize_option()
+     * at the head of add_option() (option.php:1113, WP 7.1.1), and it
+     * runs at BOTH heads of a first save (update_option()'s own head
+     * AND the add_option() it delegates to), so a delegated first
+     * save runs the callback exactly TWICE, structural through the
+     * natural delegation (never a forced double call), and every
+     * subsequent save exactly once.
      */
-    $value = sanitize_option($option, $value);
     WpHarness::$options[ $option ] = $value;
     WpHarness::$option_autoload[ $option ] = null === $autoload ? true : (bool) $autoload;
 
