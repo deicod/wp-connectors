@@ -252,6 +252,10 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             // the HEAD verdict reads clean, the silent half of the red).
             $this->assertNotFalse(file_put_contents($tempDir . '/wide.php', '<?php $x = 1; ?> ' . str_repeat("// prose line without any key\n", 95000)), "staging: {$tempDir}/wide.php must write — a staging failure fails as staging, never as the scan verdict.");
             $this->assertGreaterThan(2 * 1024 * 1024, filesize($tempDir . '/wide.php'), 'staging: wide.php must land over the 2 MB cap the leg premises.');
+            // glm21-2: a >2 MB entry whose extension the walk never
+            // reads — the artifact shape's assets/big.png.
+            $this->assertNotFalse(file_put_contents($tempDir . '/big.png', str_repeat('x', 3 * 1024 * 1024 + 1)), "staging: {$tempDir}/big.png must write — a staging failure fails as staging, never as the scan verdict.");
+            $this->assertGreaterThan(2 * 1024 * 1024, filesize($tempDir . '/big.png'), 'staging: big.png must land over the 2 MB cap the leg premises.');
 
             $findings = wp_connectors_scan_paths(array( $tempDir ));
             $directOverBound = wp_connectors_scan_paths(array( $tempDir . '/wide.php' ));
@@ -266,6 +270,16 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertStringContainsString('small.php', $report);
         $this->assertStringContainsString('github-token', $report);
         $this->assertStringNotContainsString($githubToken, $report);
+
+        /*
+         * glm21-2: the allowlist judges BEFORE the cap — the cap once
+         * fired first, so a legitimate 3 MB assets/big.png inside a
+         * shipped artifact rejected the whole inspection over bytes
+         * the extension screen would never read (red at HEAD: the
+         * big.png cap line rode the report). The cap fires only for
+         * extensions the scan would actually read.
+         */
+        $this->assertStringNotContainsString('big.png', $report, 'A >2 MB entry whose extension the walk never reads stays skipped by the ALLOWLIST — the size cap fires only for extensions the scan would actually read (red at HEAD: the big.png cap line).');
 
         // glm20-1: the directly-named over-bound file answers the SAME
         // loud refusal (red at HEAD: the whole 2.85 MB scanned to a

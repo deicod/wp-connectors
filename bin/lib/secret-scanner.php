@@ -888,6 +888,29 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
             if (! $file->isFile()) {
                 continue;
             }
+            /*
+             * glm14-4: 'phtml' joins the allowlist the same round the
+             * ONE is-a-source owner (wp_connectors_is_php_source())
+             * gained the template class — the r6 ledger line's reopen
+             * condition ("a real producer") was met by a driven
+             * 'form.phtml' entry carrying a live token past this
+             * screen. '.php5'/'.php7'/'.inc' stay out until a driven
+             * producer ships one (the r6 bar).
+             *
+             * glm21-2: the allowlist rides BEFORE the size cap — the
+             * cap once fired first, so a legitimate 3 MB assets/big.png
+             * inside a shipped artifact rejected the WHOLE inspection
+             * ('9 violations, exit 1') over bytes the extension screen
+             * would never read (driven: the oversized .png answered the
+             * loud cap finding where the walk never charges .png at
+             * all). The cap fires only for extensions the scan would
+             * actually read — the over-refusal direction of the cap's
+             * own memory-bound purpose (glm14-3/glm20-1).
+             */
+            $extension = strtolower($file->getExtension());
+            if ($extension !== '' && ! in_array($extension, array( 'php', 'phtml', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
+                continue;
+            }
             if ($file->getSize() > 2 * 1024 * 1024) {
                 /*
                  * glm14-3: the 2 MB cap is a deliberate memory bound —
@@ -910,19 +933,6 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                  * finding, the oversized twin invisible).
                  */
                 $findings[] = sprintf('%s: over the 2 MB secret-scan size limit — the secret scan cannot run', $file->getPathname());
-                continue;
-            }
-            /*
-             * glm14-4: 'phtml' joins the allowlist the same round the
-             * ONE is-a-source owner (wp_connectors_is_php_source())
-             * gained the template class — the r6 ledger line's reopen
-             * condition ("a real producer") was met by a driven
-             * 'form.phtml' entry carrying a live token past this
-             * screen. '.php5'/'.php7'/'.inc' stay out until a driven
-             * producer ships one (the r6 bar).
-             */
-            $extension = strtolower($file->getExtension());
-            if ($extension !== '' && ! in_array($extension, array( 'php', 'phtml', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
                 continue;
             }
             /*
