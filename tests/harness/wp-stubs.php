@@ -288,6 +288,44 @@ function wp_connectors_value_unchanged($old, $value)
         || ((is_array($value) || is_object($value)) && serialize($value) === serialize($old));
 }
 
+/**
+ * The '_transient_<name>' option-row spelling — the ONE owner of the
+ * eleven-byte convention (glm26-9): set_transient()'s delegated row,
+ * delete_transient()'s delegated delete, and the wpdb enumeration's
+ * option_name presentation each spelled the concat by hand, and this
+ * round's substr(10) off-by-one at the reverse parse is the
+ * demonstrated hazard of unowned spellings.
+ *
+ * @param string $name Transient name.
+ * @return string The option row's name.
+ */
+function wp_connectors_transient_option_name($name)
+{
+    return '_transient_' . $name;
+}
+
+/**
+ * The REVERSE parse — whether an option name is a transient VALUE
+ * row, and the transient's name when it is (glm26-9: the parse twin
+ * of the owner above). The '_transient_timeout_<name>' family is
+ * EXCLUDED (glm26-3): the timeout half's spelling aliases the value
+ * row of a transient named 'timeout_<name>', and the seat models no
+ * timeout rows — the parse never routes the family onto the
+ * transient store.
+ *
+ * @param string $option Option name.
+ * @return string|false The transient name, or false when the option
+ *                      names no transient value row.
+ */
+function wp_connectors_transient_name_from_option($option)
+{
+    if (0 !== strpos($option, '_transient_') || 0 === strpos($option, '_transient_timeout_')) {
+        return false;
+    }
+
+    return substr($option, strlen('_transient_'));
+}
+
 function update_option($option, $value, $autoload = null)
 {
     /*
@@ -504,19 +542,14 @@ function delete_option($option)
      * over a live row, the row surviving its own delete (driven; the
      * PHP-truthiness class this loop has closed repeatedly).
      *
-     * glm26-3: the parse excludes the '_transient_timeout_<name>'
-     * family — the timeout half's option spelling ALIASES the value
-     * row of a transient named 'timeout_<name>', and the parse once
-     * resolved it onto that transient's row: delete_option over the
-     * timeout spelling answered true and killed the aliased transient
-     * where core answers false over the absent timeout row (driven).
-     * The family rides the seat's standing no-such-row simplification
-     * honestly now — nothing creates those rows (glm22-4's seam), and
-     * the parse no longer routes the spelling past it.
+     * glm26-3/glm26-9: the parse rides its ONE owner — the owner's
+     * own exclusion drops the '_transient_timeout_<name>' family (the
+     * timeout half's spelling ALIASES the value row of a transient
+     * named 'timeout_<name>'; delete_option over it answers the
+     * missing-row false, core's own answer over the absent timeout
+     * row — the seat models no such rows).
      */
-    $transient = (0 === strpos($option, '_transient_') && 0 !== strpos($option, '_transient_timeout_'))
-        ? substr($option, strlen('_transient_'))
-        : false;
+    $transient = wp_connectors_transient_name_from_option($option);
     if (! array_key_exists($option, WpHarness::$options)
         && ! (false !== $transient && array_key_exists($transient, WpHarness::$transients))
     ) {
@@ -663,7 +696,7 @@ function set_transient($transient, $value, $expiration = 0)
      * seat's spelling was the THIRD hand copy.
      */
     $value = wp_connectors_option_head_clone($value);
-    $transient_option = '_transient_' . $transient;
+    $transient_option = wp_connectors_transient_option_name($transient);
     /*
      * glm22-6: sanitize at the head — core's delegation rides
      * add_option()/update_option(), and BOTH twins sanitize at their
@@ -893,7 +926,7 @@ function delete_transient($transient)
      * no-such-row simplification.
      */
     do_action("delete_transient_{$transient}", $transient);
-    $result = delete_option('_transient_' . $transient);
+    $result = delete_option(wp_connectors_transient_option_name($transient));
     if ($result) {
         do_action('deleted_transient', $transient);
     }
@@ -1048,7 +1081,7 @@ if (!class_exists('wpdb')) {
              */
             if (!WpHarness::$external_object_cache) {
                 foreach (array_keys(WpHarness::$transients) as $transient) {
-                    $names[] = '_transient_' . $transient;
+                    $names[] = wp_connectors_transient_option_name($transient);
                 }
             }
 
