@@ -494,10 +494,45 @@ function set_transient($transient, $value, $expiration = 0)
     } else {
         $expires_at = false;
     }
+    /*
+     * glm21-6: core's set_transient() delegates the write itself to
+     * add_option()/update_option() over the '_transient_<name>' row
+     * (option.php, pinned 7.1.1), so the transient store answers the
+     * option twins' own DETACHMENT and HOOK semantics, never a
+     * live-reference silent store: the stored value rides
+     * wp_connectors_option_stored_copy() (glm19-5's doctrine — core's
+     * row is serialized bytes at the database layer, so a caller
+     * mutating the object/array they saved no longer leaks into
+     * get_transient), and the add/update option hook family fires
+     * over the row's '_transient_<name>' spelling — the generic action
+     * PRE-write (glm18-9's order), the specific and closing hooks
+     * post-write, exactly the twins' own shapes and arities. The
+     * add-vs-update predicate is get_option-shaped like the twins'
+     * own (glm15-14): a row stored as false reads missing, the ADD
+     * family fires. The '_transient_timeout_<name>' half of core's
+     * delegation is not modeled — the harness expires in place
+     * (expires_at) and no such row exists to fire over, the recorded
+     * simplification at this seam.
+     */
+    $transient_option = '_transient_' . $transient;
+    $old = array_key_exists($transient, WpHarness::$transients) ? WpHarness::$transients[ $transient ]['value'] : false;
+    $existing = false !== $old;
+    if ($existing) {
+        do_action('update_option', $transient_option, $old, $value);
+    } else {
+        do_action('add_option', $transient_option, $value);
+    }
     WpHarness::$transients[ $transient ] = array(
-        'value' => $value,
+        'value' => wp_connectors_option_stored_copy($value),
         'expires_at' => $expires_at,
     );
+    if ($existing) {
+        do_action("update_option_{$transient_option}", $old, $value, $transient_option);
+        do_action('updated_option', $transient_option, $old, $value);
+    } else {
+        do_action("add_option_{$transient_option}", $transient_option, $value);
+        do_action('added_option', $transient_option, $value);
+    }
 
     return true;
 }

@@ -551,6 +551,41 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(wp_next_scheduled('test_clock_event'));
     }
 
+    /**
+     * glm21-6: set_transient() answers the option twins' own
+     * DETACHMENT and HOOK semantics — core delegates the write to
+     * add_option()/update_option() over the '_transient_<name>' row,
+     * so the stored value is a serialized-equal copy (glm19-5's
+     * doctrine: mutation after the save never leaks into
+     * get_transient) and the add/update option hook family fires over
+     * the row's own spelling.
+     */
+    public function testSetTransientStoresADetachedCopyAndFiresTheOptionHookFamily()
+    {
+        $payload = (object) array('models' => array('glm-5.3'));
+        $this->assertTrue(set_transient('glm21_obj', $payload, 3600));
+        $payload->models[] = 'glm-5.2';
+
+        $stored = get_transient('glm21_obj');
+        $this->assertSame(array('glm-5.3'), $stored->models, 'Mutation after set_transient does NOT leak into get_transient (red at HEAD: the live reference leaked, glm-5.2 visible) — the transient store answers the option twins\' own serialized-equal copy doctrine.');
+        $this->assertNotSame($payload, $stored, 'The stored row shares no reference with the caller.');
+
+        $this->assertTrue(set_transient('glm21_hook', 'v1'));
+        $this->assertSame(1, did_action('add_option__transient_glm21_hook'), 'The FIRST save fires the add family over the row spelling (red at HEAD: zero hooks fired).');
+        $this->assertSame(0, did_action('update_option__transient_glm21_hook'), 'The update family stays silent for the first save.');
+
+        $this->assertTrue(set_transient('glm21_hook', 'v2'));
+        $this->assertSame(1, did_action('add_option__transient_glm21_hook'), 'The add family fires exactly once.');
+        $this->assertSame(1, did_action('update_option__transient_glm21_hook'), 'A save over an existing row fires the update family, exactly core\'s add_option/update_option delegation.');
+        $this->assertSame(1, did_action('updated_option'), 'The closing update hook fires with it.');
+
+        // glm15-14's get_option-shaped predicate rides here too: a row
+        // STORED AS FALSE reads missing, the ADD family fires again.
+        $this->assertTrue(set_transient('glm21_false', false));
+        $this->assertTrue(set_transient('glm21_false', 'x'));
+        $this->assertSame(2, did_action('add_option__transient_glm21_false'), 'A stored-false row reads missing through the delegation predicate — both saves fire the add family.');
+    }
+
     public function testDueEventsFireInTimestampOrderAndAnOverdueRecurringEventFiresOnce()
     {
         /*
