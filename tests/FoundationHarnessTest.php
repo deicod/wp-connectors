@@ -818,6 +818,46 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm24-3: delete_transient() owns BOTH stores — glm23-3's
+     * mirror (the option row a seeded save keeps current so the
+     * stores agree) created a second copy the seat's own delete
+     * never owned: after a save over a seed, delete_transient()
+     * left the mirrored option row standing — get_option()
+     * answering the value post-delete (core: false), the wpdb
+     * uninstall enumeration still presenting the row, and a
+     * re-save firing the UPDATE family where core fires the ADD
+     * over its one deleted row (driven red at HEAD). The mirror
+     * dies with the transient.
+     */
+    public function testDeleteTransientOwnsTheMirroredOptionRow()
+    {
+        $this->assertTrue(add_option('_transient_glm24_del', 'seed'));
+        $this->assertTrue(set_transient('glm24_del', 'x'));
+        $this->assertSame('x', get_option('_transient_glm24_del'), 'staging: the save mirrors into the option row (glm23-3\'s agreeing-stores shape).');
+
+        $this->assertTrue(delete_transient('glm24_del'));
+        $this->assertFalse(get_transient('glm24_del'), 'The transient row dies at the delete.');
+        $this->assertFalse(get_option('_transient_glm24_del'), 'The MIRRORED option row dies with it (red at HEAD: \'x\' standing) — core deletes its one row, whichever store the harness models it in.');
+        $this->assertSame(
+            array(),
+            $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
+                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
+                $GLOBALS['wpdb']->esc_like('_transient_glm24_del') . '%'
+            )),
+            'The uninstall enumeration answers EMPTY post-delete (red at HEAD: the mirrored row still presented) — no second copy survives the seat\'s own delete.'
+        );
+
+        // A re-save over the deleted row fires the ADD family — core's
+        // own shape over a row its delete removed.
+        $update_before = did_action('update_option__transient_glm24_del');
+        $add_before = did_action('add_option__transient_glm24_del');
+        $this->assertTrue(set_transient('glm24_del', 'y'));
+        $this->assertSame($update_before, did_action('update_option__transient_glm24_del'), 'A re-save over the deleted row fires the ADD family, never the UPDATE (red at HEAD: the standing mirror answered UPDATE).');
+        $this->assertSame($add_before + 1, did_action('add_option__transient_glm24_del'), 'The ADD family fires over the deleted row — the save sees no row either store carries.');
+        $this->assertSame('y', get_transient('glm24_del'), 'The re-saved value serves.');
+    }
+
+    /**
      * glm22-5: set_transient() clones an object value at the hook
      * seat — core's add_option()/update_option() each clone BEFORE
      * the family fires, so an observer mutating the hook-passed value

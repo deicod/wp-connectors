@@ -745,7 +745,23 @@ function set_transient($transient, $value, $expiration = 0)
 
 function delete_transient($transient)
 {
-    unset(WpHarness::$transients[ $transient ]);
+    /*
+     * glm24-3: the delete owns BOTH stores — glm23-3's mirror (the
+     * option row a seeded save keeps current so the stores agree)
+     * is a second copy of core's ONE row, and a delete that left
+     * it standing answered get_option() with the value
+     * post-delete, the wpdb uninstall enumeration still presented
+     * the row, and a re-save fired the UPDATE family where core
+     * fires the ADD over its deleted row (driven). The mirror
+     * dies with the transient; the '_transient_timeout_<name>'
+     * half rides the seat's standing no-such-row simplification.
+     */
+    $transient_option = '_transient_' . $transient;
+    unset(
+        WpHarness::$transients[ $transient ],
+        WpHarness::$options[ $transient_option ],
+        WpHarness::$option_autoload[ $transient_option ]
+    );
 
     return true;
 }
