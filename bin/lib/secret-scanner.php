@@ -97,7 +97,9 @@ function wp_connectors_secret_patterns()
  * legitimately marked .svg false-found (driven). The markup boundary
  * class is start, whitespace, the tag-closer `>`, and the
  * quote-closers (' and ") — the honest markup edge a comment opens
- * at; the line-comment spellings keep the whitespace guard (a glued
+ * at (CORRECTED at glm23-7 below: the class admits every markup
+ * edge, text adjacency included); the line-comment spellings keep
+ * the whitespace guard (a glued
  * `key// secrets:allow` in code is not a comment the grammar owes).
  *
  * glm23-6: the glue-broadened '<!--' boundary is the MARKUP family's
@@ -113,6 +115,15 @@ function wp_connectors_secret_patterns()
  * whitespace, never a glued edge); the SPACED spelling exempts
  * everywhere it did.
  *
+ * glm23-7: the markup arm's left boundary is UNIFIED for the family
+ * — the premise a comment follows its element with no separator
+ * holds for TEXT content exactly as it held for the tag/quote
+ * closers glm22-3 named, so the class admits any markup edge: direct
+ * text adjacency included (`key<!-- secrets:allow -->` exempted at
+ * last, driven red at HEAD where it flagged beside the exempting
+ * spaced spelling). The line-comment spellings keep the whitespace
+ * guard in both families.
+ *
  * @param string $extension The payload's lowercased extension ('' when none).
  * @return string PCRE pattern matching the marker inside a comment.
  */
@@ -122,7 +133,7 @@ function wp_connectors_allow_marker_pattern($extension = '')
         return '/(?:^|\s)(?:\/\/|#|\/\*|\*|<!--)\s*secrets:allow\b/';
     }
 
-    return '/(?:^|\s)(?:\/\/|#|\/\*|\*)\s*secrets:allow\b|(?:^|[\s>"\'])<!--\s*secrets:allow\b/';
+    return '/(?:^|\s)(?:\/\/|#|\/\*|\*)\s*secrets:allow\b|<!--\s*secrets:allow\b/';
 }
 
 /**

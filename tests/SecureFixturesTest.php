@@ -1085,6 +1085,28 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             wp_connectors_scan_string("api_key = {$key} <!-- secrets:allow -->\n", 'spaced.txt'),
             'The spaced spelling in a .txt answers identically — the boundary doctrine changes nothing for the spellings that always exempted.'
         );
+
+        /*
+         * glm23-7: within the markup family the left boundary accepts
+         * DIRECT TEXT adjacency too — the round's own premise (a
+         * comment characteristically follows its element with no
+         * separator) holds for text content exactly as it held for
+         * the tag/quote closers glm22-3 named: `{$key}<!-- secrets:
+         * allow -->` still FLAGGED while the spaced spelling exempted
+         * (driven red at HEAD), the marker-arm's class split one
+         * member short. The class is unified for the family: any
+         * markup edge a comment opens at.
+         */
+        $this->assertSame(
+            array(),
+            wp_connectors_scan_string("{$key}<!-- secrets:allow -->\n", 'textglued.svg'),
+            'A TEXT-glued compact marker in a .svg exempts (red at HEAD: flagged) — the element a comment follows with no separator need not be a tag.'
+        );
+        $this->assertSame(
+            array( "textglued-control.svg:1 {$expect}" ),
+            wp_connectors_scan_string("{$key} in prose\n", 'textglued-control.svg'),
+            'Unmarked keys in the same shapes still flag — the widened boundary exempts the marker, never the payload.'
+        );
     }
 
     public function testScannerExemptsOnlyStrictMarkerAndFakeValues()
