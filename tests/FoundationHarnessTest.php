@@ -1142,6 +1142,39 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(array(), $fired, 'No hook fires for the unchanged re-save.');
     }
 
+    public function testADirectAddDetachesTheStoredRowToo()
+    {
+        /*
+         * glm19-4: core clones at BOTH heads (option.php:1108-1110
+         * beside glm18-8's :882-884, pinned 7.1.1) — the stub's
+         * direct-add path stored the caller's live reference, so a
+         * mutate-in-place re-save through update_option() compared the
+         * caller's reference against itself-as-stored and answered
+         * false with ZERO hooks where core's add-time detached copy
+         * completes with the full family (driven — glm18-8's exact
+         * class through the other entry point).
+         */
+        $obj = new stdClass();
+        $obj->v = 1;
+        $this->assertTrue(add_option('glm19_add_obj', $obj), 'staging: the direct add persists the row.');
+
+        $fired = array();
+        add_action('update_option', static function () use (&$fired) {
+            $fired[] = 'generic';
+        });
+        add_action('update_option_glm19_add_obj', static function () use (&$fired) {
+            $fired[] = 'specific';
+        });
+        add_action('updated_option', static function () use (&$fired) {
+            $fired[] = 'updated';
+        });
+
+        $obj->v = 2;
+        $this->assertTrue(update_option('glm19_add_obj', $obj), 'The direct-add mutate-in-place re-save completes — the stored row detached at the add head too (red at HEAD: the stored live reference made the unchanged compare true — false, zero hooks).');
+        $this->assertSame(array( 'generic', 'specific', 'updated' ), $fired, 'The full hook family fires for the re-save (red at HEAD: zero hooks).');
+        $this->assertSame(2, get_option('glm19_add_obj')->v, 'The row carries the mutated value.');
+    }
+
     public function testTheSingleHeadGuardJudgesTheRawValueNeverAPreCast()
     {
         /*

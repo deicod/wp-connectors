@@ -331,6 +331,21 @@ function update_option($option, $value, $autoload = null)
 function add_option($option, $value = '', $deprecated = '', $autoload = null)
 {
     /*
+     * glm19-4: core clones an object value at the TRUE head here TOO —
+     * BOTH heads (option.php:1108-1110 ahead of :1113's sanitize,
+     * pinned 7.1.1, the same shape glm18-8 pinned at
+     * update_option()'s :882-884) — the stub's direct-add path stored
+     * the caller's LIVE reference, so a mutate-in-place re-save
+     * through update_option() compared the caller's reference against
+     * itself-as-stored and answered the unchanged false with ZERO
+     * hooks where core's add-time detached copy completes with the
+     * full family (driven — glm18-8's exact class through the other
+     * entry point).
+     */
+    if (is_object($value)) {
+        $value = clone $value;
+    }
+    /*
      * glm17-9: core sanitizes at the TRUE head — BEFORE the
      * exists-guard (option.php:1113's sanitize_option() precedes the
      * :1121 guard, pinned 7.1.1) — so an add over an existing row
