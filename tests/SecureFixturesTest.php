@@ -965,16 +965,24 @@ CHILD;
         $this->assertSame(array(), wp_connectors_scan_string($shortEcho, 'guide.md'), 'A <?= sample in prose keeps the line-local marker (red at HEAD: blanked).');
 
         // The unclosed fenced sample: no matching close tag, no
-        // tokenizer — and the >1.3 MB unclosed-sample shape the glm17-2
-        // finding named as the over-refusal (red at HEAD: the loud
-        // token-memory refusal at the 128M runner limit) scans clean
-        // at its honest line cost. (A marker BESIDE an unclosed sample
-        // is honored in both arms — everything after the unclosed open
-        // tag lexes as code, so the comment is real — the over-refusal
-        // is the unclosed class's own harm.)
+        // whole-file tokenizer ride. CORRECTED (glm18-1): the >1.3 MB
+        // unclosed-sample shape the glm17-2 finding named as the
+        // over-refusal once scanned clean at its line cost — a verdict
+        // purchased by never tokenizing the tail — but the tail IS
+        // code the engine lexes and its string-data interiors
+        // laundered through the line-local arm (driven, the
+        // glm18-1 test below). The tail rides the masker now, so it
+        // rides the token-memory census like every matched sample:
+        // the honest worst-case bound on ~1.5 MB of tokenized tail is
+        // the LOUD refusal, glm17-2's own recorded premise (no honest
+        // factor passes 1.4 MB while refusing 2.4 MB).
         $big = '<?php $sample = 1;' . str_repeat("\n# prose line the lexer never sees because the sample never closes", 23000);
-        $this->assertGreaterThan(1300000, strlen($big), 'staging: the unclosed-sample .md must be the >1.3 MB over-refusal shape.');
-        $this->assertSame(array(), wp_connectors_scan_string($big, 'big.md'), 'The unclosed-sample .md scans clean at its line cost (red at HEAD: over the token-memory bound — the whole file rode one span).');
+        $this->assertGreaterThan(1300000, strlen($big), 'staging: the unclosed-sample .md must be the >1.3 MB bound shape.');
+        $this->assertSame(
+            array( 'big.md: over the secret-scan token-memory bound — the secret scan cannot run' ),
+            wp_connectors_scan_string($big, 'big.md'),
+            'A tokenized unclosed tail over the bound answers the loud refusal (red at HEAD: clean — the tail never reached the tokenizer).'
+        );
 
         // The laundering class STAYS masked: a matched php open plus
         // close tag
@@ -988,6 +996,61 @@ CHILD;
             wp_connectors_scan_string($sample, 'sample.md'),
             'A matched-close embedded sample rides the masked view — its string data launders nothing.'
         );
+    }
+
+    public function testUnclosedTextFamilySamplesMaskStringDataInteriorsNotProse()
+    {
+        /*
+         * glm18-1: glm17-3's unclosed-sample routing was a FALSE
+         * NEGATIVE class — the ledger claim "unclosed shapes keep the
+         * line-local arm exactly as the pre-diff behavior read them"
+         * is false for string-DATA markers: an unclosed '<?php'/'<?='
+         * sample's multi-line string interior carries no quote bytes
+         * on its own lines, so the line-local lens honored a marker
+         * sitting IN the data and a live key beside it scanned to
+         * zero findings (driven at HEAD: 0; at base, where the bare
+         * '<?' probe masked the payload: 1). The tail rides the
+         * masked view from its open tag's line onward now — the
+         * routing that flags the interior without blanking the prose
+         * above (glm17-3's benign legs stay 0) — and because the
+         * masker tokenizes the tail, the tail rides the token-memory
+         * census (the >1.3 MB leg's flip sits in the glm17-3 battery
+         * above).
+         */
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+
+        // The driven shape: prose, an unclosed sample, a live key plus
+        // marker inside a multi-line string interior (red at HEAD: the
+        // interior line's marker honored by the line-local lens — 0
+        // findings).
+        $md = "# Doc\n\n<?php\n\$k = \"\n{$key} // secrets:allow\n\";\n";
+        $this->assertSame(
+            array( "doc.md:5 {$expect}" ),
+            wp_connectors_scan_string($md, 'doc.md'),
+            'A marker inside an unclosed sample\'s string interior exempts nothing (red at HEAD: laundered to zero findings).'
+        );
+
+        // The unclosed short-echo tail launders identically (everything
+        // after an unclosed '<?=' lexes as code too).
+        $shortEcho = "Guide\n\n<?= \"\n{$key} // secrets:allow\n\"\n";
+        $this->assertSame(
+            array( "guide.md:4 {$expect}" ),
+            wp_connectors_scan_string($shortEcho, 'guide.md'),
+            'An unclosed <?= tail rides the same masked-view routing (red at HEAD: laundered).'
+        );
+
+        // The prose ABOVE the unclosed open keeps the line-local arm —
+        // glm17-3's benign routing survives (a marked fixture's prose
+        // marker still exempts its own line).
+        $pre = "api_key = {$key} // secrets:allow\n\n<?php \$x = 1;\n";
+        $this->assertSame(array(), wp_connectors_scan_string($pre, 'pre.md'), 'A prose marker above the unclosed sample keeps exempting its own line.');
+
+        // And a REAL code comment beside the sample stays honored in
+        // both arms — comments are not string data, the masker never
+        // blanks them.
+        $code = "<?php\n\$k = \"{$key}\"; // secrets:allow\n";
+        $this->assertSame(array(), wp_connectors_scan_string($code, 'code.md'), 'A real code-comment marker keeps exempting its own line.');
     }
 
     public function testTheMemoryLimitParserIsWidthAwareAndNeverWraps()

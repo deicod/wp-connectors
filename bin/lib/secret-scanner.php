@@ -200,6 +200,53 @@ function wp_connectors_scan_token_memory_headroom()
 }
 
 /**
+ * The byte offset of an UNCLOSED embedded sample's open tag, or false
+ * (glm18-1).
+ *
+ * The open spellings are the engine's INI-independent ones — '<?=' and
+ * '<?php' with core's own follower class ([ \t\r\n] or end of input; a
+ * glued '<?phpecho' is inline HTML under the production-default INI, the
+ * t31-ocr64-1 doctrine) — walked open-to-close in order; the first open
+ * with no '?>' after it names a tail the engine lexes as CODE to EOF.
+ * The unclosed-opener spellings this walk refuses stay the recorded
+ * lexer-refused-opener INI corner (glm16-1's residual), never a new
+ * class here.
+ *
+ * @param string $contents File contents.
+ * @return int|false Byte offset of the unclosed open tag, or false when
+ *                   every open closes.
+ */
+function wp_connectors_unclosed_php_sample_open($contents)
+{
+    $at = 0;
+    while (false !== ($open = strpos($contents, '<?', $at))) {
+        $after = $open + 2;
+        $opens = false;
+        if ('=' === ($contents[ $after ] ?? '')) {
+            $opens = true;
+            ++$after;
+        } elseif ('php' === wp_connectors_ascii_lower((string) substr($contents, $after, 3))) {
+            $follower = $contents[ $after + 3 ] ?? '';
+            if ('' === $follower || str_contains(" \t\r\n", $follower)) {
+                $opens = true;
+                $after += 3;
+            }
+        }
+        if (! $opens) {
+            $at = $open + 2;
+            continue;
+        }
+        $close = strpos($contents, '?>', $after);
+        if (false === $close) {
+            return $open;
+        }
+        $at = $close + 2;
+    }
+
+    return false;
+}
+
+/**
  * Scans one file's contents for secret patterns.
  *
  * @param string $contents File contents.
@@ -258,13 +305,43 @@ function wp_connectors_scan_string($contents, $label)
      * keep the line-local tolerance arm exactly as the pre-diff
      * behavior read them (a matched-close sample's marker-in-data
      * still launders correctly through the mask — pinned below).
+     *
+     * glm18-1 CORRECTS the unclosed-sample half of that claim: a text
+     * family payload whose unclosed '<?php'/'<?=' sample carries a
+     * marker inside a multi-line string interior LAUNDERED through the
+     * line-local arm — the interior line carries no quote bytes, so
+     * the line-local lens honored the marker and a live key beside it
+     * scanned to zero findings (driven at HEAD; 1 at base, where the
+     * bare '<?' probe routed the whole payload onto the masked view).
+     * The unclosed tail IS code the engine lexes, so it rides the
+     * masked view from its open tag's line onward while the prose
+     * above keeps the line-local arm — and because the masker now
+     * tokenizes the tail, the tail rides the token-memory census like
+     * every matched sample (the >1.3 MB unclosed .md leg's clean
+     * verdict was purchased by never tokenizing the tail; the honest
+     * worst-case bound on a tokenized tail is the loud refusal,
+     * glm17-2's own recorded 'no honest factor passes 1.4 MB while
+     * refusing 2.4 MB' premise).
      */
     $label_ext = strtolower((string) pathinfo($label, PATHINFO_EXTENSION));
     $has_php = false;
+    $tail_views = null;
+    $open_line = 0;
+    $open_prefix = 0;
     if ('' === $label_ext || 'php' === $label_ext || 'phtml' === $label_ext) {
         $has_php = false !== strpos($contents, '<?');
-    } elseif (false !== ($sample_open = stripos($contents, '<?php'))) {
-        $has_php = false !== strpos($contents, '?>', $sample_open + 5);
+    } elseif (false !== ($sample_open = stripos($contents, '<?php'))
+        && false !== strpos($contents, '?>', $sample_open + 5)) {
+        $has_php = true;
+    } elseif (false !== ($sample_open = wp_connectors_unclosed_php_sample_open($contents))) {
+        $tail_bytes = strlen($contents) - $sample_open;
+        if ($tail_bytes * 98 > wp_connectors_scan_token_memory_headroom()) {
+            return array( sprintf('%s: over the secret-scan token-memory bound — the secret scan cannot run', $label) );
+        }
+        $tail_views = explode("\n", wp_connectors_mask_string_contents((string) substr($contents, $sample_open)));
+        $open_line = substr_count((string) substr($contents, 0, $sample_open), "\n");
+        $last_nl = strrpos((string) substr($contents, 0, $sample_open), "\n");
+        $open_prefix = false === $last_nl ? $sample_open : $sample_open - ($last_nl + 1);
     }
     if ($has_php) {
         $span_total = 0;
@@ -314,7 +391,11 @@ function wp_connectors_scan_string($contents, $label)
      * doctrine that non-PHP payloads (.txt/.md fixtures) answer no
      * tokens and no behavior change. glm17-3 widens that arm to the
      * text-family shapes with no matched '<?php'...'?>' sample — the
-     * pre-gate above owns the routing.
+     * pre-gate above owns the routing, and glm18-1 splits the
+     * unclosed-sample class out of it: the tail's lines ride the
+     * masked view, the prose above keeps the line-local arm (a marker
+     * in REAL code beside the sample stays honored in both — comments
+     * are not string data, the masker never blanks them).
      */
     $views = $has_php
         ? explode("\n", wp_connectors_mask_string_contents($contents))
@@ -328,9 +409,21 @@ function wp_connectors_scan_string($contents, $label)
          * cannot exempt the live secret sitting next to it; the marker
          * must sit in CODE.
          */
-        $codeView = null === $views
-            ? wp_connectors_line_without_string_literals($line)
-            : ($views[ $index ] ?? '');
+        if (null !== $views) {
+            $codeView = $views[ $index ] ?? '';
+        } elseif (null !== $tail_views) {
+            if ($index < $open_line) {
+                $codeView = wp_connectors_line_without_string_literals($line);
+            } elseif ($index > $open_line) {
+                $codeView = $tail_views[ $index - $open_line ] ?? '';
+            } else {
+                // The open tag's own line: line-local prose prefix,
+                // masked code suffix (glm18-1).
+                $codeView = wp_connectors_line_without_string_literals((string) substr($line, 0, $open_prefix)) . ($tail_views[0] ?? '');
+            }
+        } else {
+            $codeView = wp_connectors_line_without_string_literals($line);
+        }
         if (preg_match($allowMarker, $codeView) === 1) {
             continue;
         }
