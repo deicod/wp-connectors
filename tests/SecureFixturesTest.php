@@ -1209,6 +1209,21 @@ CHILD;
         $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
         $this->assertSame(0, $exit, "The 23k-pair scan answers verdicts in the spawned engine, never a fatal: {$report}");
         /*
+         * glm20-3: the spawn move also dropped PHPUnit's warnings-to-
+         * failures regime at the boundary — a whale-scale-only
+         * Warning/Notice/Deprecation regression in the child printed
+         * into $report unasserted (in-process, PHPUnit converts each
+         * to a failure; spawned, the verdict lines still pinned green
+         * beside the engine's own complaint). The negative needle
+         * restores the regime: no PHP diagnostic line may appear in
+         * the child's report (both CLI spellings covered — this host
+         * prints 'Warning:', others prefix 'PHP '). The mutant pin
+         * below drives the needle's own catch.
+         */
+        $diagnosticsNeedle = '/^(?:PHP )?(?:Warning|Notice|Deprecated):/m';
+        $this->assertSame(0, preg_match($diagnosticsNeedle, $report), "The spawned scan runs clean — no engine Warning/Notice/Deprecation crosses the boundary unasserted: {$report}");
+        $this->assertSame(1, preg_match($diagnosticsNeedle, "Warning: Undefined variable \$key in Command line code on line 1"), 'The diagnostics needle catches an injected child-side warning — the regime the spawn move dropped, restored.');
+        /*
          * glm20-2: the verdict needles are ANCHORED full-line matches —
          * the spawn move left substring pins at the child boundary, so
          * a drifted count=230001 report false-passed 'count=23000'
