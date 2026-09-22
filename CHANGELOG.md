@@ -6,6 +6,117 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 17)
+
+Third claude-glm pass over the round-16 fixes. The review: 15
+findings (11 CONFIRMED, 2 PLAUSIBLE, the cleanup class). Driver
+adjudication: all 14 non-cleanup findings accepted — FOURTEEN
+numbered commits t31-glm17-1..14, the full offline check green
+after every commit; F15 (the third hand-synced copy of the
+success-path algorithm) deferred to the cleanup sweep with the
+round-16 cut list. Three findings falsify round 16's own recorded
+premises with driven evidence (the eleventh through thirteenth
+driven refutations of record), and the core-parity cluster was
+re-adjudicated against the LOCAL pinned WP 7.1.1 (option.php:1142/
+:923/:1113, cron.php:135-145/:48-60, wp-cron.php's fire loop) —
+CORE WINS all six. Suite 1821 → 1832 tests, 47417 → 47475
+assertions, 3 skipped unchanged (every delta measured from output).
+
+- **The mask ride is LINE-PRESERVING (t31-glm17-1, security:high;
+  bin/lib/plugin-tools.php, bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — glm16-1's mask blanked interior
+  newlines into spaces, so the masked view had FEWER lines than the
+  source and every line past the first multi-line region shifted
+  into an earlier line's view: a code marker lines BELOW a live key
+  exempted it (driven). One region-blank spelling keeps the line
+  terminator; view lines map 1:1 onto source lines.
+- **The token-memory gate bounds the SUM of the spans
+  (t31-glm17-2, security:medium; bin/lib/secret-scanner.php,
+  tests/SecureFixturesTest.php)** — token_get_all() materializes
+  the whole stream, so 24 dense ~100 KB spans passed the
+  largest-span gate and fataled at 128M with no verdict (driven in
+  a spawned engine). The over-refusal half of the finding (the
+  >1.3 MB unclosed-sample .md) closes at glm17-3's routing, where
+  its driven legs land.
+- **The pre-gate is extension- and shape-aware (t31-glm17-3,
+  security:medium; bin/lib/secret-scanner.php, tests/
+  SecureFixturesTest.php)** — a text-family payload carrying an
+  '<?xml' declaration or short-echo sample rode the masked view and
+  its prose markers blanked (driven: a marked .md answered 1
+  finding). Text-family payloads reach the tokenizer only for a
+  '<?php' open with a matching close; the benign prose shapes keep
+  the line-local arm, the matched-close sample stays masked.
+- **The stored-false add_option COMPLETES (t31-glm17-4, bug:medium;
+  tests/harness/wp-stubs.php, tests/FoundationHarnessTest.php)** —
+  glm16-4's duplicate-key-collision premise is falsified against
+  the pinned 7.1.1: the INSERT rides ON DUPLICATE KEY UPDATE
+  (option.php:1142) and the guard returns early only for a row
+  that reads non-false. Hooks fire, the row writes, true; the
+  silent no-op stands for the non-false duplicate alone.
+- **The singles dedupe window is core's TWO-SIDED band
+  (t31-glm17-5, bug:medium; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — glm16-7's one-sided floor answered
+  the wrong shape both directions (driven): min = 0 within ten
+  minutes of now (every past identical single counts), else ts−10
+  min; max = now+10 min for a past new ts, else ts+10 min
+  (cron.php:135-145).
+- **The duplicate predicate is recurrence-blind; a single never
+  overwrites a recurring row (t31-glm17-6, bug:medium;
+  tests/harness/wp-stubs.php, tests/FoundationHarnessTest.php)** —
+  glm16-6's keyed replace on the single arm inverted core: the
+  duplicate check answers FALSE before any keyed write, and under
+  the band the replace loop was unreachable by construction —
+  deleted with the recurrence term.
+- **The recurring reschedule rides the captured copy
+  UNCONDITIONALLY (t31-glm17-7, bug:medium; tests/harness/
+  WpHarness.php, tests/FoundationHarnessTest.php)** — the re-arm
+  once gated on the live re-location died on a mid-walk
+  cancellation; core's wp-cron.php reschedules before it even
+  attempts the unschedule — cancellation stops the fire-target
+  row, never the recurrence (driven).
+- **The unchanged-value compare carries maybe_serialize equality
+  (t31-glm17-8, bug:medium; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — option.php:923's second arm:
+  equal-valued non-identical arrays/objects are UNCHANGED (no
+  write, no hooks), the identity-vs-value class glm16-12
+  eradicated from the cron key reopened 350 lines above.
+- **add_option() sanitizes at the TRUE head, before the guard
+  (t31-glm17-9, bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — option.php:1113 precedes :1121:
+  the no-op add still counts the add-head run; the both-heads
+  runs=2 arithmetic unchanged.
+- **The walk's removal rides the CORE KEY (t31-glm17-10,
+  bug:medium; tests/harness/WpHarness.php, tests/harness/
+  wp-stubs.php, tests/FoundationHarnessTest.php)** — the by-id
+  re-location read 'absent' for an unschedule-then-re-add of the
+  identical-key event and the twin fired twice (driven); the
+  removal rides (timestamp, args digest) exactly as wp-cron.php
+  unschedules, and the synthetic id field is deleted with the
+  spelling.
+- **The empty-host arm outranks the backslash probe
+  (t31-glm17-11, bug:low; shared/src/Http/Url.php, tests/
+  SharedOAuthContractsHttpTest.php)** — 'https://user@:70000\x'
+  answered the backslash sentence, contradicting glm16-10's own
+  'absent authority is the primary defect' order; the entry
+  derives the host region first and every probe arms inside the
+  non-empty-host arm.
+- **The dense-entry bound test pins its own memory ceiling
+  (t31-glm17-12, test-hygiene:low; tests/SecureFixturesTest.php)**
+  — the asserted refusal is environment-relative (red under
+  memory_limit=-1 or ≥~190M, driven under both); the test pins
+  128M and restores the runner's limit in a finally.
+- **The memory-limit parser is WIDTH-AWARE (t31-glm17-13, bug:low;
+  bin/lib/secret-scanner.php, tests/SecureFixturesTest.php)** —
+  the integer multiply overflowed the host's width ('4G' on 32-bit
+  answering a wrapped count, every scan refusing); the scale rides
+  float arithmetic saturated at PHP_INT_MAX, the unit pin driving
+  the parser directly.
+- **wp_schedule_single_event() refuses ts ≤ 0 (t31-glm17-14,
+  bug:low; tests/harness/wp-stubs.php, tests/
+  FoundationHarnessTest.php)** — cron.php:48-60's own head guard:
+  a non-positive timestamp answers FALSE, never a queued due-now
+  entry (driven).
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 16)
 
 Second claude-glm pass over the round-15 fixes. The review: 15
