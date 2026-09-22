@@ -88,11 +88,23 @@ function wp_connectors_secret_patterns()
  * prose-level enclosure a marked .md fixture rides — honored in both
  * arms on purpose, never by accident.
  *
+ * glm22-3: the comment-form arm carries its OWN left-boundary class
+ * — the enclosure once rode the shared `(?:^|\s)` guard, right for
+ * the ///# line-comment spellings but wrong for markup, where a
+ * comment characteristically follows its element with NO separator:
+ * idiomatic compact markup (`</text><!-- secrets:allow -->`, an
+ * `<svg>` opener) is not a marker while the spaced spelling is, so a
+ * legitimately marked .svg false-found (driven). The markup boundary
+ * class is start, whitespace, the tag-closer `>`, and the
+ * quote-closers (' and ") — the honest markup edge a comment opens
+ * at; the line-comment spellings keep the whitespace guard (a glued
+ * `key// secrets:allow` in code is not a comment the grammar owes).
+ *
  * @return string PCRE pattern matching the marker inside a comment.
  */
 function wp_connectors_allow_marker_pattern()
 {
-    return '/(?:^|\s)(?:\/\/|#|\/\*|\*|<!--)\s*secrets:allow\b/';
+    return '/(?:^|\s)(?:\/\/|#|\/\*|\*)\s*secrets:allow\b|(?:^|[\s>"\'])<!--\s*secrets:allow\b/';
 }
 
 /**

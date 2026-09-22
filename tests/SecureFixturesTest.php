@@ -974,12 +974,45 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         // pinned DELIBERATELY (the docblock's own note), never by accident.
         $this->assertSame(array(), wp_connectors_scan_string("# secrets:allow {$key}\n", 'head.md'), 'The markdown heading spelling stays honored through the # arm — a deliberate member of the enclosure vocabulary, pinned.');
 
+        /*
+         * glm22-3: the comment-form arm carries its OWN left-boundary
+         * class — the enclosure once rode the shared whitespace guard,
+         * right for ///# line comments but wrong for markup where a
+         * comment characteristically follows its element with NO
+         * separator: the glued compact-markup shapes are markers now
+         * (red at HEAD: each flagged — a legitimately marked .svg
+         * false-found), the tag-closer and quote-closer edges the
+         * honest markup boundary.
+         */
+        $this->assertSame(array(), wp_connectors_scan_string("</text><!-- secrets:allow --> <text>{$key}</text>\n", 'glued.svg'), 'The glued tag-closer shape exempts (red at HEAD: flagged) — a comment follows its element with no separator.');
+        $this->assertSame(array(), wp_connectors_scan_string("<svg><!-- secrets:allow --> <text>{$key}</text>\n", 'glued.svg'), 'The svg-opener glued shape exempts identically.');
+        $this->assertSame(array(), wp_connectors_scan_string("<text>{$key}</text><!--secrets:allow-->\n", 'tight.svg'), 'The tight glued shape exempts too — no separator, no space inside the enclosure.');
+        $this->assertSame(array(), wp_connectors_scan_string("<a title=\"x\"/><!-- secrets:allow --> <text>{$key}</text>\n", 'quoted.svg'), 'A quote-closer edge is the markup boundary class — the attribute list closes and the comment opens.');
+
         // The unmarked control still flags — the enclosure exempts, prose never does.
         $this->assertSame(
             array( "unmarked.svg:1 {$expect}" ),
             wp_connectors_scan_string("<text>{$key}</text>\n", 'unmarked.svg'),
             'The same svg line without the marker still flags — the enclosure owns the exemption, never the payload.'
         );
+        // The compact UNMARKED shape still flags — the widened boundary
+        // exempts marked compact markup, never the compact shape itself.
+        $this->assertSame(
+            array( "compact.svg:1 {$expect}" ),
+            wp_connectors_scan_string("<svg><text>{$key}</text></svg>\n", 'compact.svg'),
+            'Live keys inside compact svg with no marker still flag — the boundary class widens the enclosure edge, never the exemption.'
+        );
+
+        /*
+         * The line-comment spellings keep the WHITESPACE guard — the
+         * widened boundary class is the comment-form arm's alone (a
+         * glued `key// secrets:allow` in code is not a comment the
+         * grammar owes), and the established spellings answer
+         * unchanged.
+         */
+        $this->assertStringContainsString('zai-key', implode("\n", wp_connectors_scan_string(bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8)) . '// secrets:allow', 'glued-line')), 'A value glued to a // marker is NOT exempt — the line-comment arms keep the whitespace guard.');
+        $this->assertSame(array(), wp_connectors_scan_string($key . ' // secrets:allow', 'spaced-line'), 'The spaced // spelling exempts exactly as before.');
+        $this->assertSame(array(), wp_connectors_scan_string('# secrets:allow ' . $key, 'spaced-hash'), 'The spaced # spelling exempts exactly as before.');
     }
 
     public function testScannerExemptsOnlyStrictMarkerAndFakeValues()
