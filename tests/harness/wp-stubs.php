@@ -878,7 +878,7 @@ function delete_transient($transient)
      * dies with the transient; the '_transient_timeout_<name>'
      * half rides the seat's standing no-such-row simplification.
      *
-     * glm25-6: the seat rides core's own shape (option.php:1408-1438,
+     * glm25-6: the seat rides core's own shape (option.php:1380-1418,
      * pinned 7.1.1, driver pre-verified): the delete_transient_<name>
      * action fires BEFORE the delete — unconditionally, a missing row
      * still announces its deletion attempt — deleted_transient fires

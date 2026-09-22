@@ -898,7 +898,7 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
 
     /**
      * glm25-6: delete_transient() rides core's own shape
-     * (option.php:1408-1438, pinned 7.1.1, driver pre-verified): the
+     * (option.php:1380-1418, pinned 7.1.1, driver pre-verified): the
      * delete_transient_<name> action fires BEFORE the delete —
      * unconditionally, a missing row still announces its deletion
      * attempt — deleted_transient fires AFTER a SUCCESSFUL delete
@@ -945,7 +945,7 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(
             array( array( 'pre', array( 'glm25_del' ) ), array( 'done', array( 'glm25_del' ) ) ),
             $order,
-            'A SUCCESSFUL delete fires both hooks in core\'s order — the specific pre-hook first, the completion after the delete, each at its own arity (option.php:1408/:1433).'
+            'A SUCCESSFUL delete fires both hooks in core\'s order — the specific pre-hook first, the completion after the delete, each at its own arity (option.php:1391/:1414).'
         );
         $this->assertFalse(get_transient('glm25_del'), 'The transient store\'s row dies at the delete.');
         $this->assertFalse(get_option('_transient_glm25_del'), 'The mirrored option row dies with it — core deletes its one row, whichever store the harness models it in (glm24-3).');

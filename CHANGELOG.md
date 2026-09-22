@@ -10,7 +10,7 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 Eleventh claude-glm pass: 1 confirmed regression + 4 small accepts +
 2 candidates (driver pre-verified BOTH against the local pinned
-7.1.1, option.php:1408-1438) + 5 ledger refutations standing + 1
+7.1.1, option.php:1380-1418) + 5 ledger refutations standing + 1
 deferral (#12 ledgered as a post-M3 design option). DRIVER
 ADJUDICATION: #1 accepted (the reviewer's fix shape approved); #9,
 #6-partial, #11-partial, #10/#14 accepted; candidates #4/#5
@@ -72,7 +72,7 @@ shape with the mirror's ownership symmetry completed. Suite
   unchanged on this host; a structural pin holds the spelling.
 - **delete_transient() rides core's own hook shape
   (t31-glm25-6, bug:low; tests/harness/wp-stubs.php,
-  tests/FoundationHarnessTest.php)** — core (option.php:1408-1438,
+  tests/FoundationHarnessTest.php)** — core (option.php:1380-1418,
   pinned 7.1.1) fires delete_transient_<name> BEFORE the delete
   (unconditionally), deleted_transient AFTER a SUCCESSFUL delete
   alone (`if ($result)`), and returns the delete's own false over a
