@@ -70,9 +70,7 @@ final class SelfContainmentLoopWritesTest extends TestCase
         file_put_contents($locked . '/inner/deep.php', "<?php\n");
         chmod($locked, 0000);
 
-        $probe = @opendir($locked);
-        if (false !== $probe) {
-            closedir($probe);
+        if (! WpHarness::canDenyDirectoryOpen($locked)) {
             chmod($locked, 0777);
             @unlink($locked . '/inner/deep.php');
             @rmdir($locked . '/inner');

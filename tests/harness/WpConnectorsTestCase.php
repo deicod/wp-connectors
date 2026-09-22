@@ -173,8 +173,9 @@ abstract class WpConnectorsTestCase extends TestCase
      * (OCR round 4, t31-ocr4-1, the class sweep): uid 0 reads through
      * mode 0000, so the expected refusal never fires and the leg fails
      * as a false silent-third alarm instead. The functional twin of
-     * this guard is the opendir probe (SelfContainmentLoopWritesTest),
-     * which owns its own skip; the uid spelling serves the legs whose
+     * this guard is the opendir capability probe
+     * (WpHarness::canDenyDirectoryOpen(), glm23-14's ONE owner), which
+     * serves its own skips; the uid spelling serves the legs whose
      * refusal cannot be probed without driving the whole leg.
      *
      * @return bool True when the process cannot be denied by permission bits.

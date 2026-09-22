@@ -352,9 +352,7 @@ final class HarnessCopyTreeTest extends TestCase
             mkdir($locked . '/inner', 0755, true);
             $this->stage($locked . '/inner/x.txt', 'bytes');
             chmod($locked, 0000);
-            $locked_probe = @opendir($locked);
-            if (false !== $locked_probe) {
-                closedir($locked_probe);
+            if (! WpHarness::canDenyDirectoryOpen($locked)) {
                 chmod($locked, 0755);
                 /*
                  * The leg gates ITSELF, the battery continues (OCR
@@ -2042,9 +2040,7 @@ final class HarnessCopyTreeTest extends TestCase
             // releaseScratch() once sat beside the skip with the tree
             // planted OUTSIDE the try — the skip's throw and every
             // staging assert before it leaked the half-built scratch.
-            $probe = @opendir($from . '/locked');
-            if (false !== $probe) {
-                closedir($probe);
+            if (! WpHarness::canDenyDirectoryOpen($from . '/locked')) {
                 chmod($from . '/locked', 0755);
                 $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
             }
@@ -2637,9 +2633,7 @@ final class HarnessCopyTreeTest extends TestCase
              * diagnostic names — skip visibly, never a topology
              * failure wearing the guard's verdict.
              */
-            $probe = @opendir($locked);
-            if (false !== $probe) {
-                closedir($probe);
+            if (! WpHarness::canDenyDirectoryOpen($locked)) {
                 chmod($locked, 0755);
                 $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the child\'s deterministic release refusal is unconstructible here, and the destructive-capacity \'/\' spelling the leg once rode is retired (t31-ocr65-3) — never fired at the root.');
             }

@@ -798,11 +798,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         try {
             $this->assertTrue(mkdir($probe, 0755, true), "staging: the probe directory must create — a staging failure fails as staging, never as the capability verdict.");
             $this->assertTrue(chmod($probe, 0000), "staging: the probe directory must lock — a staging failure fails as staging, never as the capability verdict.");
-            $probe_open = @opendir($probe);
-            $denied = false === $probe_open;
-            if (false !== $probe_open) {
-                closedir($probe_open);
-            }
+            $denied = WpHarness::canDenyDirectoryOpen($probe);
             $this->assertTrue(chmod($probe, 0755), "staging: the probe directory must unlock again — a staging failure fails as staging, never as the finally's cleanup.");
         } finally {
             @chmod($probe, 0755);

@@ -711,11 +711,7 @@ final class ToolchainSmokeTest extends TestCase
             $probe = $scratch . '/perm-probe';
             $this->assertTrue(mkdir($probe, 0755, true), 'staging: the probe directory must create — a staging failure fails as staging, never as the capability verdict.');
             $this->assertTrue(chmod($probe, 0000), 'staging: the probe directory must lock — a staging failure fails as staging, never as the capability verdict.');
-            $probe_open = @opendir($probe);
-            $denied = false === $probe_open;
-            if (false !== $probe_open) {
-                closedir($probe_open);
-            }
+            $denied = WpHarness::canDenyDirectoryOpen($probe);
             $this->assertTrue(chmod($probe, 0755), 'staging: the probe directory must unlock again — a staging failure fails as staging, never as the finally\'s cleanup.');
             if (! $denied) {
                 $this->markTestSkipped('This process walks a chmod-000 directory open (permissions cannot deny it — root-shaped), so the unreadable-subdirectory leg can never drive its refusal: the walk would read the tree and exit as the readable control above.');

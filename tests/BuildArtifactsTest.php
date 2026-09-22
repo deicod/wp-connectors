@@ -3229,9 +3229,7 @@ FIXTURE;
         // The unlistable-shape probe (the t31-ocr4-1 root doctrine): a
         // host whose process opens chmod-0000 directories cannot
         // construct the shape — skip visibly, never a vacuous green.
-        $probe = @opendir($scratch . '/locked');
-        if (false !== $probe) {
-            closedir($probe);
+        if (! WpHarness::canDenyDirectoryOpen($scratch . '/locked')) {
             chmod($scratch . '/locked', 0755);
             WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
@@ -3416,9 +3414,7 @@ FIXTURE;
         mkdir($stage . '/locked/inner', 0755, true);
         file_put_contents($stage . '/locked/inner/orphan.txt', 'a crashed run\'s scratch');
         chmod($stage . '/locked', 0000);
-        $probe = @opendir($stage . '/locked');
-        if (false !== $probe) {
-            closedir($probe);
+        if (! WpHarness::canDenyDirectoryOpen($stage . '/locked')) {
             chmod($stage . '/locked', 0755);
             WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the teardown-hostile stage tree is unconstructible here.');
@@ -6086,9 +6082,7 @@ FIXTURE;
         mkdir($scratch . '/work/locked/inner', 0755, true);
         file_put_contents($scratch . '/work/locked/inner/x.txt', 'bytes');
         chmod($scratch . '/work/locked', 0000);
-        $probe = @opendir($scratch . '/work/locked');
-        if (false !== $probe) {
-            closedir($probe);
+        if (! WpHarness::canDenyDirectoryOpen($scratch . '/work/locked')) {
             chmod($scratch . '/work/locked', 0755);
             WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the walk-hostile tree is unconstructible here.');
@@ -6289,9 +6283,7 @@ FIXTURE;
         // The unlistable-shape probe (the t31-ocr4-1 root doctrine):
         // a host whose process opens chmod-0000 directories cannot
         // construct the shape — skip visibly, never a vacuous green.
-        $probe = @opendir($scratch . '/tree/locked');
-        if (false !== $probe) {
-            closedir($probe);
+        if (! WpHarness::canDenyDirectoryOpen($scratch . '/tree/locked')) {
             chmod($scratch . '/tree/locked', 0755);
             WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');

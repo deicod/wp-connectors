@@ -1128,9 +1128,7 @@ FIXTURE
         // premises, in the lint gate's own shape): a process the
         // permissions cannot deny can never drive the abort — skip,
         // naming the premise, never a vacuous green.
-        $probe_open = @opendir($this->root . '/locked');
-        if (false !== $probe_open) {
-            closedir($probe_open);
+        if (! WpHarness::canDenyDirectoryOpen($this->root . '/locked')) {
             chmod($this->root . '/locked', 0755);
             $this->markTestSkipped('This process walks a chmod-0000 directory open (permissions cannot deny it — root-shaped), so the mid-walk abort is unconstructible here.');
         }
@@ -1205,9 +1203,7 @@ FIXTURE
         // premises, the mid-walk leg's own shape): a process the
         // permissions cannot deny can never drive the constructor's
         // refusal — skip, naming the premise, never a vacuous green.
-        $probe_open = @opendir($locked);
-        if (false !== $probe_open) {
-            closedir($probe_open);
+        if (! WpHarness::canDenyDirectoryOpen($locked)) {
             chmod($locked, 0755);
             $this->markTestSkipped('This process opens a chmod-0000 directory (permissions cannot deny it — root-shaped), so the constructor refusal is unconstructible here.');
         }

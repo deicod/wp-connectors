@@ -922,6 +922,40 @@ final class WpHarness
     }
 
     /**
+     * Whether the permission bits can deny this process an opendir() —
+     * the ONE owner of the chmod-0000 capability probe's core
+     * (glm23-14, hoisted at its FIFTH inline spelling and swept with
+     * every same-shape sibling: the scan fence, the lint legs, the
+     * collector/inspector/rrmdir fences, the copy-tree gates, the
+     * unused-import and self-containment walks all spelled the
+     * @opendir-plus-closedir core by hand — the hand-copy drift the
+     * one-owner doctrine exists to close). runningAsRootRunner()'s
+     * docblock has called opendir 'the functional twin of this guard'
+     * since t31-ocr4-1 — a comment-maintained cross-reference this
+     * owner makes structural.
+     *
+     * The probe judges the DIRECTORY the caller hands it (staged and
+     * chmod-0000 by its own site — each site keeps its restore
+     * choreography and skip message, the canSpawnChildren shape: site
+     * messages, one owner): uid 0 walks mode 0000 open through the DAC
+     * override, and a leg that can never be denied is a vacuous green.
+     *
+     * @param string $dir The chmod-0000 directory to probe.
+     * @return bool True when opendir() over $dir answers false.
+     */
+    public static function canDenyDirectoryOpen(string $dir): bool
+    {
+        $handle = @opendir($dir);
+        if (false !== $handle) {
+            closedir($handle);
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Whether this host's platform is the POSIX one — the ONE owner of
      * the platform-separator premise (hoisted at its THIRD consumer,
      * OCR round 23: t31-ocr22-2 established the repo's first platform
