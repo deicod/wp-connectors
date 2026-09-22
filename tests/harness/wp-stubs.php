@@ -549,6 +549,37 @@ function set_transient($transient, $value, $expiration = 0)
     $existing = false !== $old;
     if ($existing) {
         /*
+         * glm23-1: core's update branch refreshes the TIMEOUT row
+         * UNCONDITIONALLY over an expiration-bearing save
+         * (option.php:1562-1571, pinned 7.1.1: the else-branch runs
+         * update_option('_transient_timeout_<name>', time() +
+         * $expiration) ahead of the value row's own update_option()),
+         * and the VALUE row refuses an unchanged re-save separately
+         * below — glm22-4's false answered BEFORE any timeout
+         * refresh, so an unchanged re-save never refreshed expires_at
+         * (driven: at t=1120 the row was dead where core answers the
+         * value) and an expired-but-unread row re-saved with its own
+         * value stayed permanently dead (the entry keys exist — the
+         * expiry check is get_transient's own, never the write side's).
+         * The live caller: ZaiDiscoveryCache::store_ids() re-saves the
+         * same discovered list with DISCOVERY_TTL (the availability
+         * probe's seed path writes without reading), so reads degraded
+         * to cache misses after the first TTL window. A zero
+         * $expiration leaves the standing timeout row untouched —
+         * core's own `if ( $expiration )` — never arming or disarming
+         * a TTL the save did not name. The timeout row's own hook
+         * family rides the seat's recorded simplification (glm22-4's
+         * note below): no '_transient_timeout_<name>' row exists to
+         * fire over.
+         */
+        if ($expiration > 0) {
+            WpHarness::$transients[ $transient ]['expires_at'] = WpHarness::now() + $expiration;
+        } elseif ($expiration < 0) {
+            // Core treats a negative TTL as already expired (the head
+            // comment's own standing) — the refresh keeps that reading.
+            WpHarness::$transients[ $transient ]['expires_at'] = WpHarness::now() - 1;
+        }
+        /*
          * glm22-4: core's delegation answers the twins' own unchanged
          * false — the update branch rides update_option(), whose
          * glm17-8 two-arm compare (identity, then serialized
@@ -573,7 +604,14 @@ function set_transient($transient, $value, $expiration = 0)
     }
     WpHarness::$transients[ $transient ] = array(
         'value' => wp_connectors_option_stored_copy($value),
-        'expires_at' => $expires_at,
+        /*
+         * glm23-1: over an existing row the standing (refreshed)
+         * timeout survives the write — core touches the timeout row
+         * only over an expiration-bearing save, so a zero-expiration
+         * re-save never disarms a TTL the save did not name. The add
+         * path takes the head's own derivation.
+         */
+        'expires_at' => $existing ? WpHarness::$transients[ $transient ]['expires_at'] : $expires_at,
     );
     if ($existing) {
         do_action("update_option_{$transient_option}", $old, $value, $transient_option);

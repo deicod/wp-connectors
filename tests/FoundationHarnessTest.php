@@ -622,6 +622,59 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm23-1: set_transient() answers core's TWO-ROW TTL mechanics —
+     * core's update branch refreshes the '_transient_timeout_<name>'
+     * row UNCONDITIONALLY over an expiration-bearing save
+     * (option.php:1562-1571, pinned 7.1.1) and the VALUE row refuses
+     * an unchanged re-save separately below it (update_option's own
+     * compare), so the harness's single unchanged false at the head
+     * let the TTL stand stale: an unchanged re-save never refreshed
+     * expires_at, and an expired-but-unread row re-saved with its own
+     * value stayed permanently dead (driven red at HEAD). The live
+     * caller: ZaiDiscoveryCache::store_ids() re-saves the same
+     * discovered ID list with DISCOVERY_TTL (the availability probe's
+     * seed path writes without reading), so reads degraded to cache
+     * misses after the first TTL window.
+     */
+    public function testSetTransientRefreshesTheTimeoutRowOverAnUnchangedReSave()
+    {
+        // (a) the unchanged re-save refreshes expires_at while the value
+        // row keeps the twins' own refusal (glm22-4 stands: false, no
+        // hooks).
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm23_ttl', 'v1', 100));
+        $this->freezeTime(1050);
+        $before_update = did_action('update_option__transient_glm23_ttl');
+        $this->assertFalse(set_transient('glm23_ttl', 'v1', 100), 'The unchanged re-save keeps the twins\' own false — the value row refuses its own update exactly as before.');
+        $this->assertSame($before_update, did_action('update_option__transient_glm23_ttl'), 'ZERO update-family hooks over the unchanged re-save — the value row\'s refusal is glm22-4\'s own, untouched by the timeout refresh.');
+        $this->freezeTime(1120);
+        $this->assertSame('v1', get_transient('glm23_ttl'), 'The TIMEOUT row refreshed over the unchanged re-save — core answers v1 at t=1120 where the first window ended at 1100 (red at HEAD: false, the row expired).');
+
+        // (b) the expired-but-unread row resurrects: the re-save reads
+        // through the expiry check (core's get_option-shaped predicate
+        // never expires — the timeout row refresh revives the row).
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm23_dead', 'v1', 100));
+        $this->freezeTime(1120);
+        $this->assertFalse(set_transient('glm23_dead', 'v1', 100), 'The unchanged re-save over the dead row answers false too — the value row\'s own refusal, never a second family.');
+        $this->freezeTime(1219);
+        $this->assertSame('v1', get_transient('glm23_dead'), 'The dead row\'s re-save resurrected it — the timeout refreshed past the old expiry (red at HEAD: permanently dead, false).');
+
+        // (c) a zero-expiration save neither arms nor disarms a standing
+        // timeout (core's own `if ( $expiration )` at option.php:1562 —
+        // the no-expiration re-save never touches the timeout row), so
+        // the row still dies at the FIRST window's end.
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm23_standing', 'v1', 100));
+        $this->freezeTime(1050);
+        $this->assertTrue(set_transient('glm23_standing', 'v2'), 'A changed no-expiration re-save completes — the value row updates.');
+        $this->freezeTime(1099);
+        $this->assertSame('v2', get_transient('glm23_standing'), 'Inside the first window the refreshed value serves.');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm23_standing'), 'The no-expiration re-save left the standing timeout alone (red at HEAD: the harness overwrote expires_at to false and the row never died) — core keeps the first window\'s end.');
+    }
+
+    /**
      * glm22-5: set_transient() clones an object value at the hook
      * seat — core's add_option()/update_option() each clone BEFORE
      * the family fires, so an observer mutating the hook-passed value
