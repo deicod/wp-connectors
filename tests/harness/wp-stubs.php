@@ -636,6 +636,15 @@ function wp_connectors_cron_args_key($args)
 function wp_schedule_single_event($timestamp, $hook, $args = array())
 {
     $timestamp = (int) $timestamp;
+    /*
+     * glm17-14: core's own head guard (cron.php:48-60, pinned 7.1.1)
+     * — 'Make sure timestamp is a positive integer': a timestamp at
+     * or below zero answers FALSE, never a queued event (the stub
+     * queued both and the epoch/past-due entries fired as due).
+     */
+    if ($timestamp <= 0) {
+        return false;
+    }
     $args_key = wp_connectors_cron_args_key($args);
     /*
      * glm15-13/glm16-7/glm17-5: core's duplicate window for singles —

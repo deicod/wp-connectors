@@ -1265,6 +1265,22 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1, $fires, 'ONE fire across both passes (red at HEAD: 2, the double fire).');
     }
 
+    public function testWpScheduleSingleEventRefusesNonPositiveTimestampsCoreGuard()
+    {
+        /*
+         * glm17-14: core's head guard — 'Make sure timestamp is a
+         * positive integer' (cron.php:48-60, pinned 7.1.1): a
+         * timestamp at or below zero answers FALSE, never a queued
+         * event. The stub queued both (driven red at HEAD: ts=0 and
+         * ts=-1 answered true, two due-now entries).
+         */
+        $this->freezeTime(1700000000);
+
+        $this->assertFalse(wp_schedule_single_event(0, 'glm17_ts'), 'ts=0 answers false, core\'s own guard (red at HEAD: true, queued).');
+        $this->assertFalse(wp_schedule_single_event(-1, 'glm17_ts'), 'ts=-1 answers false likewise (red at HEAD: true, queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm17_ts'), 'Nothing queued for either spelling (red at HEAD: two due-now entries).');
+    }
+
     public function testEqualValuedObjectArgsAreOneCronEventCoreDigest()
     {
         /*
