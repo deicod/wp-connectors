@@ -640,11 +640,14 @@ function set_transient($transient, $value, $expiration = 0)
      * core writes ONE row, whichever store the harness models it in.
      */
     $option_row = array_key_exists($transient_option, WpHarness::$options);
-    $old = array_key_exists($transient, WpHarness::$transients)
+    // glm24-11: the transient-store key check spelled ONCE — the $old
+    // ternary once hand-copied the same array_key_exists the
+    // $own_entry read spells one line below.
+    $own_entry = array_key_exists($transient, WpHarness::$transients);
+    $old = $own_entry
         ? WpHarness::$transients[ $transient ]['value']
         : ($option_row ? WpHarness::$options[ $transient_option ] : false);
     $existing = false !== $old;
-    $own_entry = array_key_exists($transient, WpHarness::$transients);
     if ($existing) {
         /*
          * glm23-1: core's update branch refreshes the TIMEOUT row
@@ -728,8 +731,18 @@ function set_transient($transient, $value, $expiration = 0)
     } else {
         do_action('add_option', $transient_option, $value);
     }
+    /*
+     * glm24-11: ONE stored copy serves both stores — the seeded-row
+     * save once paid wp_connectors_option_stored_copy() twice. The
+     * sharing is the agreeing-stores doctrine's OWN shape (glm23-3):
+     * core writes ONE row, so the mirror holding the same detached
+     * instance is the honest model — a mutation through either
+     * store's row lands in both, exactly one row's semantics — and
+     * copy-on-write keeps the value-sharing safe besides.
+     */
+    $stored = wp_connectors_option_stored_copy($value);
     WpHarness::$transients[ $transient ] = array(
-        'value' => wp_connectors_option_stored_copy($value),
+        'value' => $stored,
         /*
          * glm23-1: over an existing row the standing (refreshed)
          * timeout survives the write — core touches the timeout row
@@ -750,8 +763,9 @@ function set_transient($transient, $value, $expiration = 0)
     );
     if ($option_row) {
         // glm23-3: the seeded row's own home stays current — the stores
-        // agree, exactly core's one-row write.
-        WpHarness::$options[ $transient_option ] = wp_connectors_option_stored_copy($value);
+        // agree, exactly core's one-row write (the glm24-11 shared
+        // $stored instance, one row's own semantics).
+        WpHarness::$options[ $transient_option ] = $stored;
     }
     if ($existing) {
         do_action("update_option_{$transient_option}", $old, $value, $transient_option);

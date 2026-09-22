@@ -142,11 +142,19 @@ function wp_connectors_secret_patterns()
  */
 function wp_connectors_allow_marker_pattern($extension = '')
 {
+    /*
+     * glm24-11: the line-comment opener class is ONE fragment — the
+     * two pattern arms once hand-copied it, the drift class the
+     * one-owner doctrine exists to close (a new opener spelling
+     * added to one arm alone would split the grammar's own
+     * vocabulary between the families).
+     */
+    $line_comment_openers = '\/\/|#|\/\*|\*';
     if (! in_array($extension, array( 'html', 'htm', 'xhtml', 'svg', 'xml', 'md', 'php', 'phtml' ), true)) {
-        return '/(?:^|\s)(?:\/\/|#|\/\*|\*|<!--)\s*secrets:allow\b/';
+        return '/(?:^|\s)(?:' . $line_comment_openers . '|<!--)\s*secrets:allow\b/';
     }
 
-    return '/(?:^|\s)(?:\/\/|#|\/\*|\*)\s*secrets:allow\b|<!--\s*secrets:allow\b/';
+    return '/(?:^|\s)(?:' . $line_comment_openers . ')\s*secrets:allow\b|<!--\s*secrets:allow\b/';
 }
 
 /**
