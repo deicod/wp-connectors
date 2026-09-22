@@ -514,6 +514,23 @@ function set_transient($transient, $value, $expiration = 0)
      * (expires_at) and no such row exists to fire over, the recorded
      * simplification at this seam.
      */
+    /*
+     * glm22-5: the head clone — the glm18-8/glm19-4 doctrine at the
+     * delegation's own head: core's add_option()/update_option() each
+     * clone an object value BEFORE the hook family fires, so an
+     * observer at 'add_option'/'update_option' mutates the CLONE,
+     * never the caller's object; the harness handed the family the
+     * caller's LIVE reference, so a mutating observer reached the
+     * caller's value through the transient seat (driven — the clone
+     * doctrine glm21-6's delegation missed). The hooks observe the
+     * clone at core's own pre-INSERT vantage (a hook-seat mutation
+     * lands in the STORED row, exactly the twins' shape), and the
+     * stored row keeps its own serialized-equal copy (glm19-5/glm21-6)
+     * — observers mutate copies, never the caller's value.
+     */
+    if (is_object($value)) {
+        $value = clone $value;
+    }
     $transient_option = '_transient_' . $transient;
     $old = array_key_exists($transient, WpHarness::$transients) ? WpHarness::$transients[ $transient ]['value'] : false;
     $existing = false !== $old;

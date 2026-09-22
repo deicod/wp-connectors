@@ -622,6 +622,41 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm22-5: set_transient() clones an object value at the hook
+     * seat — core's add_option()/update_option() each clone BEFORE
+     * the family fires, so an observer mutating the hook-passed value
+     * never reaches the caller's object; the harness handed the family
+     * the caller's LIVE reference (driven red at HEAD: the mutation
+     * reached the caller through the transient seat — the
+     * glm18-8/glm19-4 clone doctrine glm21-6's delegation missed).
+     */
+    public function testSetTransientClonesAtTheHookSeat()
+    {
+        $payload = (object) array('models' => array('glm-5.3'));
+        $fired = false;
+        add_action('add_option', static function ($option, $value) use (&$fired) {
+            if ('_transient_glm22_clone' === $option && is_object($value)) {
+                $value->models[] = 'mutated-by-observer';
+                $fired = true;
+            }
+        }, 10, 2);
+
+        $this->assertTrue(set_transient('glm22_clone', $payload));
+        $this->assertTrue($fired, 'staging: the observer fired at the hook seat and mutated the value it was handed.');
+
+        $this->assertSame(
+            array('glm-5.3'),
+            $payload->models,
+            "A mutating observer at the hook seat never reaches the caller's object (red at HEAD: reaches) — the clone rides the delegation's own head."
+        );
+        $this->assertSame(
+            array('glm-5.3', 'mutated-by-observer'),
+            get_transient('glm22_clone')->models,
+            'The hook-seat mutation lands in the STORED row instead — core\'s own pre-INSERT vantage, the non-vacuity control proving the observer really mutated the hook-passed copy.'
+        );
+    }
+
+    /**
      * glm21-7: WpHarness::reset() clears the request-URI superglobal
      * member — $_SERVER['REQUEST_URI'] is the one member the stubs
      * read (add_query_arg()'s two-scalar resolution), and a test's
