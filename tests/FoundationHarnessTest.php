@@ -897,6 +897,55 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm24-5: the completion actions observe the PRE-HEAD value —
+     * core's clone (glm22-5's doctrine) and sanitize (glm22-6's)
+     * live INSIDE the delegated by-value twins
+     * (add_option()/update_option() receive $value by value; their
+     * reassignments never propagate back to set_transient()'s own
+     * frame), so core's do_action("set_transient_{$name}", $value,
+     * ...) at option.php:1594/:1605 hands the observer the
+     * pre_set-filtered RAW value — the caller's own object
+     * instance included. The harness seat reassigned $value at both
+     * heads, so the actions observed the sanitized CLONE (driven red
+     * at HEAD: 'rewritten-sanitized' and a clone where core answers
+     * 'rewritten' and the caller's instance); the add/update family
+     * hooks keep their sanitized+cloned observation exactly as the
+     * twins pin it.
+     */
+    public function testTheCompletionActionsObserveThePreHeadValue()
+    {
+        add_filter('pre_set_transient_glm24_done', static function () {
+            return 'rewritten';
+        });
+        add_filter('sanitize_option__transient_glm24_done', static function ($value) {
+            return $value . '-sanitized';
+        });
+        $seen = array();
+        add_action('set_transient_glm24_done', static function (...$args) use (&$seen) {
+            $seen[] = array( 'specific', ...$args );
+        }, 10, 3);
+        add_action('set_transient', static function (...$args) use (&$seen) {
+            $seen[] = array( 'generic', ...$args );
+        }, 10, 3);
+
+        $this->assertTrue(set_transient('glm24_done', 'orig'));
+        $this->assertSame('rewritten-sanitized', get_transient('glm24_done'), 'staging: the SANITIZED value is what stores — glm22-6\'s own doctrine stands at the storage and the family hooks.');
+        $this->assertSame(array( 'specific', 'rewritten', 0, 'glm24_done' ), $seen[0] ?? null, 'The specific completion action observes the pre_set-filtered RAW value (red at HEAD: \'rewritten-sanitized\') — the clone and the sanitize live inside the delegated twins and never ride the action seat.');
+        $this->assertSame(array( 'generic', 'glm24_done', 'rewritten', 0 ), $seen[1] ?? null, 'The generic action answers identically — never the sanitized clone.');
+
+        // The caller's own object instance — the head clone never
+        // rides the action seat either.
+        $payload = (object) array('models' => array('glm-5.3'));
+        $instance_seen = null;
+        add_action('set_transient_glm24_obj', static function ($value) use (&$instance_seen) {
+            $instance_seen = $value;
+        });
+        $this->assertTrue(set_transient('glm24_obj', $payload));
+        $this->assertSame($payload, $instance_seen, 'The observer at the action seat sees the CALLER\'S OWN instance (red at HEAD: a clone) — core\'s frame never reassigned its $value past the delegation.');
+        $this->assertSame(array('glm-5.3'), $instance_seen->models, 'staging: the observed instance is unmutated.');
+    }
+
+    /**
      * glm22-5: set_transient() clones an object value at the hook
      * seat — core's add_option()/update_option() each clone BEFORE
      * the family fires, so an observer mutating the hook-passed value

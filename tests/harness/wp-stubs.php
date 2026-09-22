@@ -549,6 +549,21 @@ function set_transient($transient, $value, $expiration = 0)
      */
     $value = apply_filters("pre_set_transient_{$transient}", $value, $expiration, $transient);
     $expiration = apply_filters("expiration_of_transient_{$transient}", $expiration, $value, $transient);
+    /*
+     * glm24-5: the completion actions observe the value the frame
+     * carries HERE — pre-head-clone, pre-head-sanitize. Core's clone
+     * (glm22-5's doctrine) and sanitize (glm22-6's) live INSIDE the
+     * delegated by-value twins (add_option()/update_option() receive
+     * $value by value; their reassignments never propagate back), so
+     * core's own do_action("set_transient_{$transient}", $value, ...)
+     * at option.php:1594/:1605 hands the observer the
+     * pre_set-filtered RAW value — the caller's own object instance
+     * included. The frame's reassignments below (the clone, the
+     * sanitize) stop before the action seat; the add/update family
+     * hooks keep observing sanitized+cloned exactly as the twins pin
+     * it.
+     */
+    $completion_value = $value;
     if ($expiration > 0) {
         $expires_at = WpHarness::now() + $expiration;
     } elseif ($expiration < 0) {
@@ -745,8 +760,10 @@ function set_transient($transient, $value, $expiration = 0)
     // glm23-2: the completion family rides the pin's order and arities
     // (option.php:1594/:1605) over the completed save alone — the
     // FILTERED value and expiration, `if ( $result )`'s own spelling.
-    do_action("set_transient_{$transient}", $value, $expiration, $transient);
-    do_action('set_transient', $transient, $value, $expiration);
+    // glm24-5: the value is the PRE-HEAD capture above ($completion_value)
+    // — never the frame's post-clone, post-sanitize reassignment.
+    do_action("set_transient_{$transient}", $completion_value, $expiration, $transient);
+    do_action('set_transient', $transient, $completion_value, $expiration);
 
     return true;
 }
