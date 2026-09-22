@@ -719,8 +719,16 @@ function set_transient($transient, $value, $expiration = 0)
          * re-save never disarms a TTL the save did not name. The add
          * path takes the head's own derivation; a seeded option row
          * carries no timeout half to keep (glm23-3).
+         *
+         * glm24-4: the keep-guard keys on $own_entry alone — $existing
+         * is FALSE for a stored-false row (the get_option-shaped
+         * predicate's own reading), and the ($existing && $own_entry)
+         * spelling once let a zero-expiration re-save reset a
+         * TTL-armed stored-false row's expires_at to false, the row
+         * never dying (driven; glm23-1's own invariant violated). The
+         * transient store's own row is the row whose window stands.
          */
-        'expires_at' => ($existing && $own_entry) ? WpHarness::$transients[ $transient ]['expires_at'] : $expires_at,
+        'expires_at' => $own_entry ? WpHarness::$transients[ $transient ]['expires_at'] : $expires_at,
     );
     if ($option_row) {
         // glm23-3: the seeded row's own home stays current — the stores

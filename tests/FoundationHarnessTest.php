@@ -858,6 +858,45 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm24-4: a zero-expiration re-save never DISARMS a TTL-armed
+     * stored-false row — the write's expires_at keep-guard keyed on
+     * $existing (FALSE for a stored-false value, the get_option-shaped
+     * predicate's own reading), so set('f', false, 100) then
+     * set('f', false) reset expires_at to false and the row NEVER
+     * died, violating glm23-1's own invariant (a zero-expiration save
+     * never disarms a TTL the save did not name — the standing
+     * timeout row survives as core keeps it). The guard keys on
+     * $own_entry: the transient store's own row is the row whose
+     * window stands (driven red at HEAD).
+     */
+    public function testAZeroExpirationReSaveKeepsAStoredFalseRowsWindow()
+    {
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm24_sf', false, 100), 'staging: the stored-false row arms its window (the ADD family — a false row reads missing to the get_option-shaped predicate, glm15-14).');
+        $this->freezeTime(1050);
+        $this->assertTrue(set_transient('glm24_sf', false), 'The zero-expiration re-save completes — the stored-false row still reads missing, the ADD family its own shape.');
+        $this->assertFalse(get_transient('glm24_sf'), 'The row serves its stored false inside the window — the false answer is the VALUE, never the expiry.');
+        $this->assertSame(
+            array( '_transient_glm24_sf' ),
+            $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
+                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
+                $GLOBALS['wpdb']->esc_like('_transient_glm24_sf') . '%'
+            )),
+            'INSIDE the window the row LIVES (t=1050 < 1100) — the enumeration census proves the false read was the stored value.'
+        );
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm24_sf'), 'Past the window the read answers false — the death itself is the census below.');
+        $this->assertSame(
+            array(),
+            $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
+                "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
+                $GLOBALS['wpdb']->esc_like('_transient_glm24_sf') . '%'
+            )),
+            'The stored-false row DIES at its original expiry (red at HEAD: never dies — the keep-guard keyed on $existing reset expires_at to false over the stored-false shape and the row stood forever).'
+        );
+    }
+
+    /**
      * glm22-5: set_transient() clones an object value at the hook
      * seat — core's add_option()/update_option() each clone BEFORE
      * the family fires, so an observer mutating the hook-passed value
