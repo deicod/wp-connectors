@@ -170,7 +170,18 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(update_option('glm17_obj_opt', $second), 'An equal-valued non-identical object answers UNCHANGED, core\'s maybe_serialize arm (red at HEAD: true, the write completed).');
         $this->assertSame(0, did_action('update_option_glm17_obj_opt'), 'No update hooks fired over the unchanged value (red at HEAD: the specific hook fired).');
         $this->assertSame(0, did_action('updated_option'), 'The closing hook stayed silent too.');
-        $this->assertSame($first, get_option('glm17_obj_opt'), 'Nothing wrote — the stored INSTANCE is still the first one (red at HEAD: the second instance stored).');
+        /*
+         * CORRECTED (glm18-8): the leg once asserted the stored
+         * INSTANCE was the caller's own $first (assertSame) — the
+         * harness's reference-storage artifact, falsified by core's
+         * own head clone (option.php:882-884): core never stores the
+         * caller's instance, it stores serialized bytes, and the
+         * harness's parity shape is the detached equal-valued copy.
+         * "Nothing wrote" still names the leg: the stored row carries
+         * the FIRST value, never the second instance.
+         */
+        $this->assertEquals($first, get_option('glm17_obj_opt'), 'Nothing wrote — the stored row still carries the FIRST value, a detached equal-valued copy of it (red at HEAD: the second instance stored).');
+        $this->assertNotSame($second, get_option('glm17_obj_opt'), 'The second instance is not the stored row.');
 
         // The control: a genuinely different value still updates.
         $this->assertTrue(update_option('glm17_obj_opt', array( 'k' => 'changed' )));
@@ -1058,6 +1069,44 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         // dedupes (the glm15-13 shape, band-invariant).
         $this->assertFalse(wp_schedule_single_event(1700002520, 'glm17_far'), 'A near-future existing single inside the band dedupes.');
         $this->assertCount(2, wp_get_scheduled_events('glm17_far'));
+    }
+
+    public function testAMutatedStoredObjectReSaveCompletesThroughTheHeadClone()
+    {
+        /*
+         * glm18-8: core clones an object value at update_option()'s
+         * head (option.php:882-884, pinned 7.1.1) — the harness stores
+         * live references, so a caller mutating the object they saved
+         * and re-saving it hit the $old === $value identity arm with
+         * the SAME reference on both sides: false, zero hooks, where
+         * core's detached copy completes with the full hook family
+         * (driven at HEAD). The head clone detaches the stored row;
+         * the unchanged re-save keeps core's silent false (the glm17-8
+         * maybe_serialize arm, over detached copies now).
+         */
+        $obj = new stdClass();
+        $obj->v = 1;
+        $this->assertTrue(update_option('glm18_obj', $obj), 'staging: the first save persists the row.');
+
+        $fired = array();
+        add_action('update_option', static function () use (&$fired) {
+            $fired[] = 'generic';
+        });
+        add_action('update_option_glm18_obj', static function () use (&$fired) {
+            $fired[] = 'specific';
+        });
+        add_action('updated_option', static function () use (&$fired) {
+            $fired[] = 'updated';
+        });
+
+        $obj->v = 2;
+        $this->assertTrue(update_option('glm18_obj', $obj), 'The mutate-in-place re-save completes — the head clone detached the stored row from the caller\'s reference (red at HEAD: the identity arm saw the same reference, false).');
+        $this->assertSame(array( 'generic', 'specific', 'updated' ), $fired, 'The full hook family fires for the re-save (red at HEAD: zero hooks).');
+        $this->assertSame(2, get_option('glm18_obj')->v, 'The row carries the mutated value.');
+
+        $fired = array();
+        $this->assertFalse(update_option('glm18_obj', $obj), 'The UNCHANGED re-save keeps core\'s silent false — maybe_serialize equality over the detached copies.');
+        $this->assertSame(array(), $fired, 'No hook fires for the unchanged re-save.');
     }
 
     public function testTheSingleHeadGuardJudgesTheRawValueNeverAPreCast()

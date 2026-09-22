@@ -248,7 +248,22 @@ function update_option($option, $value, $autoload = null)
      * delegation (never a forced double call): a FIRST save runs the
      * registered callback exactly twice, every subsequent save once.
      * The round-15 runs=1 spec was wrong; core parity wins.
+     *
+     * glm18-8: core CLONES an object value at the head, before the
+     * sanitizer (option.php:882-884, pinned 7.1.1) — the harness
+     * stores live references, so a caller mutating the object they
+     * saved and re-saving it hit the identity arm with the SAME
+     * reference on both sides and the save answered false with ZERO
+     * hooks where core's detached copy completes with the full hook
+     * family (driven). The head clone detaches the stored row from
+     * the caller's reference — the identity arm compares two distinct
+     * objects and maybe_serialize() equality decides, exactly core's
+     * compare; an UNCHANGED re-save still answers core's silent
+     * false (the glm17-8 second arm, now over detached copies).
      */
+    if (is_object($value)) {
+        $value = clone $value;
+    }
     $value = sanitize_option($option, $value);
     $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
     /*
