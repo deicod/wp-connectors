@@ -209,7 +209,9 @@ final class SecureFixturesTest extends WpConnectorsTestCase
 
     /**
      * glm14-3: the over-size skip is loud — the verdict never reads
-     * clean over bytes the walk did not read.
+     * clean over bytes the walk did not read. glm20-1: the file-root
+     * arm answers the same loud refusal for a directly-named over-bound
+     * single file.
      */
     public function testAnOverSizeFileFailsTheSecretScanLoudly()
     {
@@ -224,6 +226,18 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          * memory bound over trees the walk did not choose); the skip
          * answers a finding line now, so both consumers — the CLI's
          * exit code and the inspector's violations — refuse.
+         *
+         * glm20-1 (the #1 hybrid's caller-seam half): the FILE-ROOT
+         * arm named directly had no cap at all — the token-memory
+         * census charges only the span factor, so a >2 MB prose-heavy
+         * named file (a tiny sample span, the census passing) scanned
+         * EVERY byte to a clean zero-finding verdict, no refusal
+         * (driven red at HEAD: 0 findings over a 2.85 MB payload, the
+         * bound never consulted) — and a dense-enough shape kept the
+         * fatal-without-verdict window instead, the census's
+         * uncharged whole-call terms (the residual the round-20 ledger
+         * names). The named target answers the same LOUD 2 MB refusal
+         * the walk ships, and the under-bound twin still scans.
          */
         $githubToken = 'ghp_' . bin2hex(random_bytes(18));
         $tempDir = $this->scanScratchRoot('wp-connectors-scan-oversize');
@@ -233,8 +247,15 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             // 2,450,041 bytes — one byte class over the 2 * 1024 * 1024 cap, the reviewer's own driven size.
             $this->assertNotFalse(file_put_contents($tempDir . '/big.php', '<?php\n$t = \'' . $githubToken . '\';\n' . str_repeat('// ' . bin2hex(random_bytes(16)) . "\n", 98000)), "staging: {$tempDir}/big.php must write — a staging failure fails as staging, never as the scan verdict.");
             $this->assertGreaterThan(2 * 1024 * 1024, filesize($tempDir . '/big.php'), 'staging: big.php must land over the 2 MB cap the leg premises.');
+            // The FILE-ROOT shape: over the cap on BYTES, a tiny sample
+            // span — the census passes, every byte scans (no live key:
+            // the HEAD verdict reads clean, the silent half of the red).
+            $this->assertNotFalse(file_put_contents($tempDir . '/wide.php', '<?php $x = 1; ?> ' . str_repeat("// prose line without any key\n", 95000)), "staging: {$tempDir}/wide.php must write — a staging failure fails as staging, never as the scan verdict.");
+            $this->assertGreaterThan(2 * 1024 * 1024, filesize($tempDir . '/wide.php'), 'staging: wide.php must land over the 2 MB cap the leg premises.');
 
             $findings = wp_connectors_scan_paths(array( $tempDir ));
+            $directOverBound = wp_connectors_scan_paths(array( $tempDir . '/wide.php' ));
+            $directUnderBound = wp_connectors_scan_paths(array( $tempDir . '/small.php' ));
         } finally {
             WpHarness::releaseScratch($tempDir);
         }
@@ -245,6 +266,21 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertStringContainsString('small.php', $report);
         $this->assertStringContainsString('github-token', $report);
         $this->assertStringNotContainsString($githubToken, $report);
+
+        // glm20-1: the directly-named over-bound file answers the SAME
+        // loud refusal (red at HEAD: the whole 2.85 MB scanned to a
+        // clean zero-finding verdict, no refusal line at all).
+        $this->assertSame(
+            array( $tempDir . '/wide.php: over the 2 MB secret-scan size limit — the secret scan cannot run' ),
+            $directOverBound,
+            'A >2 MB single-file argument answers the loud refusal naming the file — the CLI exit code and the inspector both derive their refusal from this list.'
+        );
+        // The under-bound named twin scans unchanged — the cap never over-refuses.
+        $this->assertSame(
+            array( $tempDir . '/small.php:2 github-token (GitHub token)' ),
+            $directUnderBound,
+            'An under-bound single-file argument scans exactly as before the cap.'
+        );
     }
 
     /**

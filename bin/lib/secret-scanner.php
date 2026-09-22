@@ -780,7 +780,8 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
  *                      "unreadable file — the secret scan cannot run"
  *                      line per file whose read failed (glm14-2) and
  *                      one "over the 2 MB secret-scan size limit" line
- *                      per over-limit file the walk skipped (glm14-3):
+ *                      per over-limit file — walked (glm14-3) or named
+ *                      directly at the file-root arm (glm20-1):
  *                      the scan verdict is never clean over bytes it
  *                      did not read; both consumers — the CLI's exit
  *                      code and the inspector's violations — derive
@@ -792,6 +793,29 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
     $excluded = $prune_dev_segments ? array( '.git', 'vendor', 'node_modules', 'dist', 'tools', '.phpunit.cache' ) : array();
     foreach ($roots as $root) {
         if (is_file($root)) {
+            /*
+             * glm20-1 (the round-20 #1 hybrid's caller-seam half): this
+             * arm had NO size cap — glm14-3's recorded 'a caller naming
+             * one file owns that choice' doctrine — but the census
+             * above charges only the span factor, and the scan's
+             * WHOLE-CALL terms ride uncharged over it (the second
+             * token stream the masker pays, the masked view, the
+             * regions array, the findings — the whole-call undercharge
+             * the round-20 ledger names as its residual), so a >2 MB
+             * single-file argument kept the fatal-without-verdict
+             * window however deliberately the caller named it (driven:
+             * a 2.85 MB prose-heavy payload scanned to zero findings,
+             * no refusal — every byte read, the bound never consulted).
+             * The named target answers the SAME loud refusal the walk
+             * ships (glm14-3's policy shape, the gate's own calibration
+             * basis — the 2 MB memory bound), never a silent clean
+             * verdict over bytes past it.
+             */
+            $size = filesize($root);
+            if (false !== $size && $size > 2 * 1024 * 1024) {
+                $findings[] = sprintf('%s: over the 2 MB secret-scan size limit — the secret scan cannot run', $root);
+                continue;
+            }
             /*
              * glm14-2: the read owns its failure — the old (string)
              * cast laundered a false read (permission denial, a file
@@ -870,9 +894,13 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                  * the scan is line-based over the whole file's
                  * contents, so the bound exists to keep a hostile
                  * multi-gigabyte entry from exhausting the process
-                 * before a verdict lands (the file-root arm above has
-                 * no cap because a caller naming one file owns that
-                 * choice; the WALK judges trees it did not choose).
+                 * before a verdict lands (CORRECTED at glm20-1: the
+                 * file-root arm above once had no cap under this
+                 * paragraph's 'a caller naming one file owns that
+                 * choice' premise — the whole-call undercharge kept the
+                 * fatal window the caller's naming could not close, and
+                 * the named target rides the same loud refusal now; the
+                 * WALK still judges trees it did not choose).
                  * The skip is LOUD, never silent: an over-limit file
                  * answers a finding line in the glm14-2 vocabulary, so
                  * the verdict never reads clean over bytes the scan
