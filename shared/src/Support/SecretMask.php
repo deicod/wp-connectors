@@ -285,7 +285,37 @@ final class SecretMask {
 	 * twin was considered and SKIPPED as spelled — 'antiforgerytoken'
 	 * is no vendor's header name, and the spelling .NET documents
 	 * ('__RequestVerificationToken') carries delimiters whose fold
-	 * judges the 'token' segment, already covered.
+	 * judges the 'token' segment, already covered. (CORRECTED at
+	 * round 21, t31-glm21-1: that skip's premise was FALSE — the
+	 * delimiters in '__RequestVerificationToken' are LEADING
+	 * underscores, shed at the fold's bound-segment strip;
+	 * 'verification' and 'token' are GLUED, the judged name
+	 * 'requestverificationtoken' matched no suffix, and the documented
+	 * spelling rendered its credential verbatim, driven. The member
+	 * rides the class now.)
+	 *
+	 * Round 21 (t31-glm21-1, security — the .NET glued twin, the
+	 * ocr57-2 skip's re-open condition met): '__RequestVerificationToken'
+	 * is the anti-forgery header .NET's own MVC documentation spells —
+	 * the token the form field of the same name carries rides the
+	 * request header for AJAX posts — and its fold judged
+	 * 'requestverificationtoken': the whole glued token as the final
+	 * segment, no catalog entry, no suffix, so the anti-forgery
+	 * credential rendered verbatim through every safe debug form
+	 * (driven at HEAD) while the delimiter-spelled twins
+	 * ('X-Request-Verification-Token', '__request_verification_token')
+	 * masked via 'token'. One member speaks every delimiter spelling
+	 * per the r50-1 boundary doctrine (the .NET spelling's leading
+	 * underscores fold and trim onto the judged name; every segment
+	 * tail judges the same). The round's r57-2-shaped sweep found no
+	 * second glued member that meets the named-vendor bar — every
+	 * remaining vendor-canonical credential header (AWS
+	 * 'X-Amz-Security-Token', Shopify 'X-Shopify-Access-Token', APIM
+	 * 'Ocp-Apim-Subscription-Key') hyphenates or already rides a
+	 * flattened member. The boundary is unchanged:
+	 * 'x-requestverificationtokenlog' stays verbatim (the suffix bytes
+	 * never span the segment), and glue with no separator before the
+	 * member ('xrequestverificationtoken') stays outside as ever.
 	 *
 	 * OCR round 61 (t31-ocr61-2, security — the HMAC-material
 	 * suffix): 'signature' is the final token of the webhooks' own
@@ -339,7 +369,7 @@ final class SecretMask {
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'signature', 'signature-256' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.

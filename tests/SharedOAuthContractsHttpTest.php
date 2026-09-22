@@ -2691,6 +2691,12 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
          * considered-and-skipped ('antiforgerytoken' is no vendor's
          * header name; the documented '__RequestVerificationToken'
          * spelling judges the 'token' segment, already covered).
+         * (CORRECTED at round 21, glm21-1: that skip's premise was
+         * FALSE — the delimiters in the documented spelling are
+         * LEADING underscores, shed at the fold's bound-segment strip,
+         * so 'verification'/'token' are GLUED and the judged name
+         * matched no suffix; the .NET spelling renders masked through
+         * its own member now, pinned right below.)
          */
         $csrf_secret = FakeSecrets::accessToken();
         foreach (array('X-CSRFToken', 'x-csrftoken', 'X_CsrfToken', 'x.csrftoken', 'CSRFToken', 'csrftoken') as $spelling) {
@@ -2707,6 +2713,38 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
         foreach (array('X-Token-Count', 'x-csrftokenlog') as $spelling) {
             $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — a non-credential tail and bytes spanning the segment boundary are both outside the class.");
+        }
+
+        /*
+         * Round-21 pin (glm21-1 — the .NET glued twin, the r57-2
+         * skip's re-open condition met by driven falsification of its
+         * recorded premise): '__RequestVerificationToken' is the
+         * anti-forgery header .NET's own MVC documentation spells, and
+         * it has NO internal delimiters — the leading underscores shed
+         * at the fold's bound-segment strip, 'verification'/'token'
+         * glued — so the judged name 'requestverificationtoken' matched
+         * no catalog entry and no suffix while 'X-Api-Key' masked: the
+         * credential rendered verbatim through every safe debug form
+         * (red at HEAD) with the delimiter-spelled twins covered. One
+         * member speaks every delimiter spelling (the r50-1 fold); the
+         * round's sweep found no second glued member that meets the
+         * named-vendor bar (every remaining vendor-canonical credential
+         * header hyphenates or already rides a flattened member).
+         */
+        $rvt_secret = FakeSecrets::accessToken();
+        foreach (array('__RequestVerificationToken', 'RequestVerificationToken', 'requestverificationtoken', '__request_verification_token', 'X-Request-Verification-Token') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — .NET's own documented anti-forgery header, glued and delimiter-spelled alike (red at HEAD: the glued spelling unmasked).");
+        }
+        $rvt_map = new HeaderMap(array(
+            '__RequestVerificationToken' => $rvt_secret,
+            'x-request-id' => 'req-21',
+        ));
+        foreach (array('dump' => print_r($rvt_map, true), 'serialize' => serialize($rvt_map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString($rvt_secret, $rendered, "The '__RequestVerificationToken' anti-forgery credential renders masked in the {$channel} channel — the .NET-documented glued spelling cannot be the one that leaks while 'X-Api-Key' masks.");
+            $this->assertStringContainsString('req-21', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim in the {$channel} channel.");
+        }
+        foreach (array('x-requestverificationtokenlog', 'requestverification', 'xrequestverificationtoken') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — bytes spanning the segment boundary, the member without its tail, and glue with no separator before the member are all outside the class.");
         }
 
         /*
