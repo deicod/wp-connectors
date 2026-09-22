@@ -742,6 +742,49 @@ final class ToolchainSmokeTest extends TestCase
     }
 
     /**
+     * glm25-4: a refused declared-root mkdir answers the staging
+     * RuntimeException the owner documents — under the suite's
+     * warning-to-exception regime the unsuppressed mkdir()'s E_WARNING
+     * escaped FIRST (a PHPUnit warning exception — itself a
+     * RuntimeException subclass, but never the harness's own named
+     * class), so the documented contract was unreachable. The mkdir
+     * rides the @-suppressed spelling (the glm25-3/ocr42-8 idiom) and
+     * the refusal is driven over a read-only base: the first declared
+     * root ($base/connectors) cannot create, and the loud staging
+     * failure names the root.
+     */
+    public function testARefusedRootMkdirFailsAsStagingNeverAsAWarning(): void
+    {
+        $scratch = sys_get_temp_dir() . '/wpct-lint-stage-refusal-' . uniqid('', true);
+
+        try {
+            $this->assertTrue(mkdir($scratch, 0755, true), 'staging: the scratch base must create — a staging failure fails as staging, never as the choreography verdict.');
+            $this->assertTrue(chmod($scratch, 0555), 'staging: the base must go read-only — a staging failure fails as staging, never as the choreography verdict.');
+            /*
+             * The root pre-flight (the capability this leg premises,
+             * probed never assumed): a process the write bits cannot
+             * stop (root walks 0555 open) makes its own children
+             * anyway, so the refused-mkdir shape cannot be driven —
+             * skip, naming the premise.
+             */
+            if (@mkdir($scratch . '/pre-flight', 0755)) {
+                $this->markTestSkipped('This process creates children under a read-only parent (root-shaped) — the refused-mkdir shape cannot be driven here.');
+            }
+
+            try {
+                WpHarness::stageLintRoots($scratch);
+                $this->fail('A refused declared-root mkdir must answer the staging RuntimeException, never return normally.');
+            } catch (\RuntimeException $refusal) {
+                $this->assertSame(\RuntimeException::class, get_class($refusal), 'The refusal answers the harness\'s OWN named exception — never the engine\'s converted mkdir warning wearing the RuntimeException family (red at HEAD: the warning class escaped first).');
+                $this->assertStringContainsString('staging: the declared root ' . $scratch . '/connectors', $refusal->getMessage(), 'The staging failure names the refused root — an environment problem named before any child spawns, never the gate\'s verdict wearing it.');
+            }
+        } finally {
+            @chmod($scratch, 0755);
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * Every PHP file under the phpcs-compat ruleset's tree set, mirroring
      * its vendor/dist/tools and tests/fixtures/data exclusions.
      *

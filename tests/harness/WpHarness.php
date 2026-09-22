@@ -1690,7 +1690,16 @@ final class WpHarness
             if (is_dir($root)) {
                 continue;
             }
-            if (! mkdir($root, 0755, true)) {
+            /*
+             * glm25-4: the mkdir rides the @-suppressed spelling (the
+             * glm25-3/ocr42-8 idiom) — under the suite's
+             * warning-to-exception regime the unsuppressed mkdir()'s
+             * E_WARNING escaped as a converted exception BEFORE this
+             * throw, so the documented RuntimeException was
+             * unreachable (a PHPUnit warning IS a RuntimeException
+             * subclass, but never the harness's own named class).
+             */
+            if (! @mkdir($root, 0755, true)) {
                 throw new \RuntimeException("staging: the declared root {$root} must create — a staging failure fails as staging, never as the lint verdict.");
             }
         }
