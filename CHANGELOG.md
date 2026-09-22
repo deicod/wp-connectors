@@ -6,6 +6,94 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 26)
+
+Twelfth claude-glm pass: 4 correctness + 3 test-hygiene + 1
+documentation + 2 cleanup; 1 ledger-covered standing (#8 fixed in
+code now, the ledger granting it). DRIVER ADJUDICATION: ALL
+ACCEPTED, both cleanup hoists included (the threshold crossed, the
+off-by-one already bit). Twelve numbered commits t31-glm26-1..12,
+the full offline check green after every commit (one run carrying
+the recorded seed-dependent census-refusal blip, re-runs green at
+the settled counts), no push. The round's shape: the delete seat's
+own re-audit (truthiness, mid-save capture, the timeout alias, the
+hook family); the glm25 legs' own hygiene; the citation correction
+at every site with the driver-owned post-mortem; and the two
+hoists. Suite 1882 → 1886 tests, 48049 → 48070 assertions, 3
+skipped unchanged (every delta measured from output).
+
+- **Falsy transient names delete cleanly
+  (t31-glm26-1, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — delete_option()'s transient
+  half gated on truthiness at both seats, so '0'- and ''-named
+  transients answered the missing-row false over a live row and
+  kept serving post-delete; both seats ride identity
+  (`false !==`), the parse's own sentinel.
+- **A mid-save deleting observer cannot kill the save
+  (t31-glm26-2, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — the expires_at keep-guard
+  re-read the row after the update/add_option hook family fired,
+  and a deleting observer left it absent: the undefined-key warning
+  killed the save under the warning-to-exception regime. The
+  standing expiry is captured before the family (core's own arming
+  order) and the guard reads the capture.
+- **The timeout family's spelling is no transient value row
+  (t31-glm26-3, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — the prefix parse resolved
+  '_transient_timeout_<name>' onto the transient named
+  'timeout_<name>', so a delete over the timeout spelling answered
+  true and killed the aliased transient where core answers false
+  over the absent timeout row; the parse excludes the family, the
+  no-such-row claim honest now.
+- **delete_option() rides core's own hook family
+  (t31-glm26-4, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — core fires the generic
+  'delete_option' action before the delete (the row still present),
+  the keyed and closing actions after a successful delete alone,
+  and a missing row fires none; the seat modeled zero hook seats,
+  newly load-bearing since glm25-6 routes every transient deletion
+  through it.
+- **The swallowed fail-inside-try surfaces the right message
+  (t31-glm26-5, test-hygiene; tests/ToolchainSmokeTest.php)** —
+  glm25-4's fail() inside the try was swallowed by its own catch
+  (AssertionFailedError IS a RuntimeException subclass); collect
+  inside, assert outside, the never-returned verdict its own
+  assertion now.
+- **The '/' denial leg gains its opendir pre-flight
+  (t31-glm26-6, test-hygiene; tests/HarnessDenialProbeTest.php)**
+  — a policy-confined host denies opendir('/') by non-mode means
+  and the leg would red over the host's own policy; the capability
+  is probed, the skip named, the mode-denial verdicts unchanged.
+- **The vacuous closing fileperms pin dropped
+  (t31-glm26-7, test-hygiene; tests/HarnessDenialProbeTest.php)**
+  — the chmod pre-flight had proved chmod refused, so the closing
+  perms assertion could never fail; a pin that cannot redden pins
+  nothing.
+- **The delete_transient core citation corrected everywhere
+  (t31-glm26-8, documentation)** — the function spans
+  option.php:1380-1418 in the pinned 7.1.1 (pre-hook :1391,
+  deleted_transient :1414), never 1408-1438; the driver-owned range
+  corrected at every echoing site (wp-stubs, FoundationHarnessTest,
+  CHANGELOG ×2, ledger ×3), the post-mortem recorded in the
+  round-26 ledger section.
+- **The '_transient_' convention rides one owner pair
+  (t31-glm26-9, cleanup; tests/harness/wp-stubs.php)** — the
+  forward spelling (three concats) and the reverse parse each
+  hand-copied, this round's substr off-by-one the demonstrated
+  hazard; wp_connectors_transient_option_name() and its parse twin
+  serve all seats, the timeout exclusion riding the owner.
+- **The wpdb enumeration census rides one query owner
+  (t31-glm26-10, cleanup; tests/FoundationHarnessTest.php)** — the
+  LIKE query hand-copied at five sites (the round-25 diff adding a
+  closure and an inline twin in one file); censusTransientRows()
+  spells it once, deliberately the literal spelling so the oracle
+  never inherits the stub's own helper.
+- **The copy-on-write comment states the one-row doctrine
+  (t31-glm26-11, ledger-granted; tests/harness/wp-stubs.php)** —
+  the sharing's basis is the one-row doctrine itself (a nested
+  mutation landing in both stores is one row's meaning), never
+  copy-on-write; the round-25 narration correction landed in code.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 25)
 
 Eleventh claude-glm pass: 1 confirmed regression + 4 small accepts +
