@@ -877,6 +877,52 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_scan_string("<?php \$ok = 1; // secrets:allow\n", 'ok.php'));
     }
 
+    public function testASumOfDenseSpansAnswersTheRefusalNeverTheFatal()
+    {
+        /*
+         * glm17-2: the token-memory gate multiplied only the LARGEST
+         * span by the dense factor, but token_get_all() materializes
+         * the WHOLE stream at once — 24 dense ~100 KB spans (~2.4 MB
+         * of PHP, every span under any per-span bound) passed the gate
+         * then FATALED at the 128M default with no verdict (driven in
+         * a spawned engine at HEAD: exit 255). The gate bounds the SUM
+         * of the spans now — the multi-span payload answers the loud
+         * refusal, the glm14-2 vocabulary, never the fatal.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the memory-bound leg cannot run (the fatal class rides a spawned engine).');
+        }
+
+        $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
+        $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the spawned-engine leg runs — a realpath() false is an environment problem, never the bound defect the child would otherwise fatal as.');
+        $script = <<<'CHILD'
+require %s;
+$span = '<?php ' . str_repeat('$x=$x+$x;$y[]=$x;', 6200) . '?>';
+$payload = str_repeat($span . "\nprose run between the samples\n", 24);
+echo 'bytes=', strlen($payload), "\n";
+foreach (wp_connectors_scan_string($payload, 'multi.php') as $finding) {
+    echo $finding, "\n";
+}
+CHILD;
+        $output = array();
+        $exit = 1;
+        exec(escapeshellarg(PHP_BINARY) . ' -d memory_limit=128M -r ' . escapeshellarg(sprintf($script, var_export($scannerLibrary, true))) . ' 2>&1', $output, $exit);
+        $report = implode("\n", $output);
+
+        $this->assertSame(0, $exit, "The 24-span dense payload answers the LOUD refusal, never a fatal (red at HEAD: the spawned engine died at the memory limit with no verdict): {$report}");
+        $this->assertStringContainsString('multi.php: over the secret-scan token-memory bound — the secret scan cannot run', $report, 'The refusal names the file in the glm14-2 vocabulary.');
+
+        // The control: honest small multi-span PHP never trips the sum
+        // bound — the samples tokenize, the live key still finds.
+        $githubToken = 'ghp_' . bin2hex(random_bytes(18));
+        $small = "<?php \$a = 1; ?> prose between the samples <?php \$t = '{$githubToken}';";
+        $this->assertSame(
+            array( 'small.php:1 github-token (GitHub token)' ),
+            wp_connectors_scan_string($small, 'small.php'),
+            'A small multi-span payload scans normally — the sum bound refuses only what would fatal.'
+        );
+    }
+
     public function testScannerAcceptsRepoSources()
     {
         $repoRoot = dirname(__DIR__);

@@ -195,33 +195,39 @@ function wp_connectors_scan_string($contents, $label)
      * at all — the census the glm15-1 fix would have gated on '<<<'
      * is gone, and the mask cares about quotes, not heredocs); for a
      * PHP-bearing source the COST the token pass can spend is driven
-     * by the LARGEST PHP-MODE SPAN, never the whole file — a prose
-     * run between tags is one T_INLINE_HTML token, so a markdown
-     * ledger carrying small code samples tokenizes at its samples'
-     * cost, not its megabytes. The span walk is byte-honest (measured
-     * dense-worst-case factor: ~98x the span); a span whose estimate
-     * would not fit the parsed limit answers the LOUD refusal in the
-     * glm14-2 vocabulary, the 2-MB loud-skip doctrine's own shape —
-     * never a silent fatal mid-scan, never a verdict reading clean
-     * over bytes the scan could not tokenize. The walk's one ceiling:
-     * a '?>' spelled INSIDE a string or comment splits a span the
-     * lexer keeps whole, so a file deliberately WOVEN with in-string
-     * close tags could under-refuse — the exact pre-round fatal class,
-     * and a shape no honest producer ships.
+     * by the PHP-MODE SPANS — a prose run between tags is one
+     * T_INLINE_HTML token, so a markdown ledger carrying small code
+     * samples tokenizes at its samples' cost, not its megabytes. The
+     * span walk is byte-honest (measured dense-worst-case factor:
+     * ~98x the span); a span set whose estimate would not fit the
+     * parsed limit answers the LOUD refusal in the glm14-2 vocabulary,
+     * the 2-MB loud-skip doctrine's own shape — never a silent fatal
+     * mid-scan, never a verdict reading clean over bytes the scan
+     * could not tokenize. The walk's one ceiling: a '?>' spelled
+     * INSIDE a string or comment splits a span the lexer keeps whole,
+     * so a file deliberately WOVEN with in-string close tags could
+     * under-refuse — the exact pre-round fatal class, and a shape no
+     * honest producer ships.
+     *
+     * glm17-2: the bound rides the SUM of the spans, never the largest
+     * alone — token_get_all() materializes the WHOLE token stream at
+     * once, so 24 dense ~100 KB spans (~2.4 MB, every one of them
+     * under any per-span bound) paid the SUM (~235 MB) against the
+     * default 128M limit and FATALED with no verdict (driven in a
+     * child process at HEAD); the largest-span spelling passed the
+     * gate on exactly the shape the gate exists to refuse.
      */
     $has_php = false !== strpos($contents, '<?');
     if ($has_php) {
-        $span_max = 0;
+        $span_total = 0;
         $at = 0;
         while (false !== ($open = strpos($contents, '<?', $at))) {
             $close = strpos($contents, '?>', $open + 2);
             $end = false === $close ? strlen($contents) : $close;
-            if ($end - $open > $span_max) {
-                $span_max = $end - $open;
-            }
+            $span_total += $end - $open;
             $at = false === $close ? strlen($contents) : $close + 2;
         }
-        if ($span_max * 98 > wp_connectors_scan_token_memory_headroom()) {
+        if ($span_total * 98 > wp_connectors_scan_token_memory_headroom()) {
             return array( sprintf('%s: over the secret-scan token-memory bound — the secret scan cannot run', $label) );
         }
     }
