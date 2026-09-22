@@ -977,14 +977,26 @@ final class WpHarness
      */
     public static function lockForDenialProbe(string $dir): bool
     {
+        /*
+         * glm25-3: the lock and restore chmods ride the @-suppressed
+         * spelling (the ocr42-8 idiom) — under the suite's
+         * warning-to-exception regime an unsuppressed chmod that FAILS
+         * (the staged directory not this process's to chmod) threw the
+         * E_WARNING as an exception before the probe logic ran, so the
+         * documented contract never lived: a failed lock chmod answers
+         * the probe HONESTLY (the directory never locked, opendir()
+         * walks it open, the owner answers false, the site's own skip
+         * fires) and the paired restore over the never-locked
+         * directory stays quiet the same way.
+         */
         $perms = fileperms($dir);
         $pre_state = false === $perms ? 0755 : ($perms & 0777);
-        chmod($dir, 0000);
+        @chmod($dir, 0000);
         if (self::canDenyDirectoryOpen($dir)) {
             return true;
         }
 
-        chmod($dir, $pre_state);
+        @chmod($dir, $pre_state);
 
         return false;
     }
