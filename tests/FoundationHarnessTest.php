@@ -1007,6 +1007,38 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm26-2: the write's keep-guard reads a CAPTURE from before the
+     * hook family, never the row a mid-save observer may have deleted
+     * — a deleting observer at the update/add_option actions left
+     * $transients[$transient] absent at the keep-guard's read, and
+     * the undefined-key warning killed the save under the suite's
+     * warning-to-exception regime: no completion hooks, no return
+     * (driven red at HEAD — core completes this shape; the standing
+     * window is settled before the family fires, glm23-1's own
+     * arming order).
+     */
+    public function testAMidSaveDeletingObserverCannotKillTheSave()
+    {
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm26_mid', 'a', 100), 'staging: the row arms its window.');
+        $this->freezeTime(1050);
+        $completed_before = did_action('set_transient_glm26_mid');
+
+        add_action('update_option', static function ($option) {
+            if ('_transient_glm26_mid' === $option) {
+                delete_transient('glm26_mid');
+            }
+        });
+        $this->assertTrue(set_transient('glm26_mid', 'b'), 'The save completes over the mid-save delete — the keep-guard reads the pre-family capture (red at HEAD: the undefined-key warning killed the save under the warning-to-exception regime).');
+        $this->assertSame('b', get_transient('glm26_mid'), 'The completed save stores its value — the write re-creates the row the observer deleted.');
+        $this->assertSame($completed_before + 1, did_action('set_transient_glm26_mid'), 'The completion family fired over the completed save — never a regime kill mid-method.');
+        $this->freezeTime(1099);
+        $this->assertSame('b', get_transient('glm26_mid'), 'The kept window stands — the capture carried the standing 1100 expiry across the observer\'s delete.');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm26_mid'), 'The row dies at the first save\'s own window — glm23-1\'s zero-expiration keep over the capture.');
+    }
+
+    /**
      * glm25-1: TTL (re)arming survives the stored-false row's MISSING
      * read — glm24-4's keep-guard keyed on $own_entry alone, but a
      * stored-false row answers $existing FALSE (the get_option-shaped

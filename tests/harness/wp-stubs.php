@@ -669,6 +669,19 @@ function set_transient($transient, $value, $expiration = 0)
     // ternary once hand-copied the same array_key_exists the
     // $own_entry read spells one line below.
     $own_entry = array_key_exists($transient, WpHarness::$transients);
+    /*
+     * glm26-2: the standing expiry captured where $own_entry is
+     * derived — BEFORE the hook family fires. A mid-save observer at
+     * the update/add_option actions may DELETE the row (a legal core
+     * shape); the write's keep-guard once re-read the row AFTER the
+     * family, and the undefined-key warning over the deleted row
+     * killed the save under the suite's warning-to-exception regime
+     * — no completion hooks, no return (driven). Core completes this
+     * shape: the timeout row is settled BEFORE the value row's
+     * delegated hook family fires (glm23-1's own arming order), so
+     * the capture is the pre-hook vantage the write keeps.
+     */
+    $standing_expires_at = $own_entry ? WpHarness::$transients[ $transient ]['expires_at'] : false;
     $old = $own_entry
         ? WpHarness::$transients[ $transient ]['value']
         : ($option_row ? WpHarness::$options[ $transient_option ] : false);
@@ -795,9 +808,12 @@ function set_transient($transient, $value, $expiration = 0)
          * died at the stale first window — driven). The standing
          * timeout survives only a save that names no expiration
          * (glm23-1's own rule); an expiration-bearing save takes the
-         * head's derivation whichever row shape carries it.
+         * head's derivation whichever row shape carries it. glm26-2:
+         * the kept value is the PRE-FAMILY CAPTURE above, never a
+         * re-read of the row (a mid-save deleting observer may have
+         * removed it).
          */
-        'expires_at' => ($own_entry && false === $expires_at) ? WpHarness::$transients[ $transient ]['expires_at'] : $expires_at,
+        'expires_at' => ($own_entry && false === $expires_at) ? $standing_expires_at : $expires_at,
     );
     if ($option_row) {
         // glm23-3: the seeded row's own home stays current — the stores
