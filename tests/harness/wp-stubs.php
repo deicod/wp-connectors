@@ -810,13 +810,32 @@ function delete_transient($transient)
      * fires the ADD over its deleted row (driven). The mirror
      * dies with the transient; the '_transient_timeout_<name>'
      * half rides the seat's standing no-such-row simplification.
+     *
+     * glm25-6: the seat rides core's own shape (option.php:1408-1438,
+     * pinned 7.1.1, driver pre-verified): the delete_transient_<name>
+     * action fires BEFORE the delete — unconditionally, a missing row
+     * still announces its deletion attempt — deleted_transient fires
+     * AFTER a SUCCESSFUL delete alone (`if ($result)` gates it), and
+     * the return is the delete's own: false over a missing row (the
+     * seat once modeled zero hook seats and answered true
+     * unconditionally, driven). The missing-row predicate consults
+     * BOTH stores per the mirror doctrine — the row exists whichever
+     * store models it; core's timeout-row delete_option beside the
+     * result rides the standing no-such-row simplification.
      */
     $transient_option = '_transient_' . $transient;
+    do_action("delete_transient_{$transient}", $transient);
+    if (! array_key_exists($transient, WpHarness::$transients)
+        && ! array_key_exists($transient_option, WpHarness::$options)
+    ) {
+        return false;
+    }
     unset(
         WpHarness::$transients[ $transient ],
         WpHarness::$options[ $transient_option ],
         WpHarness::$option_autoload[ $transient_option ]
     );
+    do_action('deleted_transient', $transient);
 
     return true;
 }

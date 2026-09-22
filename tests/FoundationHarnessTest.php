@@ -897,6 +897,61 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm25-6: delete_transient() rides core's own shape
+     * (option.php:1408-1438, pinned 7.1.1, driver pre-verified): the
+     * delete_transient_<name> action fires BEFORE the delete —
+     * unconditionally, a missing row still announces its deletion
+     * attempt — deleted_transient fires AFTER a SUCCESSFUL delete
+     * alone (`if ($result)` gates it), and the return is the delete's
+     * own: false over a missing row, true over a deleted one. The
+     * seat modeled ZERO hook seats and answered true unconditionally
+     * (driven red at HEAD: the missing-row true). The '_transient_
+     * timeout_<name>' delete_option core gates beside the result
+     * rides the seat's standing no-such-row simplification.
+     */
+    public function testDeleteTransientRidesCoresHookShapeAndMissingRowFalse()
+    {
+        $order = array();
+        add_action('delete_transient_glm25_del', static function (...$args) use (&$order) {
+            $order[] = array( 'pre', $args );
+        });
+        add_action('deleted_transient', static function (...$args) use (&$order) {
+            $order[] = array( 'done', $args );
+        });
+
+        /*
+         * The MISSING row: the pre-hook still announces the attempt,
+         * the completion stays silent, the return is the delete's own
+         * false (red at HEAD: true).
+         */
+        $this->assertFalse(delete_transient('glm25_del'), 'A missing row answers the delete\'s own false — core\'s return is delete_option()\'s, never an unconditional true (red at HEAD: true over zero hook seats).');
+        $this->assertSame(
+            array( array( 'pre', array( 'glm25_del' ) ) ),
+            $order,
+            'The pre-hook fires BEFORE the delete unconditionally; deleted_transient stays silent over the missing row — `if ($result)` gates the completion family (red at HEAD: zero hook seats at all).'
+        );
+
+        /*
+         * The SUCCESSFUL delete: both hooks in core's order, both
+         * stores cleaned (the seeded mirror shape — glm23-3's
+         * agreeing stores, glm24-3's delete ownership).
+         */
+        $this->assertTrue(add_option('_transient_glm25_del', 'seed'));
+        $this->assertTrue(set_transient('glm25_del', 'x'));
+        $this->assertSame('x', get_option('_transient_glm25_del'), 'staging: the save mirrors into the option row (glm23-3\'s agreeing-stores shape).');
+
+        $order = array();
+        $this->assertTrue(delete_transient('glm25_del'), 'The deleted row answers true.');
+        $this->assertSame(
+            array( array( 'pre', array( 'glm25_del' ) ), array( 'done', array( 'glm25_del' ) ) ),
+            $order,
+            'A SUCCESSFUL delete fires both hooks in core\'s order — the specific pre-hook first, the completion after the delete, each at its own arity (option.php:1408/:1433).'
+        );
+        $this->assertFalse(get_transient('glm25_del'), 'The transient store\'s row dies at the delete.');
+        $this->assertFalse(get_option('_transient_glm25_del'), 'The mirrored option row dies with it — core deletes its one row, whichever store the harness models it in (glm24-3).');
+    }
+
+    /**
      * glm25-1: TTL (re)arming survives the stored-false row's MISSING
      * read — glm24-4's keep-guard keyed on $own_entry alone, but a
      * stored-false row answers $existing FALSE (the get_option-shaped
