@@ -998,6 +998,73 @@ CHILD;
         );
     }
 
+    /**
+     * glm18-2: the file-root arm judges a directly-named file by
+     * CONTENT shape, not extension — explicitly named = operator
+     * intent.
+     */
+    public function testADirectlyNamedPhpHeadedFileScansByContentShapeWhateverItsExtension()
+    {
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-named');
+        try {
+            $this->assertTrue(mkdir($tempDir, 0755, true), "staging: {$tempDir} must create — a staging failure fails as staging, never as the shape verdict.");
+            // The driven shape: a short-echo-headed pure-PHP script
+            // under a non-php extension. The extension-aware gate never
+            // saw '<?php'-without-a-close: the matched-pair arm wants a
+            // '<?php' open and the unclosed arm an unclosed one, so the
+            // closed '<?=' script laundered its multi-line string
+            // interior through the line-local arm (red at HEAD: 0
+            // findings, exit 0 — base flagged it).
+            $this->assertNotFalse(
+                file_put_contents($tempDir . '/config.inc', "<?= \"\n{$key} // secrets:allow\n\" ?>\n"),
+                "staging: {$tempDir}/config.inc must write — a staging failure fails as staging, never as the shape verdict."
+            );
+            // The '<?php'-headed twin through the same arm (both-green
+            // pin: glm18-1's unclosed routing answers it either way).
+            $this->assertNotFalse(
+                file_put_contents($tempDir . '/settings.inc', "<?php\n// config\n\$k = \"\n{$key} // secrets:allow\n\";\n"),
+                "staging: {$tempDir}/settings.inc must write — a staging failure fails as staging, never as the shape verdict."
+            );
+            // Text content keeps glm17-3's benign extension routing
+            // under a directly-named target (the marked prose fixture
+            // stays exempt).
+            $this->assertNotFalse(
+                file_put_contents($tempDir . '/docs.md', "# Provider configuration\n\napi_key = {$key} // secrets:allow\n\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"),
+                "staging: {$tempDir}/docs.md must write — a staging failure fails as staging, never as the shape verdict."
+            );
+            // The same short-echo script spelled '.txt' inside a WALKED
+            // tree: the walk never chooses its files, so the extension
+            // screen rules it — the file-root doctrine is arm-scoped.
+            $this->assertTrue(mkdir($tempDir . '/tree', 0755, true), "staging: {$tempDir}/tree must create — a staging failure fails as staging, never as the shape verdict.");
+            $this->assertNotFalse(
+                file_put_contents($tempDir . '/tree/echo.txt', "<?= \"\n{$key} // secrets:allow\n\" ?>\n"),
+                "staging: {$tempDir}/tree/echo.txt must write — a staging failure fails as staging, never as the shape verdict."
+            );
+
+            $namedEcho = wp_connectors_scan_paths(array( $tempDir . '/config.inc' ));
+            $namedOpen = wp_connectors_scan_paths(array( $tempDir . '/settings.inc' ));
+            $namedDocs = wp_connectors_scan_paths(array( $tempDir . '/docs.md' ));
+            $walked = wp_connectors_scan_paths(array( $tempDir . '/tree' ));
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+
+        $this->assertSame(
+            array( "{$tempDir}/config.inc:2 {$expect}" ),
+            $namedEcho,
+            'A directly-named php-headed file rides the CODE arm whatever its extension (red at HEAD: the extension-aware gate never saw the closed <?= script — clean, exit 0).'
+        );
+        $this->assertSame(
+            array( "{$tempDir}/settings.inc:4 {$expect}" ),
+            $namedOpen,
+            'The <?php-headed twin flags through the same arm.'
+        );
+        $this->assertSame(array(), $namedDocs, 'Text content keeps glm17-3\'s benign extension routing under a directly-named target.');
+        $this->assertSame(array(), $walked, 'The WALK keeps its extension screen — the content-shape doctrine is the file-root arm\'s own.');
+    }
+
     public function testUnclosedTextFamilySamplesMaskStringDataInteriorsNotProse()
     {
         /*

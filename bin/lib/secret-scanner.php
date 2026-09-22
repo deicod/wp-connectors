@@ -247,13 +247,52 @@ function wp_connectors_unclosed_php_sample_open($contents)
 }
 
 /**
- * Scans one file's contents for secret patterns.
+ * Whether a payload's HEAD opens PHP — a directly-named file's content
+ * shape (glm18-2).
+ *
+ * The operator naming one file on the command line owns that choice
+ * (the glm14-3 no-cap doctrine's own premise), so the file-root arm
+ * judges the bytes, not the extension: a payload whose head (after
+ * leading whitespace) is an INI-independent open tag — '<?=' or '<?php'
+ * with core's follower class — is a PHP script whatever its name
+ * spells. The INI-dependent spellings (a bare '<?', a glued
+ * '<?phpecho') stay the recorded lexer-refused-opener corner, never a
+ * new class here.
  *
  * @param string $contents File contents.
- * @param string $label    File label for findings (path or zip entry).
+ * @return bool True when the payload's head opens PHP.
+ */
+function wp_connectors_head_opens_php($contents)
+{
+    $at = strspn((string) $contents, " \t\r\n");
+    if ('<?' !== substr((string) $contents, $at, 2)) {
+        return false;
+    }
+    $after = $at + 2;
+    if ('=' === ($contents[ $after ] ?? '')) {
+        return true;
+    }
+    if ('php' !== wp_connectors_ascii_lower((string) substr((string) $contents, $after, 3))) {
+        return false;
+    }
+    $follower = $contents[ $after + 3 ] ?? '';
+
+    return '' === $follower || str_contains(" \t\r\n", $follower);
+}
+
+/**
+ * Scans one file's contents for secret patterns.
+ *
+ * @param string $contents     File contents.
+ * @param string $label        File label for findings (path or zip entry).
+ * @param bool   $named_target True when the caller named this one file
+ *                             directly (the scan_paths file-root arm) —
+ *                             a php-headed payload then rides the CODE
+ *                             routing whatever its extension spells
+ *                             (glm18-2). The walk never sets it.
  * @return list<string> Findings ("<label>:<line> <name> (<description>)").
  */
-function wp_connectors_scan_string($contents, $label)
+function wp_connectors_scan_string($contents, $label, $named_target = false)
 {
     $findings = array();
     $allowMarker = wp_connectors_allow_marker_pattern();
@@ -324,11 +363,24 @@ function wp_connectors_scan_string($contents, $label)
      * refusing 2.4 MB' premise).
      */
     $label_ext = strtolower((string) pathinfo($label, PATHINFO_EXTENSION));
+    /*
+     * glm18-2: a DIRECTLY-NAMED file is judged by content shape, not
+     * extension — 'scan-secrets.php config.inc' over pure-PHP bytes
+     * fed an extension-aware gate (the glm17-3 text-family routing)
+     * that never saw '<?php'-without-'?>' spellings honestly: the
+     * short-echo-headed script laundered its string interiors through
+     * the line-local arm (driven). Explicitly named = operator intent;
+     * the php-headed payload rides the CODE arm whatever its name
+     * spells, while text content keeps glm17-3's benign extension
+     * routing exactly.
+     */
+    $php_family = '' === $label_ext || 'php' === $label_ext || 'phtml' === $label_ext
+        || ($named_target && wp_connectors_head_opens_php($contents));
     $has_php = false;
     $tail_views = null;
     $open_line = 0;
     $open_prefix = 0;
-    if ('' === $label_ext || 'php' === $label_ext || 'phtml' === $label_ext) {
+    if ($php_family) {
         $has_php = false !== strpos($contents, '<?');
     } elseif (false !== ($sample_open = stripos($contents, '<?php'))
         && false !== strpos($contents, '?>', $sample_open + 5)) {
@@ -512,7 +564,10 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                 $findings[] = sprintf('%s: unreadable file — the secret scan cannot run', $root);
                 continue;
             }
-            $findings = array_merge($findings, wp_connectors_scan_string($contents, $root));
+            // glm18-2: the operator named this one file — content shape
+            // outranks the extension (a php-headed 'config.inc' rides
+            // the CODE arm).
+            $findings = array_merge($findings, wp_connectors_scan_string($contents, $root, true));
             continue;
         }
         if (! is_dir($root)) {
