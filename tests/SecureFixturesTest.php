@@ -871,9 +871,40 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          * and restores the runner's limit on every exit (an empty
          * original spelling restores as -1, the canonical unbounded).
          */
+        $this->runDenseEntryBoundLeg();
+    }
+
+    /**
+     * The pinned-128M dense-entry bound leg, shared by the environment
+     * pin (glm17-12) and the fatal-band ballast leg (glm18-10).
+     *
+     * @return void
+     */
+    private function runDenseEntryBoundLeg(): void
+    {
         $runner_limit = (string) ini_get('memory_limit');
         $this->assertNotFalse(ini_set('memory_limit', '128M'), 'The memory ceiling must be pinnable at runtime — the bound this leg asserts derives from it.');
         try {
+            /*
+             * glm18-10: the pin leaves a FATAL BAND. With live usage
+             * in the ~(126, 128) MiB window the ini_set still succeeds
+             * and the very next staging allocation (the ~1.9 MB dense
+             * entry below) kills the engine at exit 255 before any
+             * verdict — the mechanism driven on a 512M host where a
+             * ballast-heavy runner lowered itself into the window. The
+             * guard verifies the ceiling BEFORE the staging
+             * allocations, measured in REAL usage (memory_get_usage's
+             * true arm — the engine enforces the limit against real
+             * bytes, and the allocator's untracked overhead sits
+             * outside the emalloc reading): live usage already past
+             * the band's floor (the pin minus the staging size) skips
+             * LOUDLY — the suite's own skip doctrine, a named reason
+             * never a silent pass — and the leg never lowers into the
+             * fatal window.
+             */
+            if (memory_get_usage(true) > 128 * 1024 * 1024 - 2 * 1024 * 1024) {
+                $this->markTestSkipped(sprintf('Live usage (%d bytes real) already sits in the 128M pin\'s fatal band — the dense staging would fatal the engine before any verdict; the bound defect stays driven under the default host.', memory_get_usage(true)));
+            }
             $dense = '<?php ' . str_repeat('$x=$x+$x;$y[]=$x;', 118000);
             $this->assertGreaterThan(1800000, strlen($dense), 'staging: the dense entry must be the ~1.9 MB driven shape.');
             $this->assertLessThan(2 * 1024 * 1024, strlen($dense), 'staging: the dense entry stays UNDER the walk cap — the bound this leg drives is the token pass, never the 2 MB size screen.');
@@ -888,6 +919,49 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             // Normal files are unchanged: the bound never trips for them.
             $this->assertSame(array(), wp_connectors_scan_string("<?php \$ok = 1; // secrets:allow\n", 'ok.php'));
         } finally {
+            ini_set('memory_limit', '' === $runner_limit ? '-1' : $runner_limit);
+        }
+    }
+
+    public function testTheDenseBoundPinSkipsLoudlyWhenLiveUsageSitsInTheFatalBand()
+    {
+        /*
+         * glm18-10's driven leg: stage live usage INTO the ~(126, 128)
+         * MiB band (ballast under a raised ceiling — the runner's own
+         * 128M default cannot stage it from below), lower the ceiling
+         * onto the band, and run the pinned leg — the guard must skip
+         * LOUDLY before the dense staging allocation (red at HEAD: the
+         * staging killed the engine, phpunit exit 255, no verdict).
+         * The skip is caught and named, so the leg passes green on a
+         * fixed tree instead of registering as a permanent skip.
+         */
+        $runner_limit = (string) ini_get('memory_limit');
+        $this->assertNotFalse(ini_set('memory_limit', '1G'), 'The staging ceiling must be pinnable — the ballast cannot be staged from under the runner\'s own default limit.');
+        $ballast = '';
+        try {
+            if (memory_get_usage(true) >= 127 * 1024 * 1024) {
+                $this->markTestSkipped('This runner already carries more live usage than the band\'s target — the ballast shape is unreachable here.');
+            }
+            // Measured top-up in REAL bytes (the engine's own limit
+            // accounting): the band is ~2 MB wide — the guard's floor
+            // at 126 MiB, the engine's ini_set ceiling at 128 MiB (it
+            // refuses to lower below live usage) — so the ballast
+            // lands by measuring, never by sizing a one-shot string
+            // against a stale reading.
+            while (memory_get_usage(true) < 127 * 1024 * 1024) {
+                $ballast .= str_repeat('x', 64 * 1024);
+            }
+            $this->assertGreaterThan(126 * 1024 * 1024, memory_get_usage(true), 'staging: the ballast must land inside the fatal band — past the guard\'s floor.');
+            $this->assertLessThan(128 * 1024 * 1024 - 512 * 1024, memory_get_usage(true), 'staging: the ballast must stay under the band\'s ceiling with drift headroom — the pin still has to succeed.');
+
+            try {
+                $this->runDenseEntryBoundLeg();
+                $this->fail('The guard must skip before the dense staging when live usage sits in the band (red at HEAD: the staging killed the engine at exit 255).');
+            } catch (\PHPUnit\Framework\SkippedTestError $skip) {
+                $this->assertStringContainsString('fatal band', (string) $skip->getMessage(), 'The skip names the band — the suite\'s own loud-skip doctrine, never a silent pass.');
+            }
+        } finally {
+            unset($ballast);
             ini_set('memory_limit', '' === $runner_limit ? '-1' : $runner_limit);
         }
     }
