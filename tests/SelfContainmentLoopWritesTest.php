@@ -294,6 +294,37 @@ final class SelfContainmentLoopWritesTest extends TestCase
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
     }
 
+    public function testAnAlternativeSyntaxForeachNeverGluesOntoALaterBraceHeader(): void
+    {
+        /*
+         * glm19-3: glm18-3's /s let the lazy header capture GLUE — a
+         * brace-less 'foreach (…): … endforeach;' owns no ') {' of
+         * its own, so the capture ran forward across the endforeach
+         * boundary onto a LATER foreach's ') {', consuming the real
+         * header with it: the later binding went uncollected and the
+         * include over it phantom-flagged (driven: 1 violation at
+         * HEAD, 0 at base — the glue only crosses newlines under /s).
+         * The capture is bounded by the endforeach token now, and an
+         * alternative-syntax header matches its own ':' close.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nforeach (\$rows as \$row):\n    \$x = 1;\nendforeach;\nforeach (array(__DIR__ . '/e.php') as \$file) {\n    require \$file;\n}\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'An alternative-syntax foreach never glues onto a later brace header (red at HEAD: the glued capture consumed the real header — phantom variable-include violation).');
+
+        // The alternative-syntax header matches its own ':' close now
+        // — the binding collects and the include inside it proves
+        // clean through the literal map.
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nforeach (array(__DIR__ . '/e.php') as \$file):\n    require \$file;\nendforeach;\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'An alternative-syntax header matches its own close — the binding collects and the include proves clean.');
+    }
+
     public function testALoopWriteAfterTheIncludeRefusesTheLiteralMapProof(): void
     {
         /*

@@ -3178,8 +3178,18 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      * (driven: a multi-line string KEY inside the header's array
      * literal, values __DIR__-anchored — 0 violations at base, 1 at
      * HEAD).
+     *
+     * glm19-3: the /s let the lazy capture GLUE — a brace-less
+     * 'foreach (…): … endforeach;' owns no ') {' of its own, so the
+     * capture ran forward across the endforeach boundary onto a LATER
+     * foreach's ') {', consuming the real header with it: the later
+     * binding went uncollected and the include over it phantom-flagged
+     * (driven: 1 violation at HEAD, 0 at base — the glue only crosses
+     * newlines under /s). The capture is bounded by the endforeach
+     * token now (the tempered dot never crosses it), and an
+     * alternative-syntax header matches its own ':' close.
      */
-    if (preg_match_all('/foreach\s*\((.+?)\)\s*\{/s', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/foreach\s*\(((?:(?!endforeach\b).)+?)\)\s*(?:\{|:)/s', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
         foreach ($foreaches[1] as $foreach_match) {
             if (! $visible($foreach_match[1])) {
                 // The binding is outside every region the include reads.
