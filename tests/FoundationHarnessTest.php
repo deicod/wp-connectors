@@ -1374,6 +1374,22 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         // The single entry point keeps glm17-14's refusal.
         $this->assertFalse(wp_schedule_single_event(0, 'glm18_neg_single'));
         $this->assertFalse(wp_schedule_single_event(-1, 'glm18_neg_single'));
+
+        /*
+         * glm21-9: the NON-FINITE class — glm19-7's is_finite guard
+         * landed at the single head only, so the recurring head
+         * accepted INF/NAN/'1e999' (is_numeric answers true for all
+         * three, none compares <= 0) and queued the row at the (int)
+         * cast 0: a 'never-due' recurrence armed at an arbitrary grid
+         * phase. The guard rides both heads now — the harness's own
+         * asymmetry doctrine (never queue what cannot fire), the
+         * verifier having refuted the core-parity premise for the
+         * recurring shape.
+         */
+        $this->assertFalse(wp_schedule_event(INF, 'hourly', 'glm21_nonfinite'), 'INF recurring refuses — no honest schedule exists (red at HEAD: queued at 0, true).');
+        $this->assertFalse(wp_schedule_event(NAN, 'hourly', 'glm21_nonfinite'), 'NAN recurring refuses likewise (red at HEAD: queued).');
+        $this->assertFalse(wp_schedule_event('1e999', 'hourly', 'glm21_nonfinite'), 'The over-width numeric string refuses — its float cast IS INF, is_finite covering the spelling (red at HEAD: queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm21_nonfinite'), 'Nothing lands in the queue for the class (red at HEAD: three key-0 rows).');
     }
 
     public function testCollidedReschedulesReplaceKeyedNeverAppend()

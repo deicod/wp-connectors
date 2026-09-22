@@ -843,8 +843,18 @@ function wp_schedule_event($timestamp, $recurrence, $hook, $args = array())
      * pre-cast). The stub queued a recurring event at timestamp 0 or
      * below — a due-now row that fired and re-armed forever while
      * claiming a recurrence core refuses to key at all (driven).
+     *
+     * glm21-9: the is_finite guard glm19-7 landed at the SINGLE head
+     * only — the recurring head accepted INF/NAN/'1e999' (is_numeric
+     * answers true for all three, none compares <= 0), queued the row
+     * at (int) cast 0, and the 'never-due' recurrence armed at an
+     * arbitrary grid phase: the harness's own asymmetry doctrine
+     * (never queue what cannot fire, glm19-7's own vocabulary — the
+     * verifier refuted the core-parity premise for the recurring
+     * shape, so the honest basis is internal consistency between the
+     * twin heads).
      */
-    if (! is_numeric($timestamp) || $timestamp <= 0) {
+    if (! is_numeric($timestamp) || $timestamp <= 0 || ! is_finite((float) $timestamp)) {
         return false;
     }
     $intervals = wp_get_schedules();
