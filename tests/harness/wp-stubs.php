@@ -1971,7 +1971,8 @@ function settings_errors($setting = '', $sanitize = false, $hide_on_update = fal
  *                             setting's stored row first (core's own head,
  *                             glm22-7 — the register_setting() callback's
  *                             settings errors surface by default).
- * @return array<string, array<string, string>> Filtered errors.
+ * @return list<array<string, string>> Filtered errors, densely appended
+ *                                      in record order (core's shape, glm22-8).
  */
 function get_settings_errors($setting_code = '', $sanitize = false)
 {
@@ -1990,10 +1991,20 @@ function get_settings_errors($setting_code = '', $sanitize = false)
         return WpHarness::$settings_errors;
     }
 
+    /*
+     * glm22-8: the filtered rows answer core's DENSE-APPEND shape —
+     * core's get_settings_errors() appends the matches
+     * (template.php: $setting_errors[] = ...), where the twin keyed
+     * them by their STORE indices, surfacing a sparse 0/2 list
+     * through the glm21-8 delegation for two errors on one setting
+     * (driven; the delegation widened the twin's pre-existing
+     * divergence into a caller-visible shape). Append, never key
+     * preservation; the rows keep their record order.
+     */
     $matches = array();
     foreach (WpHarness::$settings_errors as $key => $error) {
         if (is_array($error) && (isset($error['setting']) ? $error['setting'] : '') === $setting_code) {
-            $matches[$key] = $error;
+            $matches[] = $error;
         }
     }
 

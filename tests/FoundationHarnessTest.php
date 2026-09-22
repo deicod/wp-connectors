@@ -719,6 +719,19 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertCount(1, settings_errors('setting_b'), 'The other slug narrows to its single row.');
         $this->assertCount(3, settings_errors(), "The bare spelling keeps the historical whole-array behavior for existing callers.");
         $this->assertSame(get_settings_errors('setting_a'), settings_errors('setting_a'), 'The seat delegates to its core-faithful twin — one filter predicate, never two.');
+
+        /*
+         * glm22-8: the twin answers core's DENSE-APPEND shape — core's
+         * get_settings_errors() appends the filtered rows
+         * (template.php), where the twin keyed them by their STORE
+         * indices, surfacing a sparse 0/2 list through the glm21-8
+         * delegation for two errors on one setting (red at HEAD: the
+         * key-preserving shape below fails).
+         */
+        $filtered = settings_errors('setting_a');
+        $this->assertSame(array( 0, 1 ), array_keys($filtered), 'Two errors on one setting answer a DENSE list of 2 (red at HEAD: the sparse 0/2 key-preserving shape) — core appends, never keys.');
+        $this->assertSame('First A error', $filtered[0]['message'], 'The rows keep their record order — append, never reorder.');
+        $this->assertSame('Second A error', $filtered[1]['message']);
     }
 
     /**
