@@ -6,6 +6,80 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 20)
+
+Sixth claude-glm pass over the round-19 fixes. The review: 8 findings,
+all clustered on the glm19-11b post-round fix and the scanner seam.
+Driver adjudication: #2, #3, #4, #6, #7, #8 accepted; #1 accepted as a
+hybrid — the scanner-side whole-call census undercharge ledgered as a
+NAMED residual and the real caller seam capped; #5 (per-region
+tokenization) deferred as a post-M3 design option. Seven numbered
+commits t31-glm20-1..7, the full offline check green after every
+commit, no push. The round's shape: the spawn boundary's pins restored
+(anchored verdict needles, the warnings regime, the dead survival);
+the spawn-owner hoist with the timeout bound; and the loud file-root
+cap. Suite 1853 → 1854 tests, 47589 → 47601 assertions, 3 skipped
+unchanged (every delta measured from output).
+
+- **A directly-named over-bound single file answers the loud 2 MB
+  refusal (t31-glm20-1, security:medium; bin/lib/secret-scanner.php,
+  tests/SecureFixturesTest.php)** — the scan_paths file-root arm had
+  no size cap (glm14-3's "a caller naming one file owns that choice"
+  clause, falsified and corrected in place), so a >2 MB named file
+  kept the fatal-without-verdict window the census's uncharged
+  whole-call terms leave open; the benign half driven at HEAD: a
+  2.85 MB prose-heavy named payload scanned every byte to a clean
+  zero-finding verdict, no refusal. The named target answers the same
+  loud refusal the walk ships, naming the file; the whole-call census
+  undercharge itself is the round's named residual and the
+  per-region-tokenization redesign is deferred as post-M3.
+- **The whale leg's verdict needles are anchored full-line matches
+  (t31-glm20-2, test-hygiene:medium; tests/SecureFixturesTest.php)**
+  — the spawn move left substring pins at the child boundary, so a
+  drifted `count=230001` report false-passed `count=23000` (and a
+  drifted first-line number its needle); each needle answers exactly
+  one whole line of the report now, the drifted-report mutant pinning
+  the needle's own contract (zero matches where the substring pin
+  answered one).
+- **The warnings-to-failures regime is restored at the spawn boundary
+  (t31-glm20-3, test-hygiene:medium; tests/SecureFixturesTest.php)**
+  — a whale-scale-only Warning/Notice/Deprecation regression printed
+  into the spawned child's report unasserted beside green verdict
+  lines; no engine diagnostic line may appear in the child's report,
+  the needle's catch driven over a real spawned child's warning
+  output beside the injected-line mutant.
+- **The dead parent-side `$key` is deleted from the whale leg
+  (t31-glm20-4, test-hygiene:low; tests/SecureFixturesTest.php)** — a
+  survival from the in-process shape (the leg built the payload with
+  it); spawned, the child builds its own and the parent's copy was
+  assigned and never read.
+- **One spawn owner serves every spawned-engine leg (t31-glm20-5,
+  test-hygiene:low; tests/SecureFixturesTest.php)** — the fourth
+  inline copy of the realpath+assertNotFalse pair and exec/report
+  stanza crossed the repo's own recorded hoist threshold, the copies
+  already drifting (`";\n"` concat against the sprintf bind, the -d
+  flags scattered per site); the owner standardizes the sprintf bind
+  (the whale's literal `%.3f` re-spelled `%%.3f`), carries the
+  path-asserted-before-embed doctrine, and takes the INI flags per
+  call — all four legs riding it, verdicts byte-identical.
+- **The spawn is bounded (t31-glm20-6, test-hygiene:medium; tests/
+  SecureFixturesTest.php)** — exec() waits on the child forever, so a
+  never-terminating scanner regression crossing into a spawned leg
+  hung phpunit whole (the wall-clock pins guard the slow child, never
+  the one that never answers; the HEAD shape driven under a shell
+  kill); the owner rides coreutils timeout(1) on POSIX hosts, the 30
+  s default swept across all four legs, and the driven leg proves the
+  mechanism at its own tight bound — a sleeping child answers
+  timeout(1)'s exit 124, its unfinished verdict line absent.
+- **Round 20 in the refutation ledger (t31-glm20-7, docs; CHANGELOG.md,
+  docs/review/REFUTATION_LEDGER.md)** — the round's paragraph records
+  the adjudication (the #1 hybrid, #5 deferred as a post-M3 design
+  option), the two verifier refutations (the environment-relative
+  guard claim, the absolute timing bound claim), and the new named
+  residual; the glm19-11b paragraph carries its in-place correction
+  ("first/middle/last exact" first vouched substring needles) and the
+  whole-call census undercharge residual.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 19)
 
 Fifth claude-glm pass over the round-18 fixes. The review: 10
