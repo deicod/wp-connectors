@@ -1872,14 +1872,24 @@ function add_settings_error($setting, $code, $message, $type = 'error')
 
 function settings_errors($setting = '', $sanitize = false, $hide_on_update = false)
 {
-    return WpHarness::$settings_errors;
+    /*
+     * glm21-8: the $setting filter is core's own contract (core reads
+     * the slug and narrows the returned rows, template.php) — the stub
+     * once returned the whole array over every slug, answering 2 rows
+     * where core answers 1. The twin 15 lines below already owns the
+     * filter; this seat delegates to it (never a second predicate),
+     * the '' spelling keeping the historical whole-array behavior for
+     * existing callers.
+     */
+    return get_settings_errors((string) $setting);
 }
 
 /**
  * Core-faithful getter for the registered settings errors: returns (does
  * NOT print) the errors recorded for a setting slug, mirroring
- * wp-admin/includes/template.php. The settings_errors() stub above keeps
- * its historical return-the-array behavior for existing callers.
+ * wp-admin/includes/template.php. The settings_errors() stub above
+ * delegates its $setting filter to this twin (glm21-8) and keeps its
+ * historical return-the-array behavior for existing callers.
  *
  * @param string $setting_code Setting slug to filter by ('' for all).
  * @return array<string, array<string, string>> Filtered errors.

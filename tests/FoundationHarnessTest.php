@@ -605,6 +605,26 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertArrayNotHasKey('REQUEST_URI', $_SERVER, 'The member is unset, not emptied — a fresh CLI process carries no REQUEST_URI.');
     }
 
+    /**
+     * glm21-8: settings_errors() honors its $setting filter — core
+     * narrows the returned rows by the slug, and the stub once
+     * returned the whole array over every slug (2 rows where core
+     * answers 1; the core-faithful get_settings_errors() twin 15
+     * lines below it owned the filter all along). Latent at HEAD
+     * (zero callers of the filtered shape), never ledgered.
+     */
+    public function testSettingsErrorsHonorsItsSettingFilter()
+    {
+        add_settings_error('setting_a', 'code_a1', 'First A error');
+        add_settings_error('setting_b', 'code_b1', 'The B error');
+        add_settings_error('setting_a', 'code_a2', 'Second A error');
+
+        $this->assertCount(2, settings_errors('setting_a'), "settings_errors('setting_a') narrows to the setting's own rows (red at HEAD: the unfiltered 3-row array).");
+        $this->assertCount(1, settings_errors('setting_b'), 'The other slug narrows to its single row.');
+        $this->assertCount(3, settings_errors(), "The bare spelling keeps the historical whole-array behavior for existing callers.");
+        $this->assertSame(get_settings_errors('setting_a'), settings_errors('setting_a'), 'The seat delegates to its core-faithful twin — one filter predicate, never two.');
+    }
+
     public function testDueEventsFireInTimestampOrderAndAnOverdueRecurringEventFiresOnce()
     {
         /*
