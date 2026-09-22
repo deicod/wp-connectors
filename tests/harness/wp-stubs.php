@@ -685,20 +685,23 @@ function set_transient($transient, $value, $expiration = 0)
          * seed as its value (the only row the seat has read); a
          * CHANGED re-save overwrites the whole row at the write below.
          */
-        if ($expiration > 0) {
-            $armed_at = WpHarness::now() + $expiration;
-        } elseif ($expiration < 0) {
-            // Core treats a negative TTL as already expired (the head
-            // comment's own standing) — the refresh keeps that reading.
-            $armed_at = WpHarness::now() - 1;
-        }
-        if (isset($armed_at)) {
+        /*
+         * glm24-10: the arming reuses the HEAD'S OWN $expires_at
+         * derivation — the >0/<0 arms were spelled twice here (two
+         * now() reads that could straddle a tick on an unfrozen
+         * clock, arming a window one second off the head's own), and
+         * the zero-expiration guard is the derivation's own false:
+         * ONE arm, ONE read, the head's arithmetic the only spelling
+         * (construction-evident — no second read exists to straddle;
+         * the frozen-clock legs pin the arithmetic both arms ride).
+         */
+        if (false !== $expires_at) {
             if ($own_entry) {
-                WpHarness::$transients[ $transient ]['expires_at'] = $armed_at;
+                WpHarness::$transients[ $transient ]['expires_at'] = $expires_at;
             } else {
                 WpHarness::$transients[ $transient ] = array(
                     'value' => $old,
-                    'expires_at' => $armed_at,
+                    'expires_at' => $expires_at,
                 );
             }
         }
