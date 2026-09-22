@@ -36,6 +36,20 @@ final class HarnessDenialProbeTest extends TestCase
         if (@chmod($refusal, $current)) {
             $this->markTestSkipped('This process owns the probe target (it chmods its own current mode) — the chmod-refusal shape cannot be driven here.');
         }
+        /*
+         * glm26-6: the opendir pre-flight (the ocr29-7 capability-
+         * probe doctrine — probe the capability, never assume it): a
+         * policy-confined host denies opendir('/') by NON-mode means,
+         * so the probe would answer 'denied' for a directory no
+         * chmod ever locked and the assertFalse below would red over
+         * the host's own policy, never the chmod-refusal shape.
+         */
+        $walk = @opendir($refusal);
+        if (false !== $walk) {
+            closedir($walk);
+        } else {
+            $this->markTestSkipped('This host denies opendir(\'/\') by non-mode means (policy confinement) — the probe would answer denied for a directory no chmod locked, so the chmod-refusal shape cannot be driven here.');
+        }
 
         $this->assertFalse(
             WpHarness::lockForDenialProbe($refusal),
