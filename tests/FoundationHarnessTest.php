@@ -1067,15 +1067,21 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('next', get_option('glm15_false_opt'));
     }
 
-    public function testASingleOverAnIdenticalRecurringEntryReplacesItCoreKey()
+    public function testASingleOverAnIdenticalRecurringEntryAnswersFalseAndTheRecurrenceSurvives()
     {
         /*
-         * glm16-6: the exact class glm15-13's replace claimed dead —
-         * core's cron key ([timestamp][hook][md5(args)]) is
-         * recurrence-BLIND, so a single scheduled over an
-         * identical-key RECURRING entry REPLACES the row; the stub's
-         * append stacked a twin that double-fired in one tick (driven
-         * red at HEAD).
+         * glm16-6 claimed the single's keyed write REPLACES an
+         * identical-key recurring entry — and glm17-6 falsifies the
+         * shape against the pinned core: the duplicate check core
+         * runs BEFORE any keyed write is recurrence-BLIND
+         * (isset($crons[ts][$hook][md5(args)]) — no recurrence term),
+         * and a same-timestamp identical-key entry is ALWAYS inside
+         * core's two-sided band (min <= ts <= max by construction),
+         * so a single scheduled over an identical-key RECURRING entry
+         * answers FALSE with the recurring row untouched: the single
+         * never overwrites a recurrence core keeps (driven red at
+         * HEAD: true, the recurring entry's interval stripped, the
+         * reschedule dead).
          */
         $this->freezeTime(1700000000);
 
@@ -1084,12 +1090,18 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
             ++$fires;
         });
         wp_schedule_event(1700000060, 'hourly', 'glm16_over');
-        $this->assertTrue(wp_schedule_single_event(1700000060, 'glm16_over'), 'The keyed write replaces in place and answers true.');
+        $this->assertFalse(wp_schedule_single_event(1700000060, 'glm16_over'), 'The single over the identical-key recurring entry answers FALSE, core\'s duplicate skip (red at HEAD: true, the keyed replace).');
+
+        // The recurring row survives untouched — its interval intact,
+        // its fire once, its reschedule standing.
+        $events = wp_get_scheduled_events('glm16_over');
+        $this->assertCount(1, $events, 'No twin was written (red at HEAD: the pair as two entries).');
+        $this->assertSame(3600, $events[0]['interval'], 'The recurring entry keeps its interval (red at HEAD: the interval stripped by the replace).');
 
         $this->advanceTime(120);
-        $this->assertSame(1, WpHarness::runDueEvents(), 'The single-over-recurring pair is ONE event (red at HEAD: appended, double-fired in one tick).');
+        $this->assertSame(1, WpHarness::runDueEvents());
         $this->assertSame(1, $fires);
-        $this->assertFalse(wp_next_scheduled('glm16_over'), 'The replaced entry is a SINGLE — it fired once and is gone, never rescheduled (red at HEAD: the recurring twin rescheduled).');
+        $this->assertSame(1700003660, wp_next_scheduled('glm16_over'), 'The recurrence rescheduled on its grid (red at HEAD: false — the replaced single left nothing to reschedule).');
     }
 
     public function testAnUnscheduledSnapshotMemberStillFiresCoreShape()

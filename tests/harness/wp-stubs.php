@@ -619,7 +619,7 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
     $args_key = wp_connectors_cron_args_key($args);
     /*
      * glm15-13/glm16-7/glm17-5: core's duplicate window for singles —
-     * an identical single (same hook, same args) already pending is
+     * an identical event (same hook, same args) already pending is
      * the same event, not a second one, and the skip answers FALSE
      * (core's own return; the stub answered true). glm17-5 corrects
      * the window's SHAPE to core's two-sided band on the NEW event's
@@ -637,31 +637,24 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
      * of the current time, all past identical events are considered
      * duplicates', core's own comment). The harness's deterministic
      * clock stands in for time().
+     *
+     * glm17-6: the duplicate predicate is RECURRENCE-BLIND — core's
+     * isset($crons[ts][$hook][md5(args)]) carries no recurrence term,
+     * so a single scheduled over an identical-key RECURRING entry
+     * inside the band answers FALSE with the recurring row untouched:
+     * a single never overwrites a recurrence core keeps (falsifying
+     * glm16-6's replace-on-the-single-arm — under the band a
+     * same-timestamp identical-key entry is ALWAYS inside the window
+     * (min <= ts <= max by construction), so the keyed-replace loop
+     * that fix rode is unreachable and deleted).
      */
     $now = WpHarness::now();
     $min = $timestamp < $now + 10 * MINUTE_IN_SECONDS ? 0 : $timestamp - 10 * MINUTE_IN_SECONDS;
     $max = $timestamp < $now ? $now + 10 * MINUTE_IN_SECONDS : $timestamp + 10 * MINUTE_IN_SECONDS;
     foreach (WpHarness::$cron[ $hook ] ?? array() as $event) {
-        if (! isset($event['interval'])
-            && wp_connectors_cron_args_key($event['args']) === $args_key
+        if (wp_connectors_cron_args_key($event['args']) === $args_key
             && $event['timestamp'] >= $min && $event['timestamp'] <= $max) {
             return false; // Core's duplicate-single skip.
-        }
-    }
-    /*
-     * glm16-6: the keyed write is recurrence-BLIND — core's cron key
-     * is [timestamp][hook][md5(args)] with no recurrence term, so a
-     * single scheduled over an identical-key RECURRING entry REPLACES
-     * the row (the interval dies with the overwritten entry, the id
-     * staying for the by-id fire walk) where the append stacked a twin
-     * that double-fired in one tick — the exact class glm15-13's
-     * replace claimed dead and left open on the single arm.
-     */
-    foreach (WpHarness::$cron[ $hook ] ?? array() as $index => $event) {
-        if ($event['timestamp'] === $timestamp && wp_connectors_cron_args_key($event['args']) === $args_key) {
-            unset(WpHarness::$cron[ $hook ][ $index ]['interval']);
-
-            return true;
         }
     }
     WpHarness::$cron[ $hook ][] = array(
