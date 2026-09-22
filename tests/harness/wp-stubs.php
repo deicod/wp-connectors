@@ -518,6 +518,25 @@ function set_transient($transient, $value, $expiration = 0)
     $old = array_key_exists($transient, WpHarness::$transients) ? WpHarness::$transients[ $transient ]['value'] : false;
     $existing = false !== $old;
     if ($existing) {
+        /*
+         * glm22-4: core's delegation answers the twins' own unchanged
+         * false — the update branch rides update_option(), whose
+         * glm17-8 two-arm compare (identity, then serialized
+         * equality) refuses an identical re-save with ZERO hooks,
+         * where the harness fired the full update family and answered
+         * true (driven). The stored row is a detached copy (glm21-6),
+         * so the identity arm never holds at this seat — the
+         * serialized-equality arm decides, exactly the twins' compare
+         * over detached copies. The expiring half's timeout-row hooks
+         * (core's update_option over '_transient_timeout_<name>'
+         * firing even over an unchanged VALUE row) ride the seam's
+         * recorded simplification — no timeout row exists to fire
+         * over.
+         */
+        if ($old === $value
+            || ((is_array($value) || is_object($value)) && serialize($value) === serialize($old))) {
+            return false;
+        }
         do_action('update_option', $transient_option, $old, $value);
     } else {
         do_action('add_option', $transient_option, $value);

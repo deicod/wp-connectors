@@ -587,6 +587,41 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm22-4: set_transient() answers the twins' own UNCHANGED
+     * short-circuit — core's update branch delegates to
+     * update_option(), whose glm17-8 two-arm compare refuses an
+     * identical re-save with false and ZERO hooks, where the harness
+     * fired the full update family and answered true (red at HEAD).
+     */
+    public function testSetTransientAnswersTheUnchangedShortCircuit()
+    {
+        $this->assertTrue(set_transient('glm22_same', 'v1'));
+        $before_update = did_action('update_option__transient_glm22_same');
+        $before_close = did_action('updated_option');
+
+        // The scalar arm: an identical re-save answers false, zero hooks.
+        $this->assertFalse(set_transient('glm22_same', 'v1'), 'An identical re-save answers false — the twins\' own unchanged contract (red at HEAD: true).');
+        $this->assertSame($before_update, did_action('update_option__transient_glm22_same'), 'ZERO update-family hooks fire over the unchanged re-save (red at HEAD: the full family).');
+        $this->assertSame($before_close, did_action('updated_option'), 'The closing hook stays silent too.');
+        $this->assertSame('v1', get_transient('glm22_same'), 'The stored row stands untouched by the refused re-save.');
+
+        // The object arm: the identity compare never holds at this seat (the
+        // stored row is a detached copy, glm21-6) — serialized equality
+        // decides, the twins' compare over detached copies.
+        $payload = (object) array('models' => array('glm-5.3'));
+        $this->assertTrue(set_transient('glm22_obj', $payload));
+        $obj_before_update = did_action('update_option__transient_glm22_obj');
+        $this->assertFalse(set_transient('glm22_obj', $payload), 'An equal-valued object re-save answers false — the serialized-equality arm (red at HEAD: true, the identity arm alone).');
+        $this->assertSame($obj_before_update, did_action('update_option__transient_glm22_obj'), 'ZERO hooks over the equal-valued object re-save.');
+        $this->assertSame(array('glm-5.3'), get_transient('glm22_obj')->models, 'The stored row stands.');
+
+        // A CHANGED re-save completes — the family fires, the answer true.
+        $this->assertTrue(set_transient('glm22_same', 'v2'), 'A changed re-save completes with the full family.');
+        $this->assertSame($before_update + 1, did_action('update_option__transient_glm22_same'), 'The changed re-save fires the update family exactly once.');
+        $this->assertSame('v2', get_transient('glm22_same'), 'The changed value lands.');
+    }
+
+    /**
      * glm21-7: WpHarness::reset() clears the request-URI superglobal
      * member — $_SERVER['REQUEST_URI'] is the one member the stubs
      * read (add_query_arg()'s two-scalar resolution), and a test's
