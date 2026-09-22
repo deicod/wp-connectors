@@ -643,9 +643,10 @@ final class SecureFixturesTest extends WpConnectorsTestCase
      * @param string       $script          PHP code carrying one `require %s;` placeholder for the library path.
      * @param list<string> $ini_flags       INI spellings for the child (e.g. 'memory_limit=1G'); already-shell-safe literals from this file.
      * @param int          $timeout_seconds The spawn bound (glm20-6); the tight bound is the driven leg's own.
+     * @param bool         $raw_ini_flags   The MUTATION spelling (glm24-7): splice each -d flag RAW, the escapeshellarg removed — the one call shape the glm23-9 driver rides to prove the seam; never a green leg's.
      * @return array{report: string, exit: int} The child's merged stdout/stderr and its exit code (124: killed at the bound).
      */
-    private function spawnScannerChild(string $script, array $ini_flags = array(), int $timeout_seconds = 30): array
+    private function spawnScannerChild(string $script, array $ini_flags = array(), int $timeout_seconds = 30, bool $raw_ini_flags = false): array
     {
         $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
         $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the spawned-engine leg runs — a realpath() false (a broken checkout, an open_basedir wall) is an environment problem, never the defect the child would otherwise carry.');
@@ -659,9 +660,14 @@ final class SecureFixturesTest extends WpConnectorsTestCase
              * but the OWNER is the seam every future flag rides): one
              * escaped token per -d value, a flag carrying spaces or
              * shell metacharacters reaching the child intact instead
-             * of the shell reading them as its own grammar.
+             * of the shell reading them as its own grammar. The
+             * $raw_ini_flags escape hatch (glm24-7) is the mutation
+             * driver's alone — the seam's own mutation expressed as
+             * one owner parameter, never a hand-copied command
+             * spawning a stale child beside the green run's twin
+             * (the glm23-15 class).
              */
-            $command .= ' -d ' . escapeshellarg($flag);
+            $command .= ' -d ' . ($raw_ini_flags ? $flag : escapeshellarg($flag));
         }
         $command .= ' -r ' . escapeshellarg(sprintf($script, var_export($scannerLibrary, true)));
         $output = array();
@@ -992,21 +998,25 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         if (! WpHarness::isPosixHost()) {
             $this->markTestSkipped('This host\'s platform separator is not the POSIX one — the raw-splice driver splices its INI-quoted flag through the POSIX shell\'s single-quote grammar and its needle pins this engine\'s own INI mangle, so a non-POSIX host would judge the platform\'s quoting vocabulary, never the escaping seam the driver pins (glm24-6, the t31-ocr29-7 class).');
         }
-        $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
-        $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the raw-splice driver runs — an environment problem, never the splice verdict.');
-        $raw_output = array();
-        $raw_exit = 1;
-        exec(
-            (WpHarness::isPosixHost() ? 'timeout 30 ' : '')
-            . escapeshellarg(PHP_BINARY)
-            . " -d user_agent='" . $poison . "'"
-            . ' -r ' . escapeshellarg(sprintf('require %s; echo "flag-token=", ini_get("user_agent"), "\n";', var_export($scannerLibrary, true)))
-            . ' 2>&1',
-            $raw_output,
-            $raw_exit
+        /*
+         * glm24-7: the driver rides the SPAWN OWNER now (the mutation
+         * as one raw-flags parameter) — the hand-copied plumbing
+         * (realpath/timeout-30/escapeshellarg/sprintf bind/2>&1/
+         * implode) was the glm23-15 hand-copied-spelling class one
+         * round later: a later edit to the owner would leave this
+         * re-spelled stanza spawning a STALE child beside the green
+         * run's twin, a false verdict on the leg whose purpose is
+         * proving the refusal. The command is byte-identical by
+         * construction — the same owner, the one flag spliced raw.
+         */
+        $spawned_raw = $this->spawnScannerChild(
+            'require %s; echo "flag-token=", ini_get("user_agent"), "\n";',
+            array( "user_agent='" . $poison . "'" ),
+            30,
+            true
         );
-        $raw_report = implode("\n", $raw_output);
-        $this->assertSame(0, $raw_exit, "The FALSE PREMISE corrected, driven: at the raw splice of the INI-quoted flag the shell passes the token whole and php RUNS — exit 0 with the child's own INI diagnostic printed ({$raw_report}) — never round-22's claimed shell exit 2, so the exit assertion alone can never catch this mutation.");
+        $raw_report = $spawned_raw['report'];
+        $this->assertSame(0, $spawned_raw['exit'], "The FALSE PREMISE corrected, driven: at the raw splice of the INI-quoted flag the shell passes the token whole and php RUNS — exit 0 with the child's own INI diagnostic printed ({$raw_report}) — never round-22's claimed shell exit 2, so the exit assertion alone can never catch this mutation.");
         $this->assertSame(
             0,
             preg_match('/^' . preg_quote('flag-token=' . $poison, '/') . '$/m', $raw_report),
