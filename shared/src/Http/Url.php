@@ -253,47 +253,54 @@ final class Url {
 			 * never feeds the verdict.
 			 */
 			if ( false === $parts ) {
-				/*
-				 * glm16-11: the backslash screen outranks the port
-				 * probe on failed parses — a backslash-bearing
-				 * spelling answers the backslash sentence whatever
-				 * glued port tail rides beside it (driven at HEAD:
-				 * 'https://evil.example\host:65536x' answered the
-				 * digits sentence), the consistent class verdict the
-				 * whole-input screen below already owns on the
-				 * success path.
-				 */
-				if ( false !== strpos( $url, '\\' ) ) {
-					// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
-					throw new InvalidArgumentException( self::MUST_NOT_CARRY_BACKSLASH_MESSAGE );
-				}
-
 				$entry_at        = strrpos( $authority, '@' );
 				$entry_host_port = false === $entry_at ? $authority : (string) substr( $authority, $entry_at + 1 );
 				$entry_bracket   = strrpos( $entry_host_port, ']' );
 				$entry_colon     = strpos( $entry_host_port, ':', false === $entry_bracket ? 0 : (int) $entry_bracket + 1 );
 				$entry_port      = false === $entry_colon ? '' : (string) substr( $entry_host_port, $entry_colon + 1 );
+				$entry_host      = false === $entry_colon ? $entry_host_port : (string) substr( $entry_host_port, 0, $entry_colon );
 
 				/*
-				 * glm16-10: the port screen arms only after a
-				 * NON-EMPTY authority — the authority being absent is
-				 * the PRIMARY defect ('https://:70000' once wore the
-				 * out-of-range port sentence over a host of zero
-				 * bytes, glm14-9's pre-existing entry design never
-				 * adjudicated; the round-16 adjudication: empty host
-				 * wins the verdict). The empty-host shape falls
-				 * through to the entry's own sentence below,
-				 * whatever port tail rides beside it.
+				 * glm16-10, widened glm17-11: EVERY entry screen arms
+				 * only after a NON-EMPTY authority — the authority
+				 * being absent is the PRIMARY defect ('https://:70000'
+				 * once wore the out-of-range port sentence over a host
+				 * of zero bytes, glm14-9's pre-existing entry design
+				 * never adjudicated; the round-16 adjudication: empty
+				 * host wins the verdict). glm17-11 completes the
+				 * adjudication over the round-16 backslash screen: the
+				 * probe rode FIRST, so a hostless spelling carrying a
+				 * backslash ('https://user@:70000\x') answered the
+				 * BACKSLASH sentence, contradicting the round-16
+				 * order it itself established — the empty-host shape
+				 * falls through to the entry's own sentence below,
+				 * whatever rides beside the absent authority.
 				 */
-				$entry_host = false === $entry_colon ? $entry_host_port : (string) substr( $entry_host_port, 0, $entry_colon );
-				if ( '' !== $entry_host && '' !== $entry_port && 1 === preg_match( '/\A([0-9]+)/', $entry_port, $entry_digits ) ) {
-					$entry_tail = (string) substr( $entry_port, strlen( $entry_digits[1] ) );
-					if ( '' === $entry_tail && (int) $entry_digits[1] > 65535 ) {
-						throw new InvalidArgumentException( 'The URL port is out of range — an authority port must be 1–65535, and the engine cannot parse one beyond it.' );
-					}
-					if ( '' !== $entry_tail ) {
+				if ( '' !== $entry_host ) {
+					/*
+					 * glm16-11: the backslash screen outranks the port
+					 * probe on failed parses — a backslash-bearing
+					 * spelling answers the backslash sentence whatever
+					 * glued port tail rides beside it (driven at HEAD:
+					 * 'https://evil.example\host:65536x' answered the
+					 * digits sentence), the consistent class verdict the
+					 * whole-input screen below already owns on the
+					 * success path.
+					 */
+					if ( false !== strpos( $url, '\\' ) ) {
 						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
-						throw new InvalidArgumentException( self::PORT_MUST_BE_DIGITS_MESSAGE );
+						throw new InvalidArgumentException( self::MUST_NOT_CARRY_BACKSLASH_MESSAGE );
+					}
+
+					if ( '' !== $entry_port && 1 === preg_match( '/\A([0-9]+)/', $entry_port, $entry_digits ) ) {
+						$entry_tail = (string) substr( $entry_port, strlen( $entry_digits[1] ) );
+						if ( '' === $entry_tail && (int) $entry_digits[1] > 65535 ) {
+							throw new InvalidArgumentException( 'The URL port is out of range — an authority port must be 1–65535, and the engine cannot parse one beyond it.' );
+						}
+						if ( '' !== $entry_tail ) {
+							// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+							throw new InvalidArgumentException( self::PORT_MUST_BE_DIGITS_MESSAGE );
+						}
 					}
 				}
 			}

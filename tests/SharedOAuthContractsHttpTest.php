@@ -120,6 +120,17 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             'empty host wins over the glued port tail' => array('https://:65536x', 'must be absolute with a scheme and host'),
             'empty host behind userinfo wins over the port tail' => array('https://user@:70000', 'must be absolute with a scheme and host'),
             /*
+             * glm17-11: the empty-host arm outranks the BACKSLASH probe
+             * too — the round-16 screen rode first, so a hostless
+             * spelling carrying a backslash answered the backslash
+             * sentence, contradicting glm16-10's own 'absent authority
+             * is the primary defect' order (driven red at HEAD:
+             * 'https://user@:70000\x' -> 'must not carry a
+             * backslash').
+             */
+            'empty host wins over the backslash probe' => array('https://user@:70000\\x', 'must be absolute with a scheme and host'),
+            'empty host wins over the backslash probe bare' => array('https://:\\x', 'must be absolute with a scheme and host'),
+            /*
              * glm16-11: the backslash screen outranks the port probe on
              * failed parses — a backslash-bearing spelling answers the
              * backslash sentence whatever glued port tail rides beside
