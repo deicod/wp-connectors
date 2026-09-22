@@ -6,6 +6,135 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 21)
+
+Seventh claude-glm pass: 15 findings (14 CONFIRMED, 1 PLAUSIBLE
+accepted as internal consistency), all 15 accepted by driver
+adjudication — #1 riding the ocr57-2 re-open condition (the driven
+falsification of its recorded premise). Fifteen numbered commits
+t31-glm21-1..15, the full offline check green after every commit, no
+push. The round's shape: the glued credential vocabulary closed over
+the .NET twin whose skip's premise was false; the scanner's
+over-refusal direction (the cap behind the allowlist, the missing
+root loud, the HTML-comment marker); the leading-zero port class
+unified under one verdict sentence; the harness quartet (transient
+detachment + hooks, the REQUEST_URI leak, the settings filter, the
+non-finite recurring head); the owner-level diagnostics needle and
+escaped INI flags at the spawn seam; the cron docblock truth; and
+three measured efficiency classes with the fused-pattern redesign
+deferred beside glm20's #5. Suite 1854 → 1860 tests, 47601 → 47838
+assertions, 3 skipped unchanged (every delta measured from output).
+
+- **The .NET glued header name joins the credential suffix class
+  (t31-glm21-1, security:medium; shared/src/Support/SecretMask.php,
+  tests/SharedOAuthContractsHttpTest.php)** —
+  '__RequestVerificationToken' carries no internal delimiters (its
+  underscores are leading, shed at the fold's bound-segment strip),
+  so the judged name 'requestverificationtoken' matched nothing and
+  the anti-forgery credential rendered verbatim while 'X-Api-Key'
+  masked — falsifying ocr57-2's recorded 'already covered'
+  verification; the member rides the class (the eleventh flattened
+  twin), the boundary neighbors stay verbatim, and the r57-2 record
+  is corrected in place.
+- **The walk's 2 MB loud-cap fires only for extensions the scan
+  would actually read (t31-glm21-2, security:low;
+  bin/lib/secret-scanner.php)** — the cap once judged before the
+  extension allowlist, so a legitimate 3 MB assets/big.png in a
+  shipped artifact rejected the whole inspection over bytes the
+  screen never reads; the allowlist judges first (driven: the png
+  absent from the report at HEAD-red), a >2 MB .php still refuses
+  loud.
+- **A scan root that names nothing answers the loud refusal, never a
+  clean exit 0 (t31-glm21-3, security:low; bin/lib/secret-scanner.php)**
+  — a typo'd CLI target or dangling-symlink root answered 'secrets: 0
+  finding(s)' exit 0, certifying clean a tree the scan never saw (the
+  ocr20-4 narrative shape, never adjudicated); the refusal is a
+  finding line in the glm14-2 vocabulary, both consumers deriving
+  their refusal with zero changes.
+- **The allow-marker grammar knows the HTML comment enclosure
+  (t31-glm21-4, security:low; bin/lib/secret-scanner.php)** —
+  `<!-- secrets:allow -->` was rejected while a markdown heading
+  (not a comment at all) rode the `#` arm green; the enclosure joins
+  the marker's own vocabulary across every markup extension, and the
+  md-heading spelling's status is re-derived and pinned deliberately
+  in the docblock.
+- **The leading-zero port class answers one verdict sentence across
+  the parse-false split (t31-glm21-5, bug:low; shared/src/Http/Url.php)**
+  — parse_url() answers false outright for 6+-digit ports even
+  in-range, so ':065535/' fell through the entry screen to the
+  scheme/host message while ':0443/' answered the leading-zeros
+  sentence; the sentence is hoisted to its own const and the entry
+  screen's digit/zero arm names it (range precedence preserved,
+  build-independent).
+- **set_transient stores the detached copy and fires the option hook
+  family (t31-glm21-6, bug:medium; tests/harness/wp-stubs.php)** — the
+  stub stored the caller's live reference and fired zero hooks; the
+  stored value rides wp_connectors_option_stored_copy() (glm19-5's
+  doctrine — mutation after the save never leaks) and the
+  add/update option family fires over the '_transient_<name>' row
+  exactly as core's own delegation spells (the timeout-row half not
+  modeled, the recorded simplification).
+- **WpHarness::reset() clears the request-URI superglobal member
+  (t31-glm21-7, test-hygiene:low; tests/harness/WpHarness.php)** —
+  reset() restored GET/POST/REQUEST only, so a test's
+  $_SERVER['REQUEST_URI'] assignment survived into later tests'
+  add_query_arg() resolutions under --order-by=random; the member
+  clears with the restore (unset, the pristine CLI state).
+- **settings_errors() honors its $setting filter through the twin
+  (t31-glm21-8, bug:low; tests/harness/wp-stubs.php)** — the stub
+  returned the whole array over every slug (2 rows where core answers
+  1) while get_settings_errors() owned the filter 15 lines below; the
+  seat delegates, the bare spelling keeping the historical behavior.
+- **The is_finite guard rides the recurring head too
+  (t31-glm21-9, bug:low; tests/harness/wp-stubs.php)** — glm19-7's
+  refusal landed single-head only, so wp_schedule_event() queued
+  INF/NAN/'1e999' at the (int) cast 0 (driven red: the engine's own
+  INF-cast error); both heads answer one guard, the honest basis the
+  harness's own asymmetry doctrine (never queue what cannot fire).
+- **glm20-3's diagnostics needle rides the spawn OWNER
+  (t31-glm21-10, test-hygiene:medium; tests/SecureFixturesTest.php)** —
+  the negative needle lived at one of the six spawn consumers, a
+  child-side Warning/Notice/Deprecation passing unasserted at the
+  other clean-exit legs; every clean-exit leg asserts now (the
+  timeout-bound leg excepted), driven both ways at a non-whale leg.
+- **The spawn owner escapes its -d INI flags
+  (t31-glm21-11, test-hygiene:low; tests/SecureFixturesTest.php)** —
+  the repo's single variable-interpolated unescaped value at an exec
+  seam (literals today); each flag rides escapeshellarg, a
+  metacharacter-bearing value reaching the child as one token (driven
+  red at HEAD: the shell's own syntax error, exit 2, no child).
+- **The cron storage docblock matches both producers' row shape
+  (t31-glm21-12, test-hygiene:low; tests/harness/WpHarness.php)** —
+  the annotation promised the deleted 'id' member and omitted the
+  live 'interval' member; the docblock is the only contract
+  (phpstan-excluded), now reading
+  array{timestamp: int, args: array, interval?: int}.
+- **The scanner's pattern table is built once per payload, the marker
+  probes gated behind the first candidate (t31-glm21-13,
+  efficiency:medium; bin/lib/secret-scanner.php)** — the ten-entry
+  array was rebuilt for every line of every file and the two marker
+  preg_match probes ran before any candidate; verdicts byte-identical
+  over the repo tree plus a synthetic battery (diff clean), the CLI
+  repo scan measuring 1.36-1.37 s at HEAD against 1.23-1.26 s with
+  both hoists. The fused-pattern redesign is deferred beside glm20's
+  #5 as a post-M3 design option.
+- **The GPC lint leg stages its subject into a scratch tree
+  (t31-glm21-14, efficiency:medium; tests/BuildSeamPropertyTest.php)** —
+  the guard proof spawned the full serial php -l walk over the real
+  repository (6.4 s, ~18% of the suite) for a tree-independent
+  subject; the staged twin (the ToolchainSmokeTest pattern) answers
+  the same assertions at 0.13 s, the ~48x cut.
+- **The alias-oracle leg stages its 81 probes and lints them in one
+  batched pass (t31-glm21-15, efficiency:medium;
+  tests/BuildArtifactsTest.php)** — 81 serial php -l children (~3.0 s)
+  became one xargs -n1 -P8 fleet with per-word verdict files (the
+  per-word attribution intact, all 81 verdicts unchanged); measured
+  4.4 s serial against 2.4 s batched on this 4-core host — the
+  ceiling is the engine's own startup cost at 81 spawns, and the
+  runner's trailing echo is load-bearing twice over (php -l refuses
+  at exit 255, the status bare xargs aborts on).
+
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 20)
 
 Sixth claude-glm pass over the round-19 fixes. The review: 8 findings,
