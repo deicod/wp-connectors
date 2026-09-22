@@ -903,17 +903,29 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          * REAL usage (memory_get_usage's true arm — the engine
          * enforces the limit against real bytes, and the allocator's
          * untracked overhead sits outside the emalloc reading): live
-         * usage already past the band's floor (the pin minus the
-         * staging size) skips LOUDLY — the suite's own skip doctrine,
-         * a named reason never a silent pass — and the leg never
-         * lowers into the fatal window.
+         * usage already past the band's floor skips LOUDLY — the
+         * suite's own skip doctrine, a named reason never a silent
+         * pass — and the leg never lowers into the fatal window.
+         *
+         * glm19-9: the floor derives from the STAGING PEAK, never the
+         * resting size — the dense concat holds TWO ~1.91 MiB copies
+         * transiently (the str_repeat operand and the concat result
+         * both alive, ~3.82 MiB above the guard-time reading), so a
+         * (125.8, 126.0) MiB window passed the pin-minus-2M floor,
+         * the ini_set succeeded, and the very staging killed the
+         * engine at exit 255 before any verdict (driven). The bound
+         * is derived from the fixture's OWN sizes — the same
+         * arithmetic that builds the entry — plus one drift margin
+         * for the allocator's untracked overhead.
          */
-        if (memory_get_usage(true) > 128 * 1024 * 1024 - 2 * 1024 * 1024) {
-            $this->markTestSkipped(sprintf('Live usage (%d bytes real) already sits in the 128M pin\'s fatal band — the dense staging would fatal the engine before any verdict, and a ceiling the engine would refuse to lower is the same band\'s own shape; the bound defect stays driven under the default host.', memory_get_usage(true)));
+        $dense_units = 118000;
+        $staging_bytes = strlen('<?php ') + $dense_units * strlen('$x=$x+$x;$y[]=$x;');
+        if (memory_get_usage(true) > 128 * 1024 * 1024 - 2 * $staging_bytes - 1024 * 1024) {
+            $this->markTestSkipped(sprintf('Live usage (%d bytes real) already sits in the 128M pin\'s fatal band — the dense staging\'s transient peak would fatal the engine before any verdict, and a ceiling the engine would refuse to lower is the same band\'s own shape; the bound defect stays driven under the default host.', memory_get_usage(true)));
         }
         $this->assertNotFalse(ini_set('memory_limit', '128M'), 'The memory ceiling must be pinnable at runtime — the bound this leg asserts derives from it.');
         try {
-            $dense = '<?php ' . str_repeat('$x=$x+$x;$y[]=$x;', 118000);
+            $dense = '<?php ' . str_repeat('$x=$x+$x;$y[]=$x;', $dense_units);
             $this->assertGreaterThan(1800000, strlen($dense), 'staging: the dense entry must be the ~1.9 MB driven shape.');
             $this->assertLessThan(2 * 1024 * 1024, strlen($dense), 'staging: the dense entry stays UNDER the walk cap — the bound this leg drives is the token pass, never the 2 MB size screen.');
 
@@ -1004,6 +1016,47 @@ final class SecureFixturesTest extends WpConnectorsTestCase
                 $this->fail('The guard must skip before the ini_set when live usage sits past the pin (red at HEAD: the refused lowering answered a spurious red).');
             } catch (\PHPUnit\Framework\SkippedTestError $skip) {
                 $this->assertStringContainsString('fatal band', (string) $skip->getMessage(), 'The skip names the band — the suite\'s own loud-skip doctrine, never a spurious red.');
+            }
+        } finally {
+            unset($ballast);
+            ini_set('memory_limit', '' === $runner_limit ? '-1' : $runner_limit);
+        }
+    }
+
+    public function testTheDenseBoundPinSkipsWhenUsageSitsInTheStagingTransientWindow()
+    {
+        /*
+         * glm19-9's driven leg: the guard floor derived from the
+         * RESTING staging size (~1.9 MB — the pin-minus-2M floor), but
+         * the concat holds TWO copies transiently (~3.82 MiB above the
+         * guard-time reading): a (125.8, 126.0) MiB window passed the
+         * HEAD guard, the pin succeeded, and the very staging killed
+         * the engine at exit 255 before any verdict. The floor
+         * accounts for the staging PEAK now — the window answers the
+         * caught skip.
+         */
+        $runner_limit = (string) ini_get('memory_limit');
+        $this->assertNotFalse(ini_set('memory_limit', '1G'), 'The staging ceiling must be pinnable — the ballast cannot be staged from under the runner\'s own limit.');
+        $ballast = '';
+        try {
+            if (memory_get_usage(true) >= 126 * 1024 * 1024) {
+                $this->markTestSkipped('This runner already carries more live usage than the staging-transient window — the leg is unreachable here.');
+            }
+            while (memory_get_usage(true) < 125.9 * 1024 * 1024) {
+                $ballast .= str_repeat('x', 64 * 1024);
+            }
+            $usage = memory_get_usage(true);
+            if ($usage >= 126 * 1024 * 1024) {
+                $this->markTestSkipped(sprintf('Allocator granularity landed the ballast at %d bytes, past the window\'s ceiling — the leg is unreachable on this allocator this pass.', $usage));
+            }
+            $this->assertGreaterThan(125.8 * 1024 * 1024, $usage, 'staging: the ballast lands inside the staging-transient window — past the RESTING-size floor the HEAD guard judged by.');
+            $this->assertLessThan(126 * 1024 * 1024, $usage, 'staging: the ballast stays under the HEAD guard\'s floor — the pin itself still has to succeed at HEAD.');
+
+            try {
+                $this->runDenseEntryBoundLeg();
+                $this->fail('The guard must skip when the staging TRANSIENT (both concat copies) would cross the pin (red at HEAD: the staging killed the engine at exit 255, no verdict).');
+            } catch (\PHPUnit\Framework\SkippedTestError $skip) {
+                $this->assertStringContainsString('fatal band', (string) $skip->getMessage(), 'The skip names the band — the loud skip, never the engine\'s own exit 255.');
             }
         } finally {
             unset($ballast);
