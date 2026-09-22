@@ -532,6 +532,19 @@ function set_transient($transient, $value, $expiration = 0)
         $value = clone $value;
     }
     $transient_option = '_transient_' . $transient;
+    /*
+     * glm22-6: sanitize at the head — core's delegation rides
+     * add_option()/update_option(), and BOTH twins sanitize at their
+     * own heads (glm15-3/glm16-5/glm17-9), so the transient row's own
+     * filter — sanitize_option__transient_<name> — runs at every core
+     * save where the harness never consulted it (driven: the filter
+     * never fired). Exactly ONE run per save whichever family
+     * persists it (the delegation is either/or: the ADD branch rides
+     * add_option's head, the UPDATE branch update_option's own —
+     * never both), the sanitized value comparing (glm16-3's core
+     * order), storing, and riding every hook.
+     */
+    $value = sanitize_option($transient_option, $value);
     $old = array_key_exists($transient, WpHarness::$transients) ? WpHarness::$transients[ $transient ]['value'] : false;
     $existing = false !== $old;
     if ($existing) {

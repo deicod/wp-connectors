@@ -657,6 +657,32 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm22-6: set_transient() sanitizes at the head — core's
+     * delegation rides add_option()/update_option(), and both twins
+     * sanitize at their own heads, so the transient row's own filter
+     * (sanitize_option__transient_<name>) runs at every core save
+     * where the harness never consulted it (driven red at HEAD: the
+     * filter never fired).
+     */
+    public function testSetTransientSanitizesAtTheHead()
+    {
+        $runs = 0;
+        add_filter('sanitize_option__transient_glm22_san', static function ($value) use (&$runs) {
+            ++$runs;
+
+            return is_string($value) ? $value . '-sanitized' : $value;
+        });
+
+        $this->assertTrue(set_transient('glm22_san', 'raw'));
+        $this->assertSame(1, $runs, 'The transient-name sanitize filter fires at the delegation head (red at HEAD: never fires) — exactly one run, whichever family persists the save.');
+        $this->assertSame('raw-sanitized', get_transient('glm22_san'), 'The SANITIZED value is what stores — core\'s own head-of order, the sanitized value comparing and riding every hook.');
+
+        $this->assertTrue(set_transient('glm22_san', 'raw2'));
+        $this->assertSame(2, $runs, 'Every subsequent save runs it exactly once too — the update branch\'s own head, never both.');
+        $this->assertSame('raw2-sanitized', get_transient('glm22_san'));
+    }
+
+    /**
      * glm21-7: WpHarness::reset() clears the request-URI superglobal
      * member — $_SERVER['REQUEST_URI'] is the one member the stubs
      * read (add_query_arg()'s two-scalar resolution), and a test's
