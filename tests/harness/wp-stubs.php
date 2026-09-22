@@ -618,23 +618,33 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
     $timestamp = (int) $timestamp;
     $args_key = wp_connectors_cron_args_key($args);
     /*
-     * glm15-13/glm16-7: core's duplicate window for singles — an
-     * identical single (same hook, same args, non-recurring) already
-     * pending is the same event, not a second one, and the skip
-     * answers FALSE (core's own return; the stub answered true). The
-     * window is NOW-anchored and FLOORED, inclusive — core's shape is
-     * the wp_next_scheduled-class floor at time() - 10*MINUTE_IN_
-     * SECONDS over the EXISTING single's timestamp (the harness's
-     * deterministic clock standing in for time()), never the symmetric
-     * abs() distance between the two timestamps the round-15 spelling
-     * rode: a single 9:59 old still dedupes, one 10:01 old stacks —
-     * past singles pile as bursts in core precisely because the window
-     * stops counting them long before they fire.
+     * glm15-13/glm16-7/glm17-5: core's duplicate window for singles —
+     * an identical single (same hook, same args) already pending is
+     * the same event, not a second one, and the skip answers FALSE
+     * (core's own return; the stub answered true). glm17-5 corrects
+     * the window's SHAPE to core's two-sided band on the NEW event's
+     * timestamp (cron.php:135-145, pinned 7.1.1, pre-verified against
+     * the local reference): min = 0 when the new ts sits within ten
+     * minutes of now (else ts - 10 min), max = now + 10 min when the
+     * new ts is past (else ts + 10 min) — an EXISTING single inside
+     * the band is the duplicate. The round-16 one-sided floor
+     * (existing_ts >= now - 10 min) answered the wrong shape both
+     * ways (driven): a new single 20 minutes out deduped against a
+     * near-future existing one core stacks (min = ts - 10 min excludes
+     * it), and a near-future new single STACKED against an 11-minute-
+     * old existing one core dedupes (min = 0 counts every past
+     * identical single — 'when scheduling events within ten minutes
+     * of the current time, all past identical events are considered
+     * duplicates', core's own comment). The harness's deterministic
+     * clock stands in for time().
      */
+    $now = WpHarness::now();
+    $min = $timestamp < $now + 10 * MINUTE_IN_SECONDS ? 0 : $timestamp - 10 * MINUTE_IN_SECONDS;
+    $max = $timestamp < $now ? $now + 10 * MINUTE_IN_SECONDS : $timestamp + 10 * MINUTE_IN_SECONDS;
     foreach (WpHarness::$cron[ $hook ] ?? array() as $event) {
         if (! isset($event['interval'])
             && wp_connectors_cron_args_key($event['args']) === $args_key
-            && $event['timestamp'] >= WpHarness::now() - 10 * MINUTE_IN_SECONDS) {
+            && $event['timestamp'] >= $min && $event['timestamp'] <= $max) {
             return false; // Core's duplicate-single skip.
         }
     }

@@ -972,21 +972,34 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertCount(1, wp_get_scheduled_events('glm15_single'), 'An identical single within the 10-minute window dedupes (red at HEAD: two entries).');
 
         /*
-         * glm16-7: the window is NOW-anchored and FLOORED, inclusive —
-         * what counts is the EXISTING single's age against now(),
-         * never the symmetric distance between the two timestamps the
-         * round-15 abs() spelling rode: an identical single 9:59 old
-         * still dedupes, one 10:01 old stacks (past singles pile as
-         * bursts in core precisely because the window stops counting
-         * them long before they fire).
+         * glm17-5: the window is core's TWO-SIDED BAND on the NEW
+         * event's timestamp (cron.php:135-145, pinned 7.1.1) — the
+         * round-16 one-sided floor over the EXISTING single's age
+         * answered the wrong shape both directions (driven): min = 0
+         * whenever the new ts sits within ten minutes of now (every
+         * PAST identical single counts, however old — the round-16
+         * '10:01 old stacks' pin was wrong for near-future saves),
+         * else ts - 10 min (a far-future single never dedupes against
+         * a near-future existing one); max = now + 10 min for a past
+         * new ts, else ts + 10 min.
          */
-        $this->advanceTime(779); // The existing single (ts 1700000300) is 599 seconds old — one second inside the inclusive floor.
-        $this->assertFalse(wp_schedule_single_event(1700001800, 'glm15_single'), '9:59 old — still within core\'s window.');
+        $this->advanceTime(840); // now 1700000960; the existing single (ts 1700000300) is 660 seconds old — 11 minutes.
+        // Near-future save, 11-minute-old existing single: min = 0
+        // counts it — dedupes (red at HEAD: the floor stacked it).
+        $this->assertFalse(wp_schedule_single_event(1700001020, 'glm15_single'), 'A near-future save dedupes against a past identical single of ANY age — min = 0 (red at HEAD: the 11-minute-old one stacked).');
         $this->assertCount(1, wp_get_scheduled_events('glm15_single'));
 
-        $this->advanceTime(2); // 601 seconds old — past the floor.
-        $this->assertTrue(wp_schedule_single_event(1700001801, 'glm15_single'), '10:01 old — past singles stack as bursts, core\'s own shape.');
-        $this->assertCount(2, wp_get_scheduled_events('glm15_single'), 'Beyond the floor the single is its own event.');
+        // Far-future save, near-future existing single — the min = ts -
+        // 10 min arm, its own hook so the old single never feeds it:
+        // band schedules (red at HEAD: the floor deduped it).
+        $this->assertTrue(wp_schedule_single_event(1700001260, 'glm17_far'), 'staging: the near-future existing single lands.');
+        $this->assertTrue(wp_schedule_single_event(1700002460, 'glm17_far'), 'A single 20 minutes past a near-future existing one never dedupes against it — min = ts - 10 min excludes the existing ts (red at HEAD: the floor deduped it).');
+        $this->assertCount(2, wp_get_scheduled_events('glm17_far'), 'Beyond the band the single is its own event.');
+
+        // Future-near control: an existing single INSIDE the band
+        // dedupes (the glm15-13 shape, band-invariant).
+        $this->assertFalse(wp_schedule_single_event(1700002520, 'glm17_far'), 'A near-future existing single inside the band dedupes.');
+        $this->assertCount(2, wp_get_scheduled_events('glm17_far'));
     }
 
     public function testAStoredFalseRowCompletesCoreSOnDuplicateKeyUpdateShape()
