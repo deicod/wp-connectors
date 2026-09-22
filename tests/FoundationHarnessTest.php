@@ -762,6 +762,36 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm23-3: a seeded '_transient_<name>' OPTION row is visible to
+     * set_transient() — core's predicate is get_option-shaped over the
+     * option row (option.php:1548/:1563, pinned 7.1.1), so a seed the
+     * option store carries (an out-of-band write; the wpdb stub's
+     * uninstall enumeration reads exactly these rows) answers the
+     * UPDATE family with its own value as the old, where the harness
+     * seat read its transient store alone and fired the ADD family
+     * over the standing seed (driven red at HEAD), the two stores
+     * left divergent. The seeded row's own home stays current through
+     * the save — core writes ONE row, whichever store the harness
+     * models it in.
+     */
+    public function testSetTransientSeesASeededTransientOptionRow()
+    {
+        $this->assertTrue(add_option('_transient_glm23_seeded', 'seed'));
+        $update_pairs = array();
+        add_action('update_option__transient_glm23_seeded', static function (...$args) use (&$update_pairs) {
+            $update_pairs[] = $args;
+        }, 10, 3);
+        $seed_add_count = did_action('add_option__transient_glm23_seeded');
+
+        $this->assertTrue(set_transient('glm23_seeded', 'fresh'));
+        $this->assertSame(1, did_action('update_option__transient_glm23_seeded'), 'The seeded option row is VISIBLE to the seat — core\'s get_option-shaped predicate reads the same row the seed wrote, so the save fires the UPDATE family (red at HEAD: the ADD family, the row invisible).');
+        $this->assertSame($seed_add_count, did_action('add_option__transient_glm23_seeded'), 'The ADD family stays silent over the standing seed (the seed\'s own add alone in the count).');
+        $this->assertSame(array( 'seed', 'fresh', '_transient_glm23_seeded' ), $update_pairs[0] ?? null, 'The update family observes the SEED as the old value (red at HEAD: fired with no old at all).');
+        $this->assertSame('fresh', get_transient('glm23_seeded'), 'The transient view serves the fresh value.');
+        $this->assertSame('fresh', get_option('_transient_glm23_seeded'), 'The seeded row\'s own home stays current — the stores agree (red at HEAD: \'seed\' standing beside the fresh transient row).');
+    }
+
+    /**
      * glm22-5: set_transient() clones an object value at the hook
      * seat — core's add_option()/update_option() each clone BEFORE
      * the family fires, so an observer mutating the hook-passed value

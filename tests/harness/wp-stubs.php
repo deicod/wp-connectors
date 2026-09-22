@@ -563,8 +563,25 @@ function set_transient($transient, $value, $expiration = 0)
      * order), storing, and riding every hook.
      */
     $value = sanitize_option($transient_option, $value);
-    $old = array_key_exists($transient, WpHarness::$transients) ? WpHarness::$transients[ $transient ]['value'] : false;
+    /*
+     * glm23-3: the predicate reads through the OPTION store too —
+     * core's set_transient() asks get_option($transient_option)
+     * (option.php:1548, pinned 7.1.1), the same row a seed's
+     * add_option('_transient_<name>') wrote, so a seeded row answers
+     * the UPDATE family with its own value as the old where the
+     * harness read its transient store alone and fired the ADD family
+     * over the standing seed (driven), the two stores left divergent.
+     * The seat's own store wins when both carry a row (its entries
+     * carry the expires_at half a bare option row cannot); a row the
+     * option store holds keeps its home current through the save —
+     * core writes ONE row, whichever store the harness models it in.
+     */
+    $option_row = array_key_exists($transient_option, WpHarness::$options);
+    $old = array_key_exists($transient, WpHarness::$transients)
+        ? WpHarness::$transients[ $transient ]['value']
+        : ($option_row ? WpHarness::$options[ $transient_option ] : false);
     $existing = false !== $old;
+    $own_entry = array_key_exists($transient, WpHarness::$transients);
     if ($existing) {
         /*
          * glm23-1: core's update branch refreshes the TIMEOUT row
@@ -588,14 +605,19 @@ function set_transient($transient, $value, $expiration = 0)
          * a TTL the save did not name. The timeout row's own hook
          * family rides the seat's recorded simplification (glm22-4's
          * note below): no '_transient_timeout_<name>' row exists to
-         * fire over.
+         * fire over. Core's re-arm family over a timeout-less row —
+         * the delete-plus-re-add of option.php:1563-1567 — rides the
+         * same simplification: the seat updates in place whatever
+         * timeout half the row models.
          */
-        if ($expiration > 0) {
-            WpHarness::$transients[ $transient ]['expires_at'] = WpHarness::now() + $expiration;
-        } elseif ($expiration < 0) {
-            // Core treats a negative TTL as already expired (the head
-            // comment's own standing) — the refresh keeps that reading.
-            WpHarness::$transients[ $transient ]['expires_at'] = WpHarness::now() - 1;
+        if ($own_entry) {
+            if ($expiration > 0) {
+                WpHarness::$transients[ $transient ]['expires_at'] = WpHarness::now() + $expiration;
+            } elseif ($expiration < 0) {
+                // Core treats a negative TTL as already expired (the head
+                // comment's own standing) — the refresh keeps that reading.
+                WpHarness::$transients[ $transient ]['expires_at'] = WpHarness::now() - 1;
+            }
         }
         /*
          * glm22-4: core's delegation answers the twins' own unchanged
@@ -627,10 +649,16 @@ function set_transient($transient, $value, $expiration = 0)
          * timeout survives the write — core touches the timeout row
          * only over an expiration-bearing save, so a zero-expiration
          * re-save never disarms a TTL the save did not name. The add
-         * path takes the head's own derivation.
+         * path takes the head's own derivation; a seeded option row
+         * carries no timeout half to keep (glm23-3).
          */
-        'expires_at' => $existing ? WpHarness::$transients[ $transient ]['expires_at'] : $expires_at,
+        'expires_at' => ($existing && $own_entry) ? WpHarness::$transients[ $transient ]['expires_at'] : $expires_at,
     );
+    if ($option_row) {
+        // glm23-3: the seeded row's own home stays current — the stores
+        // agree, exactly core's one-row write.
+        WpHarness::$options[ $transient_option ] = wp_connectors_option_stored_copy($value);
+    }
     if ($existing) {
         do_action("update_option_{$transient_option}", $old, $value, $transient_option);
         do_action('updated_option', $transient_option, $old, $value);
