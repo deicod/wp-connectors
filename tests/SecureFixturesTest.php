@@ -976,7 +976,22 @@ final class SecureFixturesTest extends WpConnectorsTestCase
          * the flag-token line, and the anchored needle above is the
          * one assertion that goes red over this splice — proven here
          * by the needle FAILING to match the mangled arrival.
+         *
+         * glm24-6: the driver premises the POSIX SHELL's single-quote
+         * grammar (the flag spliced RAW as one single-quoted token —
+         * the vocabulary a non-POSIX host spells differently) and the
+         * anchored needle pins THIS ENGINE'S own INI quoted-value
+         * mangle (the grammar the docblock above states — the
+         * premise named, never assumed portable): ungated, the
+         * t31-ocr29-7 class glm23-12 closed two commits earlier in
+         * this same file — a non-POSIX host would red over the
+         * platform's own quoting vocabulary, never the escaping seam
+         * the driver exists to pin. The leg gates with its own named
+         * skip; POSIX behavior unchanged.
          */
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('This host\'s platform separator is not the POSIX one — the raw-splice driver splices its INI-quoted flag through the POSIX shell\'s single-quote grammar and its needle pins this engine\'s own INI mangle, so a non-POSIX host would judge the platform\'s quoting vocabulary, never the escaping seam the driver pins (glm24-6, the t31-ocr29-7 class).');
+        }
         $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
         $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the raw-splice driver runs — an environment problem, never the splice verdict.');
         $raw_output = array();
