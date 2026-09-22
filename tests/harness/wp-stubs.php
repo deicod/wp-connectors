@@ -361,6 +361,17 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
     }
 
     /*
+     * glm18-9: core fires the GENERIC 'add_option' action BEFORE the
+     * write (option.php:1140's do_action precedes :1142's INSERT, WP
+     * 7.1.1) — an observer at the hook reads the row through
+     * get_option() as core reads it: the OLD value (false for a first
+     * add), never the new one (driven: the stub had written first, so
+     * the observer read the new value). The specific and closing
+     * hooks stay POST-write, core's own order around the cache set.
+     */
+    do_action('add_option', $option, $value);
+
+    /*
      * glm15-3/glm16-5 (the head-of sanitize moved above the guard at
      * glm17-9, core's own order — the runs arithmetic this comment
      * carries is unchanged by the move): core calls sanitize_option()
@@ -378,7 +389,6 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
     // NOT update_option_{$option}. (update_option() delegates to add_option()
     // when the row is missing, so a first-ever save fires these hooks only;
     // the specific hook passes exactly two args: option name, value.)
-    do_action('add_option', $option, $value);
     do_action("add_option_{$option}", $option, $value);
     do_action('added_option', $option, $value);
 

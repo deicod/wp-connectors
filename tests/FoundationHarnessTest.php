@@ -1071,6 +1071,39 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertCount(2, wp_get_scheduled_events('glm17_far'));
     }
 
+    public function testTheGenericAddOptionHookFiresBeforeTheWriteCoreOrder()
+    {
+        /*
+         * glm18-9: core fires the GENERIC 'add_option' action BEFORE
+         * the INSERT (option.php:1140's do_action precedes :1142's
+         * query, pinned 7.1.1) — an observer at the hook reads the row
+         * through get_option() as core reads it, the OLD value (false
+         * for a first add). The stub wrote first, so the observer read
+         * the NEW value (driven); the specific and closing hooks stay
+         * post-write, where their observers read the written row.
+         */
+        $seen_generic = 'never';
+        add_action('add_option', static function ($option) use (&$seen_generic) {
+            $seen_generic = get_option($option);
+        });
+        $seen_specific = 'never';
+        add_action('add_option_glm18_order', static function ($option) use (&$seen_specific) {
+            $seen_specific = get_option($option);
+        });
+
+        $this->assertTrue(add_option('glm18_order', 'v1'));
+        $this->assertFalse($seen_generic, 'The generic-hook observer reads the OLD row — the write has not happened yet (red at HEAD: the new value).');
+        $this->assertSame('v1', $seen_specific, 'The specific-hook observer reads the WRITTEN row, core\'s post-write order.');
+
+        // The stored-false re-add rides the same order: the row still
+        // reads false at the generic hook, and the write lands after.
+        WpHarness::$options['glm18_order'] = false;
+        $seen_generic = 'never';
+        $this->assertTrue(add_option('glm18_order', 'v2'), 'staging: the stored-false re-add completes (glm17-4\'s shape).');
+        $this->assertFalse($seen_generic, 'The generic-hook observer reads the stored-false row as core does at the pre-write hook.');
+        $this->assertSame('v2', get_option('glm18_order'), 'The write lands after the generic hook.');
+    }
+
     public function testAMutatedStoredObjectReSaveCompletesThroughTheHeadClone()
     {
         /*
