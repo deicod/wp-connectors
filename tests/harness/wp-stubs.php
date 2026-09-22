@@ -724,6 +724,20 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
         return false;
     }
     $timestamp += 0;
+    /*
+     * glm19-6: core keys the row at $crons[ $event->timestamp ]
+     * (cron.php:202, pinned 7.1.1) and a PHP array KEY truncates a
+     * float — 0.5 lands at key 0. Core's guard passes the fractional
+     * raw value ('! is_numeric || <= 0' never checks int-ness), so the
+     * row a fractional timestamp schedules LANDS AT KEY 0: invisible
+     * to wp_next_scheduled() (core reconstructs from the key and its
+     * '! $next' falsy guard answers false, cron.php:825), cancellable
+     * through wp_unschedule_event()'s own key fold, and due every
+     * pass. The harness stores the row on the int-truncated
+     * timestamp — core's own key shape, never the fractional twin the
+     * round-18 pin asserted (glm18-7's fractional-acceptance premise
+     * falsified against the key truncation).
+     */
     $args_key = wp_connectors_cron_args_key($args);
     /*
      * glm15-13/glm16-7/glm17-5: core's duplicate window for singles —
@@ -766,7 +780,7 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
         }
     }
     WpHarness::$cron[ $hook ][] = array(
-        'timestamp' => $timestamp,
+        'timestamp' => (int) $timestamp,
         'args' => $args,
     );
 
@@ -837,8 +851,15 @@ function wp_next_scheduled($hook, $args = array())
             $best = $event['timestamp'];
         }
     }
-
-    return $best;
+    /*
+     * glm19-6: core's next-event loop reads the row through its KEY
+     * and guards '! $next' (cron.php:825, pinned 7.1.1) — a key-0 row
+     * (the int truncation of a fractional 0 < ts < 1 timestamp, the
+     * only shape that lands there: core's guard refuses every ts <= 0)
+     * is INVISIBLE to the query. The harness answers the same
+     * falsy-key false, never the truncated 0.
+     */
+    return $best ?: false;
 }
 
 function wp_get_scheduled_events($hook = null)

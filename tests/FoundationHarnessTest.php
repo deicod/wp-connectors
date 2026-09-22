@@ -1230,8 +1230,19 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
          * <= 0' on the RAW value) — a true or a '60abc' coerced to a
          * positive integer and QUEUED where core refuses (is_numeric
          * answers false for both before any cast), and a 0.5 coerced
-         * to 0 and REFUSED where core schedules the event and keeps
-         * the fractional timestamp downstream.
+         * to 0 and REFUSED where core schedules the event.
+         *
+         * CORRECTED (glm19-6): the round-18 half of this pin — "core
+         * schedules the event and keeps the fractional timestamp
+         * downstream" — is FALSE against the pinned 7.1.1. Core's
+         * guard passes the raw 0.5, but the row lands at
+         * $crons[0.5], and a PHP array KEY truncates the float: key
+         * 0. wp_next_scheduled() reconstructs from the key and its
+         * '! $next' falsy guard (cron.php:825) answers FALSE for the
+         * key-0 row — never 0.5 — and wp_unschedule_event()'s own key
+         * fold still cancels it. The queued row rides the
+         * int-truncated timestamp now, core's own key shape; the
+         * stranded-cancellation shape dies with it.
          */
         $this->freezeTime(1700000000);
 
@@ -1239,8 +1250,13 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertFalse(wp_schedule_single_event('60abc', 'glm18_raw'), 'A glued numeric string refuses likewise (red at HEAD: coerced to 60, queued).');
         $this->assertSame(array(), wp_get_scheduled_events('glm18_raw'), 'Nothing lands in the queue for either spelling (red at HEAD: two rows).');
 
-        $this->assertTrue(wp_schedule_single_event(0.5, 'glm18_raw_half'), 'A fractional positive timestamp schedules — core keys the event on the raw value (red at HEAD: coerced to 0, refused).');
-        $this->assertSame(0.5, wp_next_scheduled('glm18_raw_half'), 'The queued timestamp stays numeric downstream, never an int-folded twin.');
+        $this->assertTrue(wp_schedule_single_event(0.5, 'glm18_raw_half'), 'A fractional positive timestamp schedules — the raw-value guard passes it (red at the round-16 HEAD: coerced to 0, refused).');
+        $queued = wp_get_scheduled_events('glm18_raw_half');
+        $this->assertCount(1, $queued, 'staging: the fractional schedule lands one row.');
+        $this->assertSame(0, $queued[0]['timestamp'], 'The row lands at the INT-TRUNCATED key — core\'s $crons[ts] key shape (red at the round-18 pin: the raw 0.5, glm18-7\'s fractional-acceptance premise falsified).');
+        $this->assertSame(false, wp_next_scheduled('glm18_raw_half'), 'Core\'s falsy-key guard: a key-0 row is invisible to the next-event query — false, never the 0.5 the round-18 pin asserted.');
+        $this->assertTrue(wp_unschedule_event(0.5, 'glm18_raw_half'), 'The key-0 row cancels through the int-folded compare — the stranded-cancellation shape dies (red at the round-18 shape: the raw 0.5 row never matched).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm18_raw_half'), 'The row is gone.');
     }
 
     public function testNonPositiveTimestampsRefuseAtBothScheduleEntryPoints()
