@@ -574,15 +574,26 @@ final class SecureFixturesTest extends WpConnectorsTestCase
      * the child's -d options, the output lines collapsed into one
      * report beside the exit code.
      *
-     * @param string       $script    PHP code carrying one `require %s;` placeholder for the library path.
-     * @param list<string> $ini_flags INI spellings for the child (e.g. 'memory_limit=1G'); already-shell-safe literals from this file.
-     * @return array{report: string, exit: int} The child's merged stdout/stderr and its exit code.
+     * glm20-6: the spawn is BOUNDED — exec() waits on the child
+     * forever, so a never-terminating regression in the scanner (the
+     * glm15-4 precedent: the unbounded rescan) would hang phpunit
+     * itself with no verdict, no failure, no timeout. The owner rides
+     * coreutils timeout(1) on POSIX hosts (the isPosixHost() gate —
+     * a host without the tool answers its own loud 127, never a
+     * silent unbounded wait), the default bound generous beside every
+     * consumer's measured wall clock.
+     *
+     * @param string       $script          PHP code carrying one `require %s;` placeholder for the library path.
+     * @param list<string> $ini_flags       INI spellings for the child (e.g. 'memory_limit=1G'); already-shell-safe literals from this file.
+     * @param int          $timeout_seconds The spawn bound (glm20-6); the tight bound is the driven leg's own.
+     * @return array{report: string, exit: int} The child's merged stdout/stderr and its exit code (124: killed at the bound).
      */
-    private function spawnScannerChild(string $script, array $ini_flags = array()): array
+    private function spawnScannerChild(string $script, array $ini_flags = array(), int $timeout_seconds = 30): array
     {
         $scannerLibrary = realpath(__DIR__ . '/../bin/lib/secret-scanner.php');
         $this->assertNotFalse($scannerLibrary, 'The scanner library path must resolve before the spawned-engine leg runs — a realpath() false (a broken checkout, an open_basedir wall) is an environment problem, never the defect the child would otherwise carry.');
-        $command = escapeshellarg(PHP_BINARY);
+        $command = WpHarness::isPosixHost() ? 'timeout ' . $timeout_seconds . ' ' : '';
+        $command .= escapeshellarg(PHP_BINARY);
         foreach ($ini_flags as $flag) {
             $command .= ' -d ' . $flag;
         }
@@ -653,6 +664,42 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         } finally {
             WpHarness::releaseScratch($tempDir);
         }
+    }
+
+    /**
+     * glm20-6: the spawn is bounded — a never-terminating child
+     * regression fails loudly at the bound, never hangs phpunit.
+     */
+    public function testASleepingScannerChildFailsLoudlyPastTheSpawnBound()
+    {
+        /*
+         * exec() waits on the child FOREVER: a scanner regression that
+         * never terminates (the glm15-4 unbounded-rescan precedent)
+         * crossed into a spawned leg would hang the whole suite with
+         * no verdict and no failure — the wall-clock pins this file
+         * already carries guard the SLOW child, but nothing guarded
+         * the one that never answers. The spawn owner rides coreutils
+         * timeout(1) on POSIX hosts (the isPosixHost() gate): the
+         * child sleeping past the bound is killed, the owner answering
+         * timeout(1)'s own 124 exit beside whatever the child printed
+         * before the kill — a fast, named failure. The leg drives the
+         * mechanism at a TIGHT bound (2 s, the owner's own parameter)
+         * so the proof costs seconds, never the production 30 s.
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the bounded-spawn leg cannot run (the sleeping child rides a spawned engine).');
+        }
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('This host is not the POSIX one — the spawn bound rides coreutils timeout(1), and the owner keeps the unbounded spawn on every other host.');
+        }
+
+        $started = microtime(true);
+        $spawned = $this->spawnScannerChild('require %s; sleep(100000); echo "child-never-finished\n";', array(), 2);
+        $elapsed = microtime(true) - $started;
+
+        $this->assertSame(124, $spawned['exit'], "A child sleeping past the spawn bound is killed at it — timeout(1)'s own 124, never exec() waiting forever (red at HEAD: the hang itself): {$spawned['report']}");
+        $this->assertStringNotContainsString('child-never-finished', $spawned['report'], 'The sleeping child never completes its verdict lines — the report carries no tail from a scan that never answered.');
+        $this->assertLessThan(20.0, $elapsed, sprintf('The bound answers fast (%.1fs wall) — a hung-suite shape becomes a seconds-scale loud failure.', $elapsed));
     }
 
     public function testScannerDoesNotBypassOnGenericProseWords()
