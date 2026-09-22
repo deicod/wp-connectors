@@ -301,19 +301,22 @@ function update_option($option, $value, $autoload = null)
 function add_option($option, $value = '', $deprecated = '', $autoload = null)
 {
     /*
-     * glm16-4: an existing row — stored non-false OR stored false —
-     * answers a SILENT no-op false (core's duplicate-key shape,
-     * derived from option.php). glm15-14 recorded the routing —
-     * core's guard (false !== get_option()) PROCEEDS for a
-     * stored-false row — but the INSERT then collides on the
-     * duplicate key and fails: no hooks fire, nothing writes, no
-     * autoload flips, and add_option() answers false (the famous
-     * false-stored footgun). The harness had named that collision as
-     * its one divergence and completed the add; round 16 closes it —
-     * the observable contract (the hook family, the eventual value,
-     * the return) is core's for BOTH stored shapes: one silent no-op.
+     * glm17-4 CORRECTS glm16-4's premise: core's INSERT does NOT die
+     * in a duplicate-key collision — it rides ON DUPLICATE KEY UPDATE
+     * (option.php:1142 in the pinned WP 7.1.1, pre-verified against
+     * the local reference), and core's guard (default-option filter
+     * !== get_option()) returns early ONLY for a row that reads
+     * NON-false through get_option(). A row STORED AS FALSE reads
+     * false — indistinguishable from missing — so the guard PASSES,
+     * the hooks fire, the ON DUPLICATE KEY UPDATE overwrites the row,
+     * and add_option() answers TRUE (the stored-false add completes
+     * observably, exactly like a first save). glm16-4 had inverted
+     * core on this shape (a silent no-op for BOTH stored rows) off a
+     * collision premise the pinned source falsifies; the silent no-op
+     * now stands for the NON-false duplicate alone, core's own guard
+     * shape.
      */
-    if (array_key_exists($option, WpHarness::$options)) {
+    if (array_key_exists($option, WpHarness::$options) && false !== WpHarness::$options[ $option ]) {
         return false;
     }
 

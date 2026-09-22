@@ -989,7 +989,7 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertCount(2, wp_get_scheduled_events('glm15_single'), 'Beyond the floor the single is its own event.');
     }
 
-    public function testAStoredFalseOptionAnswersCoreDuplicateKeySilence()
+    public function testAStoredFalseRowCompletesCoreSOnDuplicateKeyUpdateShape()
     {
         /*
          * glm15-14: update_option()'s delegation predicate
@@ -998,12 +998,18 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
          * through core's get_option() (both answer false), so core
          * routes the save to the ADD family while the harness routed
          * UPDATE (driven red at HEAD: update_option_ fired for a
-         * stored-false save). glm16-4 closed the seam's named
-         * divergence the same round exposed: core's INSERT then
-         * collides on the duplicate key and fails — no hooks, no
-         * write, no autoload flip, a silent false — so the stored-false
-         * save answers NOTHING observable (the famous false-stored
-         * footgun, now the harness's own shape too).
+         * stored-false save).
+         *
+         * glm16-4 then closed the seam with a COLLISION premise —
+         * core's INSERT dies on the duplicate key, a silent no-op —
+         * and glm17-4 FALSIFIES that premise against the pinned WP
+         * 7.1.1 (pre-verified at the local reference): the INSERT
+         * rides ON DUPLICATE KEY UPDATE (option.php:1142), and the
+         * guard returns early only for a row that reads NON-false.
+         * The stored-false add COMPLETES observably, exactly like a
+         * first save: the ADD family fires, the row writes, true (the
+         * famous false-stored footgun is that the save masquerades as
+         * an add — never that it silently does nothing).
          */
         update_option('glm15_false_opt', 'initial');
         update_option('glm15_false_opt', false);
@@ -1022,19 +1028,29 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
             $fired[] = 'added';
         });
 
-        $this->assertFalse(update_option('glm15_false_opt', 'value'), 'A stored-false save dies in the duplicate-key collision, core\'s shape (red at HEAD: the delegated ADD completed and answered true).');
-        $this->assertSame(array(), $fired, 'The collision fires NO hook family — not the UPDATE family glm15-14 refused, and not the ADD family it completed (red at HEAD: the add family fired).');
-        $this->assertFalse(get_option('glm15_false_opt'), 'Nothing writes over the collision (red at HEAD: the value stored).');
+        $this->assertTrue(update_option('glm15_false_opt', 'value'), 'A stored-false save completes through the delegated ADD — hooks, write, true (red at HEAD: glm16-4\'s silent false).');
+        $this->assertSame(array( 'add', 'added' ), $fired, 'The ADD family fires for the stored-false save (red at HEAD: no family fired).');
+        $this->assertSame('value', get_option('glm15_false_opt'), 'The ON DUPLICATE KEY UPDATE shape writes the row (red at HEAD: nothing wrote).');
 
-        // The control: a stored NON-false value keeps the UPDATE routing.
+        // The direct call over the stored-false row: the same completion.
+        WpHarness::$options['glm15_false_opt'] = false;
+        $fired = array();
+        $this->assertTrue(add_option('glm15_false_opt', 'again'), 'A direct add over a stored-false row completes too (red at HEAD: silent false).');
+        $this->assertSame(array( 'add', 'added' ), $fired);
+        $this->assertSame('again', get_option('glm15_false_opt'));
+
+        // The stored NON-false duplicate keeps the early-return silence —
+        // core's guard answer for a row that reads through get_option().
         WpHarness::$options['glm15_false_opt'] = 'rewritten';
+        $fired = array();
+        $this->assertFalse(add_option('glm15_false_opt', 'nope'), 'A direct add over a stored non-false row is core\'s silent no-op.');
+        $this->assertSame(array(), $fired, 'The non-false duplicate fires nothing.');
+        $this->assertSame('rewritten', get_option('glm15_false_opt'));
+
+        // The control: a stored non-false value keeps the UPDATE routing.
         $fired = array();
         $this->assertTrue(update_option('glm15_false_opt', 'next'));
         $this->assertSame(array( 'update', 'updated' ), $fired, 'A stored non-false value keeps the UPDATE family.');
-        $this->assertSame('next', get_option('glm15_false_opt'));
-
-        // And the direct call answers the same silence for both stored shapes.
-        $this->assertFalse(add_option('glm15_false_opt', 'again'), 'A direct add over an existing row is the same silent no-op.');
         $this->assertSame('next', get_option('glm15_false_opt'));
     }
 
