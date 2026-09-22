@@ -1680,8 +1680,19 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             $this->assertTrue(mkdir($gpcLintScratch . '/bin/lib', 0755, true), "staging: {$gpcLintScratch}/bin/lib must create — a staging failure fails as staging, never as the GPC lint verdict.");
             $this->assertTrue(copy($resolvedEntryScripts['/../bin/lint-php.php'], $gpcLintScratch . '/bin/lint-php.php'), "staging: the lint tool must copy into {$gpcLintScratch}/bin — a staging failure fails as staging, never as the GPC lint verdict.");
             $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $gpcLintScratch . '/bin/lib/plugin-tools.php'), "staging: the tool library must copy into {$gpcLintScratch}/bin/lib — a staging failure fails as staging, never as the GPC lint verdict.");
-            foreach (array('connectors', 'shared', 'tests') as $gpcLintRoot) {
-                $this->assertTrue(mkdir($gpcLintScratch . '/' . $gpcLintRoot, 0755, true), "staging: the declared root {$gpcLintRoot} must create — the leg's tree names every root the walk declares (glm22-10), and a staging failure fails as staging, never as the GPC lint verdict.");
+            /*
+             * glm23-13: the declared roots ride the ONE owner the walk
+             * itself consults (wp_connectors_lint_roots()) — the leg
+             * once hand-spelled the root names, so a fifth declared
+             * root or a rename would leave this staging naming a tree
+             * the walk no longer declares (the certify-less-than-
+             * declared shape glm22-10 closed, one seam over).
+             */
+            foreach (wp_connectors_lint_roots($gpcLintScratch) as $gpcLintRoot) {
+                if (is_dir($gpcLintRoot)) {
+                    continue;
+                }
+                $this->assertTrue(mkdir($gpcLintRoot, 0755, true), "staging: the declared root {$gpcLintRoot} must create — the leg's tree names every root the walk declares (glm22-10), and a staging failure fails as staging, never as the GPC lint verdict.");
             }
             exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($gpcLintScratch . '/bin/lint-php.php') . ' 2>&1', $gpcLintOutput, $gpcLintExit);
 
@@ -1730,6 +1741,20 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
             $this->assertStringNotContainsString("realpath(\$argv[0]) === __FILE__", $source, "{$entry} carries no hand-rolled guard copy.");
             $this->assertStringNotContainsString("ini_set('display_errors'", $source, "{$entry} carries no hand-rolled diagnostics copy.");
         }
+
+        /*
+         * glm23-13: the lint walk's declared root set rides the ONE
+         * owner — the walk consults wp_connectors_lint_roots() (never
+         * a hand-spelled array beside it) and the library carries the
+         * owner, so a fifth root or a rename changes ONE site and the
+         * walk with every staged leg flips together (the structural
+         * pin; the legs' own summary/refusal pins own the accounting).
+         */
+        $lintToolSource = (string) file_get_contents(__DIR__ . '/../bin/lint-php.php');
+        $this->assertStringContainsString('wp_connectors_lint_roots(', $lintToolSource, 'The lint walk consults the ONE lint-roots owner.');
+        $this->assertStringNotContainsString("'/../connectors'", $lintToolSource, 'The walk carries no hand-spelled roots line beside the owner — the six-site hand-copy class is closed.');
+        $toolLibrarySource = (string) file_get_contents(__DIR__ . '/../bin/lib/plugin-tools.php');
+        $this->assertStringContainsString('function wp_connectors_lint_roots(', $toolLibrarySource, 'The tool library carries the ONE lint-roots owner.');
     }
 
     /**

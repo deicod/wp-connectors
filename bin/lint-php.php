@@ -24,7 +24,15 @@ if (wp_connectors_cli_entry(__FILE__)) {
      * executed in every requiring process) is gone.
      */
 
-    $roots = array(__DIR__ . '/../connectors', __DIR__ . '/../shared', __DIR__ . '/../bin', __DIR__ . '/../tests');
+    /*
+     * glm23-13: the declared root set rides its ONE owner
+     * (wp_connectors_lint_roots(), bin/lib/plugin-tools.php) — the
+     * hand-spelled array here was one of six sites naming the walk's
+     * roots, so a fifth root or a rename changed the walk alone and
+     * every staged leg silently certified a tree the walk no longer
+     * names (the certify-less-than-declared shape glm22-10 closed).
+     */
+    $roots = wp_connectors_lint_roots(__DIR__ . '/..');
 
     /*
      * The lint gate's OWN exclusion subset, named here (t31-ocr8-7):

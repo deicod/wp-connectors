@@ -4077,6 +4077,32 @@ function wp_connectors_is_php_source($path)
 }
 
 /**
+ * The lint walk's declared root set — the ONE owner (glm23-13): the
+ * walk (bin/lint-php.php) and every staged leg that must name the
+ * tree the walk declares consult it, so a fifth declared root or a
+ * rename changes the OWNER alone — never the certify-less-than-
+ * declared shape glm22-10 closed (a staged leg blessing a walk over
+ * a tree that stops naming the walk's roots) nor a leg staging a
+ * root the walk no longer walks.
+ *
+ * The order is the walk's own (connectors, shared, bin, tests): the
+ * missing-root refusal names the first absent root it reaches, and
+ * the legs' partial-count verdicts ride the same order.
+ *
+ * @param string $base The repository base the roots hang from (the walk spells __DIR__ . '/..').
+ * @return list<string> The four declared lint roots, base-prefixed.
+ */
+function wp_connectors_lint_roots($base)
+{
+    return array(
+        $base . '/connectors',
+        $base . '/shared',
+        $base . '/bin',
+        $base . '/tests',
+    );
+}
+
+/**
  * The basename with the (any-case) PHP template extension stripped —
  * the ONE extension-strip owner (review round t31-r4-9; the template
  * class completed glm14-4).
