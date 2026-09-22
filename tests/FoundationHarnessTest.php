@@ -721,6 +721,38 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(get_settings_errors('setting_a'), settings_errors('setting_a'), 'The seat delegates to its core-faithful twin — one filter predicate, never two.');
     }
 
+    /**
+     * glm22-7: settings_errors() honors its $sanitize/$hide_on_update
+     * arguments — both were accepted and silently dropped, the exact
+     * argument-dropping class glm21-8 closed for $setting at the same
+     * seat (driven red at HEAD: neither parameter took effect).
+     */
+    public function testSettingsErrorsHonorsItsSanitizeAndHideOnUpdateArguments()
+    {
+        add_settings_error('glm22_arg', 'static_code', 'The static error');
+        $ran = 0;
+        add_filter('sanitize_option_glm22_arg', static function ($value) use (&$ran) {
+            ++$ran;
+            add_settings_error('glm22_arg', 'sanitize_code', 'The sanitize-time error');
+
+            return $value;
+        });
+
+        // (a) $sanitize delegates to the twin's own second parameter: the
+        // registered callback's settings errors surface by default.
+        $this->assertCount(2, settings_errors('glm22_arg', true), 'The $sanitize flag re-runs sanitize_option() over the setting\'s stored row (red at HEAD: silently dropped) and the callback\'s own settings errors surface by default — the flag\'s documented purpose.');
+        $this->assertSame(1, $ran, 'Exactly one re-run — the delegation to the twin\'s own head, never a second predicate at the seat.');
+        $this->assertCount(2, settings_errors('glm22_arg'), 'Without the flag nothing re-runs — the recorded rows answer alone (the sanitize-time row already recorded stays, no new one lands).');
+
+        // (b) $hide_on_update is core's own head: the rows hide over a
+        // settings-updated request, the empty array at this seat's
+        // recorded return divergence (core answers VOID at its echo shape).
+        $_GET['settings-updated'] = '1';
+        $this->assertSame(array(), settings_errors('glm22_arg', false, true), 'The $hide_on_update flag hides the rows over a settings-updated request (red at HEAD: the full array silently dropped the flag) — core\'s own head.');
+        $this->assertCount(2, settings_errors('glm22_arg', false, false), 'Without the flag the rows answer — the hide is the flag\'s own, never the seat\'s.');
+        unset($_GET['settings-updated']);
+    }
+
     public function testDueEventsFireInTimestampOrderAndAnOverdueRecurringEventFiresOnce()
     {
         /*

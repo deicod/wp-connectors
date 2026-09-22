@@ -1939,8 +1939,24 @@ function settings_errors($setting = '', $sanitize = false, $hide_on_update = fal
      * filter; this seat delegates to it (never a second predicate),
      * the '' spelling keeping the historical whole-array behavior for
      * existing callers.
+     *
+     * glm22-7: the $sanitize/$hide_on_update arguments are HONORED —
+     * the exact argument-dropping class glm21-8 closed for $setting
+     * at this seat (both parameters were accepted and silently
+     * dropped, driven). $hide_on_update is core's own head
+     * (template.php: the rows hide over a settings-updated request,
+     * core answering VOID at its echo-shaped seat — this seat's
+     * recorded return divergence keeps the empty array); $sanitize
+     * delegates to the twin's own second parameter (core's spelling —
+     * never a second predicate at the seat), the twin re-running
+     * sanitize_option() over the setting's stored row so a registered
+     * callback's settings errors surface by default.
      */
-    return get_settings_errors((string) $setting);
+    if ($hide_on_update && ! empty($_GET['settings-updated'])) {
+        return array();
+    }
+
+    return get_settings_errors((string) $setting, (bool) $sanitize);
 }
 
 /**
@@ -1951,10 +1967,25 @@ function settings_errors($setting = '', $sanitize = false, $hide_on_update = fal
  * historical return-the-array behavior for existing callers.
  *
  * @param string $setting_code Setting slug to filter by ('' for all).
+ * @param bool   $sanitize     Whether to re-run sanitize_option() over the
+ *                             setting's stored row first (core's own head,
+ *                             glm22-7 — the register_setting() callback's
+ *                             settings errors surface by default).
  * @return array<string, array<string, string>> Filtered errors.
  */
-function get_settings_errors($setting_code = '')
+function get_settings_errors($setting_code = '', $sanitize = false)
 {
+    /*
+     * glm22-7: core's own head (template.php) — $sanitize re-runs the
+     * sanitization for this setting's stored row, the flag's
+     * documented purpose being the sanitize_callback's own settings
+     * errors surfacing by default. The harness's own filter seat
+     * (sanitize_option()) answers, so a registered callback observes
+     * the stored row exactly as core's re-run reads it.
+     */
+    if ($sanitize) {
+        sanitize_option($setting_code, get_option($setting_code));
+    }
     if ('' === $setting_code) {
         return WpHarness::$settings_errors;
     }
