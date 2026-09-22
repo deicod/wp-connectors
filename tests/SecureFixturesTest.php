@@ -652,7 +652,16 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $command = WpHarness::isPosixHost() ? 'timeout ' . $timeout_seconds . ' ' : '';
         $command .= escapeshellarg(PHP_BINARY);
         foreach ($ini_flags as $flag) {
-            $command .= ' -d ' . $flag;
+            /*
+             * glm21-11: each flag rides escapeshellarg — this was the
+             * repo's single variable-interpolated unescaped value at
+             * an exec seam (the six call sites ship literals today,
+             * but the OWNER is the seam every future flag rides): one
+             * escaped token per -d value, a flag carrying spaces or
+             * shell metacharacters reaching the child intact instead
+             * of the shell reading them as its own grammar.
+             */
+            $command .= ' -d ' . escapeshellarg($flag);
         }
         $command .= ' -r ' . escapeshellarg(sprintf($script, var_export($scannerLibrary, true)));
         $output = array();
@@ -780,6 +789,39 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertSame(124, $spawned['exit'], "A child sleeping past the spawn bound is killed at it — timeout(1)'s own 124, never exec() waiting forever (red at HEAD: the hang itself): {$spawned['report']}");
         $this->assertStringNotContainsString('child-never-finished', $spawned['report'], 'The sleeping child never completes its verdict lines — the report carries no tail from a scan that never answered.');
         $this->assertLessThan(20.0, $elapsed, sprintf('The bound answers fast (%.1fs wall) — a hung-suite shape becomes a seconds-scale loud failure.', $elapsed));
+    }
+
+    /**
+     * glm21-11: the spawn owner escapes its -d INI flags — the one
+     * variable-interpolated value at an exec seam this repo shipped
+     * (literals at the six call sites, but the owner is the seam). A
+     * flag carrying shell metacharacters rides as ONE token: the shell
+     * reads none of it as its own grammar (the driven poison carries
+     * spaces, a command substitution, backgrounding, and a pipe — at
+     * HEAD the raw splice answered the shell's own syntax error, exit
+     * 2, the child never running), and the child answers its verdict
+     * with the flag applied (php's own -d parser keeps the value's
+     * pre-space run — the engine's semantics, never the shell's).
+     */
+    public function testTheSpawnOwnerEscapesItsIniFlagsAtTheExecBoundary()
+    {
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the escaped-flag leg cannot run (the probe rides a spawned engine).');
+        }
+
+        $poison = 'wpct probe; $(echo pwned) & |';
+        $spawned = $this->spawnScannerChild(
+            'require %s; echo "flag-token=", ini_get("user_agent"), "\n";',
+            array( 'user_agent=' . $poison )
+        );
+
+        $this->assertSame(0, $spawned['exit'], "The child runs with the metacharacter-bearing flag on its command line — one token at the exec boundary (red at HEAD: the shell's own syntax error, exit 2, no child): {$spawned['report']}");
+        $this->assertSame(
+            1,
+            preg_match('/^flag-token=wpct/m', $spawned['report']),
+            'The child answers its verdict line — the -r script itself ran, which the raw splice could never reach.'
+        );
+        $this->assertStringNotContainsString('pwned', $spawned['report'], 'The poison command substitution never executed — the shell read none of the flag as its own grammar.');
     }
 
     public function testScannerDoesNotBypassOnGenericProseWords()
