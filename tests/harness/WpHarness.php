@@ -956,6 +956,40 @@ final class WpHarness
     }
 
     /**
+     * Locks a staged directory and answers whether the permission
+     * bits actually deny THIS process an opendir() — the ONE
+     * lock+probe+restore choreography owner beside the probe core
+     * (glm24-9: the verdict-plus-chmod-back-plus-skip choreography
+     * was hand-copied at NINE sites over glm23-14's probe core, the
+     * restore mode already diverging — 0777 at the self-containment
+     * leg, 0755 everywhere else, neither deliberate). The restore is
+     * the probed directory's OWN captured pre-state (fileperms before
+     * the lock), the divergence closed by construction; a DENIED lock
+     * stays locked — it is the leg's own subject, restored by the
+     * leg's own finally — and the skip message and any skip-path
+     * release stay at the site (the canSpawnChildren shape: site
+     * messages, one owner).
+     *
+     * @param string $dir The staged directory to lock (chmod 0000) and probe.
+     * @return bool True when opendir() over the locked $dir is denied
+     *              (the lock standing); false with the pre-lock mode
+     *              restored when this process walks it open.
+     */
+    public static function lockForDenialProbe(string $dir): bool
+    {
+        $perms = fileperms($dir);
+        $pre_state = false === $perms ? 0755 : ($perms & 0777);
+        chmod($dir, 0000);
+        if (self::canDenyDirectoryOpen($dir)) {
+            return true;
+        }
+
+        chmod($dir, $pre_state);
+
+        return false;
+    }
+
+    /**
      * Whether this host's platform is the POSIX one — the ONE owner of
      * the platform-separator premise (hoisted at its THIRD consumer,
      * OCR round 23: t31-ocr22-2 established the repo's first platform

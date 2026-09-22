@@ -3225,12 +3225,12 @@ FIXTURE;
             file_put_contents($scratch . '/Root.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\ninterface Root\n{\n}\n"),
             "staging: the legal shared source must land at {$scratch}/Root.php — every other verdict the walk owns must stay green so the fence's is the only one it can reach."
         );
-        chmod($scratch . '/locked', 0000);
         // The unlistable-shape probe (the t31-ocr4-1 root doctrine): a
         // host whose process opens chmod-0000 directories cannot
         // construct the shape — skip visibly, never a vacuous green.
-        if (! WpHarness::canDenyDirectoryOpen($scratch . '/locked')) {
-            chmod($scratch . '/locked', 0755);
+        // glm24-9: the lock+probe+restore choreography rides the ONE
+        // owner (the restore the probed shape's own pre-state).
+        if (! WpHarness::lockForDenialProbe($scratch . '/locked')) {
             WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
         }
@@ -3413,9 +3413,10 @@ FIXTURE;
         $stage = $scratch . '/dist/.stage-example-connector-' . getmypid();
         mkdir($stage . '/locked/inner', 0755, true);
         file_put_contents($stage . '/locked/inner/orphan.txt', 'a crashed run\'s scratch');
-        chmod($stage . '/locked', 0000);
-        if (! WpHarness::canDenyDirectoryOpen($stage . '/locked')) {
-            chmod($stage . '/locked', 0755);
+        // glm24-9: the probe choreography rides the ONE owner — the
+        // lock, the verdict, and the pre-state restore (the capability
+        // signal's own shape, the skip naming the site's subject).
+        if (! WpHarness::lockForDenialProbe($stage . '/locked')) {
             WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the teardown-hostile stage tree is unconstructible here.');
         }
@@ -6081,9 +6082,9 @@ FIXTURE;
         file_put_contents($scratch . '/work/plain.txt', 'extracted bytes');
         mkdir($scratch . '/work/locked/inner', 0755, true);
         file_put_contents($scratch . '/work/locked/inner/x.txt', 'bytes');
-        chmod($scratch . '/work/locked', 0000);
-        if (! WpHarness::canDenyDirectoryOpen($scratch . '/work/locked')) {
-            chmod($scratch . '/work/locked', 0755);
+        // glm24-9: the lock+probe+restore choreography rides the ONE
+        // owner (the skip naming this site's own subject below).
+        if (! WpHarness::lockForDenialProbe($scratch . '/work/locked')) {
             WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the walk-hostile tree is unconstructible here.');
         }
@@ -6279,12 +6280,12 @@ FIXTURE;
         file_put_contents($scratch . '/tree/open/x.txt', 'bytes');
         mkdir($scratch . '/tree/locked/inner', 0755, true);
         file_put_contents($scratch . '/tree/locked/inner/y.txt', 'bytes');
-        chmod($scratch . '/tree/locked', 0000);
         // The unlistable-shape probe (the t31-ocr4-1 root doctrine):
         // a host whose process opens chmod-0000 directories cannot
         // construct the shape — skip visibly, never a vacuous green.
-        if (! WpHarness::canDenyDirectoryOpen($scratch . '/tree/locked')) {
-            chmod($scratch . '/tree/locked', 0755);
+        // glm24-9: the choreography rides the ONE owner, the restore
+        // the probed shape's own pre-state.
+        if (! WpHarness::lockForDenialProbe($scratch . '/tree/locked')) {
             WpHarness::releaseScratch($scratch);
             $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
         }

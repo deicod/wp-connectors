@@ -68,13 +68,15 @@ final class SelfContainmentLoopWritesTest extends TestCase
         $locked = $this->root . '/locked';
         mkdir($locked . '/inner', 0777, true);
         file_put_contents($locked . '/inner/deep.php', "<?php\n");
-        chmod($locked, 0000);
-
-        if (! WpHarness::canDenyDirectoryOpen($locked)) {
-            chmod($locked, 0777);
-            @unlink($locked . '/inner/deep.php');
-            @rmdir($locked . '/inner');
-            @rmdir($locked);
+        /*
+         * glm24-9: the lock+probe+restore choreography rides the ONE
+         * owner — the restore is the probed shape's OWN pre-state
+         * (0777 here, 0755 at the siblings: the divergence the
+         * hand-copied choreography had already grown, closed by
+         * construction), the skip-path cleanup staying at the site.
+         */
+        if (! WpHarness::lockForDenialProbe($locked)) {
+            WpHarness::releaseScratch($locked);
             $this->markTestSkipped('This host opens chmod-000 directories; the abort shape is unreachable here.');
         }
 

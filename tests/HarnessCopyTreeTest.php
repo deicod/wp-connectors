@@ -2031,7 +2031,6 @@ final class HarnessCopyTreeTest extends TestCase
             $this->stage($from . '/open/x.txt', 'bytes');
             mkdir($from . '/locked/inner', 0755, true);
             $this->stage($from . '/locked/inner/y.txt', 'bytes');
-            chmod($from . '/locked', 0000);
             // The unlistable-shape probe (the t31-ocr4-1 root doctrine):
             // a host whose process opens chmod-0000 directories cannot
             // construct the shape — skip visibly, never a vacuous green.
@@ -2040,8 +2039,10 @@ final class HarnessCopyTreeTest extends TestCase
             // releaseScratch() once sat beside the skip with the tree
             // planted OUTSIDE the try — the skip's throw and every
             // staging assert before it leaked the half-built scratch.
-            if (! WpHarness::canDenyDirectoryOpen($from . '/locked')) {
-                chmod($from . '/locked', 0755);
+            // glm24-9: the lock+probe+restore choreography rides the
+            // ONE owner — the skip-path restore already done, the
+            // finally's release walking whatever mode it finds.
+            if (! WpHarness::lockForDenialProbe($from . '/locked')) {
                 $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the mid-tree unlistable shape is unconstructible here.');
             }
 
@@ -2623,7 +2624,6 @@ final class HarnessCopyTreeTest extends TestCase
             // failed mkdir fails as staging, never as the SAPI pin's
             // verdict.
             $this->assertTrue(mkdir($locked, 0755, true), 'staging: the locked tree must create — a staging failure fails as staging, never as the SAPI pin\'s verdict.');
-            chmod($locked, 0000);
             /*
              * The unlistable-shape probe (the t31-ocr4-1 root
              * doctrine, answered parent-side for the child — exec
@@ -2631,10 +2631,10 @@ final class HarnessCopyTreeTest extends TestCase
              * process): a host whose process OPENS chmod-0000
              * directories cannot construct the refusal the asserted
              * diagnostic names — skip visibly, never a topology
-             * failure wearing the guard's verdict.
+             * failure wearing the guard's verdict. glm24-9: the
+             * lock+probe+restore choreography rides the ONE owner.
              */
-            if (! WpHarness::canDenyDirectoryOpen($locked)) {
-                chmod($locked, 0755);
+            if (! WpHarness::lockForDenialProbe($locked)) {
                 $this->markTestSkipped('This host opens chmod-0000 directories (uid 0 — t31-ocr4-1); the child\'s deterministic release refusal is unconstructible here, and the destructive-capacity \'/\' spelling the leg once rode is retired (t31-ocr65-3) — never fired at the root.');
             }
             $this->stage($child, '<?php

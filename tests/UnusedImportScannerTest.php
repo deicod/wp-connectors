@@ -1123,13 +1123,14 @@ FIXTURE
         $gateScript = realpath(__DIR__ . '/../bin/check-conventions.php');
         $this->assertNotFalse($gateScript, 'The conventions-gate path must resolve before the child embed — a realpath() false is an environment problem, never the gate defect the child would fatal as.');
 
-        $this->assertTrue(chmod($this->root . '/locked', 0000), 'staging: the lock must take — a chmod failure is the probe\'s own premise gone silent, never an environment verdict.');
         // The permission-denial probe (the capability this leg
         // premises, in the lint gate's own shape): a process the
         // permissions cannot deny can never drive the abort — skip,
-        // naming the premise, never a vacuous green.
-        if (! WpHarness::canDenyDirectoryOpen($this->root . '/locked')) {
-            chmod($this->root . '/locked', 0755);
+        // naming the premise, never a vacuous green. glm24-9: the
+        // lock+probe+restore choreography rides the ONE owner (a
+        // failed chmod answers the probe honestly — the directory
+        // stays openable, the skip fires).
+        if (! WpHarness::lockForDenialProbe($this->root . '/locked')) {
             $this->markTestSkipped('This process walks a chmod-0000 directory open (permissions cannot deny it — root-shaped), so the mid-walk abort is unconstructible here.');
         }
 
@@ -1198,13 +1199,13 @@ FIXTURE
          * a silent chmod failure is the probe's premise gone quiet.
          */
         $this->assertTrue(mkdir($locked, 0755, true), 'staging: the locked root must create — a staging failure fails as staging, never as the refusal verdict (the vacuous channel: opendir() reads false over a nonexistent root too).');
-        $this->assertTrue(chmod($locked, 0000), 'staging: the lock must take — a chmod failure is the probe\'s own premise gone silent, never an environment verdict.');
         // The permission-denial probe (the capability this leg
         // premises, the mid-walk leg's own shape): a process the
         // permissions cannot deny can never drive the constructor's
         // refusal — skip, naming the premise, never a vacuous green.
-        if (! WpHarness::canDenyDirectoryOpen($locked)) {
-            chmod($locked, 0755);
+        // glm24-9: the lock+probe+restore choreography rides the ONE
+        // owner (the chmod's failure the probe's own honest answer).
+        if (! WpHarness::lockForDenialProbe($locked)) {
             $this->markTestSkipped('This process opens a chmod-0000 directory (permissions cannot deny it — root-shaped), so the constructor refusal is unconstructible here.');
         }
 
