@@ -6,6 +6,125 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 23)
+
+Ninth claude-glm pass: 15 findings (13 CONFIRMED, 2 PLAUSIBLE
+test-hygiene), all fifteen accepted by driver adjudication. Fifteen
+numbered commits t31-glm23-1..15, the full offline check green after
+every commit, no push. The round's shape: the transient seat's
+core-parity surface completed (the two-row TTL mechanics with the live
+ZaiDiscoveryCache caller, the pre_set/set_transient filter family, the
+seeded-row visibility, the settings-updated pass-back merge, and the
+head-trio owner beside the option twins); the scanner marker
+boundary's extension split (the markup glue kept, the non-markup
+laundering refused, the doctrine recorded) with the markup class
+unified one member further; the zero-port class's last split closed at
+its own loose pin; and the test-hygiene cluster — the splice-pin's
+real red with round 22's exit-2 claim falsified, the probe's
+try/finally, two portable-spelling legs, and three hoists over the
+recorded threshold. Suite 1865 → 1871 tests, 47917 → 47978
+assertions, 3 skipped unchanged (every delta measured from output).
+
+- **set_transient() refreshes the timeout row over an unchanged
+  re-save — core's two-row TTL mechanics (t31-glm23-1, bug:low;
+  tests/harness/wp-stubs.php)** — core's update branch refreshes the
+  '_transient_timeout_<name>' row ahead of the value row's own
+  update_option() (option.php:1562-1571), so an unchanged re-save
+  never refreshing expires_at left an expired-but-unread row
+  permanently dead and degraded the live ZaiDiscoveryCache re-seed to
+  cache misses after the first 12h window; the refresh rides ahead of
+  the compare (the unchanged false and zero hooks untouched), a
+  zero-expiration re-save leaving the standing timeout alone.
+- **set_transient() answers core's pre_set/set_transient filter family
+  (t31-glm23-2, bug:low; tests/harness/wp-stubs.php)** — the seat
+  dropped the whole family: pre_set_transient_<name> at the head (the
+  rewritten value flowing to storage and compare) with
+  expiration_of_transient_<name> beside it, and the completion
+  actions set_transient_<name>/set_transient firing over a completed
+  save alone (core's `if ( $result )` — the unchanged re-save fires
+  neither), all at the pin's own arities.
+- **A seeded _transient_ option row is visible to set_transient()
+  (t31-glm23-3, bug:low; tests/harness/wp-stubs.php)** — core's
+  add-vs-update predicate is get_option-shaped over the option row, so
+  a seed answers the UPDATE family with its own value as the old and
+  keeps its home current through the save, where the harness fired the
+  ADD family over the standing seed and left the stores divergent.
+- **get_settings_errors() merges the settings-updated pass-back
+  transient (t31-glm23-4, bug:low; tests/harness/wp-stubs.php)** —
+  core merges the rows options.php parked in the 'settings_errors'
+  transient over a settings-updated request (template.php:1928-1931)
+  and consumes it exactly once; the harness answered in-process rows
+  alone over the very request shape the pass-back exists for, the
+  $hide_on_update head still answering first.
+- **The transient head trio rides ONE owner with the option twins
+  (t31-glm23-5, test-hygiene:medium; tests/harness/wp-stubs.php)** —
+  the hand-copied clone-at-head (three seats) and glm17-8 two-arm
+  compare (two seats) close into wp_connectors_option_head_clone() and
+  wp_connectors_value_unchanged(); verdict-neutral, one mutation
+  flipping every seat's pins at once.
+- **The glue-broadened <!-- marker boundary is the markup family's
+  alone — the non-markup laundering closed (t31-glm23-6, bug:high,
+  security; bin/lib/secret-scanner.php)** —
+  `api_key="<live-key>"<!-- secrets:allow -->` answered ZERO findings
+  in a .env (and the quote-glued shape in a .json) while the unmarked
+  control flagged; the grammar is extension-aware — the markup family
+  (.html/.svg/.xml/.md) keeps the glued class, every non-markup
+  extension the line-comment boundary for the '<!--' form, the spaced
+  spelling exempting everywhere it did.
+- **The markup marker arm's left boundary admits direct text adjacency
+  (t31-glm23-7, bug:low; bin/lib/secret-scanner.php)** — the premise a
+  comment follows its element with no separator holds for text content
+  too; the class is unified for the family (text-glued markers
+  exempt), the line-comment spellings keeping the whitespace guard in
+  both families.
+- **The zero-valued port class answers ONE range sentence
+  (t31-glm23-8, bug:low; shared/src/Http/Url.php)** — ':0/' through
+  ':00000/' answered the raw screen's short sentence while the
+  parse-false spellings (':000000/' and up) answered the entry
+  screen's long one, masked by glm22-2's substring pin; the < 1 half
+  answers the ONE class sentence (a shared const), the over-range
+  class keeping the long sentence and the in-range zeros their live
+  remediation, the test pinning the full sentence.
+- **The raw-splice mutation driver pins the child-side evidence —
+  round 22's exit-2 claim corrected (t31-glm23-9, test-hygiene:medium;
+  tests/SecureFixturesTest.php)** — at the raw splice of the
+  INI-quoted flag the shell passes the token whole, php RUNS (exit 0)
+  with its own INI diagnostic printed and the value arriving mangled,
+  so only the anchored needle went red; the mutation driver rides the
+  test, pinning the falsified premise and the flag-token line the
+  needle actually distinguishes.
+- **The scan-perm capability probe stages inside its own try/finally
+  (t31-glm23-10, test-hygiene:medium; tests/SecureFixturesTest.php)**
+  — a false staging answer once leaked the /wpct-scan-perm-<uniqid>
+  tree per failed run, possibly mode 0000; releaseScratch rides the
+  finally with the restore kept ahead of it.
+- **The GPC lint leg binds the resolved temp prefix and asserts the
+  relative root fragment (t31-glm23-11, test-hygiene:medium;
+  tests/BuildSeamPropertyTest.php)** — a symlinked temp host's child
+  FAIL line names the resolved prefix, so the unresolved bind red over
+  a path difference that is not the subject.
+- **The scan-fence finding needle composes the separator
+  (t31-glm23-12, test-hygiene:medium; tests/SecureFixturesTest.php)**
+  — the label is the iterator's host-joined pathname; the composed
+  spelling matches on both separator vocabularies.
+- **The lint root set rides ONE owner (t31-glm23-13,
+  test-hygiene:medium; bin/lint-php.php, bin/lib/plugin-tools.php,
+  tests)** — wp_connectors_lint_roots() serves the walk and all five
+  staged legs (the trailing-separator patch retargeting the owner's
+  line with its exactly-once pin), a structural pin owning the
+  consult; a fifth root or a rename changes one site.
+- **WpHarness::canDenyDirectoryOpen() owns the opendir capability
+  probe (t31-glm23-14, test-hygiene:medium; tests/harness and seven
+  test files)** — the finding's five inline spellings swept with every
+  same-shape sibling (twelve sites total), each keeping its own
+  staging, restore, and skip message; runningAsRootRunner()'s
+  comment-maintained cross-reference is structural now.
+- **The GPC lint leg's green run and driven re-run share ONE exec
+  command (t31-glm23-15, test-hygiene:medium;
+  tests/BuildSeamPropertyTest.php)** — the verbatim re-spelling once
+  let a later edit leave the re-run spawning a stale child, a false
+  verdict on the leg whose purpose is proving the refusal.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 22)
 
 Eighth claude-glm pass: 15 findings, #1-#9 accepted by driver
