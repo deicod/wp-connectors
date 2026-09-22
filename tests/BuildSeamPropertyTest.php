@@ -1661,7 +1661,21 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
          * the walk's charge — and the summary line is pinned whole:
          * the two staged sources alone, no failures, no refusals.
          */
-        $gpcLintScratch = sys_get_temp_dir() . '/wpct-gpc-lint-' . uniqid('', true);
+        /*
+         * glm23-11: the scratch rides the RESOLVED temp dir and the
+         * missing-root needle the RELATIVE spelling — the driven leg
+         * once bound the UNRESOLVED sys_get_temp_dir() prefix, and on
+         * a symlinked temp host (/var/folders → /private/var/...) the
+         * child's __DIR__-derived FAIL line names the RESOLVED
+         * prefix, so the assertion red over a path difference that is
+         * not the subject (the sibling scanner legs' relative-fragment
+         * idiom). realpath() keeps both spellings byte-identical on
+         * POSIX hosts — construction-evident: the staged prefix and
+         * the child's own derivation agree by construction either way.
+         */
+        $gpcLintTempBase = realpath(sys_get_temp_dir());
+        $this->assertNotFalse($gpcLintTempBase, 'staging: the temp dir must resolve before the GPC lint leg stages — an environment problem, never the guard verdict.');
+        $gpcLintScratch = $gpcLintTempBase . '/wpct-gpc-lint-' . uniqid('', true);
         try {
             $this->assertTrue(mkdir($gpcLintScratch . '/bin/lib', 0755, true), "staging: {$gpcLintScratch}/bin/lib must create — a staging failure fails as staging, never as the GPC lint verdict.");
             $this->assertTrue(copy($resolvedEntryScripts['/../bin/lint-php.php'], $gpcLintScratch . '/bin/lint-php.php'), "staging: the lint tool must copy into {$gpcLintScratch}/bin — a staging failure fails as staging, never as the GPC lint verdict.");
@@ -1689,7 +1703,7 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertSame(1, $gpcMissingRootExit, 'A declared root that names nothing answers the RED exit (red at HEAD: exit 0, the silent skip) — the walk refuses to certify a tree it did not walk.');
         $missingRootReport = implode("\n", $gpcMissingRootOutput);
         $this->assertStringContainsString('declared root not found', $missingRootReport, 'The refusal names the missing-root class in the walk\'s own FAIL vocabulary.');
-        $this->assertStringContainsString($gpcLintScratch . '/bin/../shared', $missingRootReport, 'The refusal names the absent root itself — the walk\'s own spelling of it (bin/../shared, never the normalized path).');
+        $this->assertStringContainsString('bin/../shared', $missingRootReport, 'The refusal names the absent root itself — the walk\'s own spelling of it (bin/../shared, the PORTABLE relative fragment, never the host-resolved absolute prefix a symlinked temp dir would rewrite — glm23-11).');
         $this->assertStringContainsString('1 walk refusal(s)', $missingRootReport, 'The refusal rides the summary count beside the still-green parse of the walked roots — the exit\'s red source named.');
 
         /*
