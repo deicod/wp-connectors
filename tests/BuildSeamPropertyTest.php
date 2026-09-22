@@ -1638,7 +1638,26 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertSame(2, $forgedExit, 'The forged-name refusal still exits 2.');
         $this->assertStringNotContainsString("\ninspect: totally-legit", implode("\n", $forgedOutput), 'A newline in the caller path cannot START a verdict line — the guard line rides the printable seam.');
 
-        exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($resolvedEntryScripts['/../bin/lint-php.php']) . ' 2>&1', $gpcLintOutput, $gpcLintExit);
+        /*
+         * glm21-14: the GPC lint leg once spawned the FULL serial
+         * php -l walk over the real repository (6.4 s measured, ~18%
+         * of the suite's wall clock) for a tree-independent subject —
+         * the guard fires under variables_order=GPC wherever the
+         * script lives. The leg stages bin/lint-php.php +
+         * bin/lib/plugin-tools.php into a scratch tree (the
+         * ToolchainSmokeTest pattern): the walk covers the staged bin
+         * alone (the two staged sources its own lint charge), the
+         * same guard proof at ~0.1 s.
+         */
+        $gpcLintScratch = sys_get_temp_dir() . '/wpct-gpc-lint-' . uniqid('', true);
+        try {
+            $this->assertTrue(mkdir($gpcLintScratch . '/bin/lib', 0755, true), "staging: {$gpcLintScratch}/bin/lib must create — a staging failure fails as staging, never as the GPC lint verdict.");
+            $this->assertTrue(copy($resolvedEntryScripts['/../bin/lint-php.php'], $gpcLintScratch . '/bin/lint-php.php'), "staging: the lint tool must copy into {$gpcLintScratch}/bin — a staging failure fails as staging, never as the GPC lint verdict.");
+            $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $gpcLintScratch . '/bin/lib/plugin-tools.php'), "staging: the tool library must copy into {$gpcLintScratch}/bin/lib — a staging failure fails as staging, never as the GPC lint verdict.");
+            exec(escapeshellarg(PHP_BINARY) . ' -d variables_order=GPC ' . escapeshellarg($gpcLintScratch . '/bin/lint-php.php') . ' 2>&1', $gpcLintOutput, $gpcLintExit);
+        } finally {
+            WpHarness::releaseScratch($gpcLintScratch);
+        }
         $this->assertSame(0, $gpcLintExit);
         $this->assertStringContainsString('file(s) checked', implode("\n", $gpcLintOutput), 'The lint still runs its walk under GPC.');
 
