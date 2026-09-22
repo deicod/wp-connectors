@@ -658,8 +658,31 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $output = array();
         $exit = 1;
         exec($command . ' 2>&1', $output, $exit);
+        $report = implode("\n", $output);
 
-        return array( 'report' => implode("\n", $output), 'exit' => $exit );
+        /*
+         * glm20-3/glm21-10: the warnings-to-failures regime RESTORED at
+         * the spawn boundary — in-process, PHPUnit converts every
+         * Warning/Notice/Deprecation to a failure; spawned, an engine
+         * diagnostic printed into the child's merged report passed
+         * UNASSERTED beside green verdict lines. glm20-3 pinned the
+         * negative needle at the whale leg alone — ONE of the six
+         * consumers, the other clean-exit legs running uncovered; the
+         * needle rides the OWNER now: no PHP diagnostic line may
+         * appear in the child's report (both CLI spellings covered —
+         * this host prints 'Warning:', others prefix 'PHP '). The
+         * timeout-bound leg (exit 124) is excepted: a killed child's
+         * partial report is the bound's own subject, never the
+         * cleanliness pin's. The mutant assert drives the needle's own
+         * catch at every spawn.
+         */
+        $diagnostics_needle = '/^(?:PHP )?(?:Warning|Notice|Deprecated):/m';
+        if (124 !== $exit) {
+            $this->assertSame(0, preg_match($diagnostics_needle, $report), "The spawned engine runs clean — no engine Warning/Notice/Deprecation crosses the boundary unasserted: {$report}");
+        }
+        $this->assertSame(1, preg_match($diagnostics_needle, "Warning: Undefined variable \$key in Command line code on line 1"), 'The diagnostics needle catches an injected child-side warning — the regime the spawn boundary drops, restored at the owner.');
+
+        return array( 'report' => $report, 'exit' => $exit );
     }
 
     /**
@@ -1375,21 +1398,9 @@ CHILD;
 
         $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
         $this->assertSame(0, $exit, "The 23k-pair scan answers verdicts in the spawned engine, never a fatal: {$report}");
-        /*
-         * glm20-3: the spawn move also dropped PHPUnit's warnings-to-
-         * failures regime at the boundary — a whale-scale-only
-         * Warning/Notice/Deprecation regression in the child printed
-         * into $report unasserted (in-process, PHPUnit converts each
-         * to a failure; spawned, the verdict lines still pinned green
-         * beside the engine's own complaint). The negative needle
-         * restores the regime: no PHP diagnostic line may appear in
-         * the child's report (both CLI spellings covered — this host
-         * prints 'Warning:', others prefix 'PHP '). The mutant pin
-         * below drives the needle's own catch.
-         */
-        $diagnosticsNeedle = '/^(?:PHP )?(?:Warning|Notice|Deprecated):/m';
-        $this->assertSame(0, preg_match($diagnosticsNeedle, $report), "The spawned scan runs clean — no engine Warning/Notice/Deprecation crosses the boundary unasserted: {$report}");
-        $this->assertSame(1, preg_match($diagnosticsNeedle, "Warning: Undefined variable \$key in Command line code on line 1"), 'The diagnostics needle catches an injected child-side warning — the regime the spawn move dropped, restored.');
+        // glm20-3's diagnostics needle rides the spawn OWNER since
+        // glm21-10 — every clean-exit leg asserts the child's report
+        // carries no engine diagnostic line, this leg included.
         /*
          * glm20-2: the verdict needles are ANCHORED full-line matches —
          * the spawn move left substring pins at the child boundary, so
