@@ -1175,6 +1175,51 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(2, get_option('glm19_add_obj')->v, 'The row carries the mutated value.');
     }
 
+    public function testANestedMutationReachesNothingTheStoredRowIsSerializedEqual()
+    {
+        /*
+         * glm19-5: the head clone is SHALLOW (core's own spelling at
+         * both heads) but core's row is serialized BYTES at the
+         * database layer — the stored copy shares NO nested reference
+         * with the caller. The harness's shallow clone kept nested
+         * objects shared: a nested mutation reached the stored row,
+         * the re-save compared serialize-equal, and the save answered
+         * false with ZERO hooks where core's serialized row completes
+         * with the full family (driven).
+         */
+        $obj = new stdClass();
+        $obj->nested = new stdClass();
+        $obj->nested->v = 1;
+        $this->assertTrue(update_option('glm19_nested_obj', $obj), 'staging: the first save persists the row.');
+
+        $fired = array();
+        add_action('update_option', static function () use (&$fired) {
+            $fired[] = 'generic';
+        });
+        add_action('update_option_glm19_nested_obj', static function () use (&$fired) {
+            $fired[] = 'specific';
+        });
+        add_action('updated_option', static function () use (&$fired) {
+            $fired[] = 'updated';
+        });
+
+        $obj->nested->v = 2;
+        $this->assertTrue(update_option('glm19_nested_obj', $obj), 'The nested-mutation re-save completes — the stored row is serialized-equal, never shared (red at HEAD: the shallow clone kept the nested object shared — serialize-equal, false, zero hooks).');
+        $this->assertSame(array( 'generic', 'specific', 'updated' ), $fired, 'The full hook family fires for the re-save (red at HEAD: zero hooks).');
+        $this->assertSame(2, get_option('glm19_nested_obj')->nested->v, 'The row carries the mutated value.');
+
+        // The stored row is the harness's own copy: the caller's later
+        // nested mutations reach nothing, and the UNCHANGED re-save
+        // keeps core's silent false over the detached pair.
+        $obj->nested->v = 3;
+        $this->assertSame(2, get_option('glm19_nested_obj')->nested->v, 'The stored nested object is detached — the caller\'s later mutations reach nothing.');
+        $this->assertTrue(update_option('glm19_nested_obj', $obj), 'The now-differing re-save completes — serialized-equality over detached copies decides.');
+        $this->assertSame(3, get_option('glm19_nested_obj')->nested->v);
+        $fired = array();
+        $this->assertFalse(update_option('glm19_nested_obj', $obj), 'The UNCHANGED re-save keeps core\'s silent false.');
+        $this->assertSame(array(), $fired, 'No hook fires for the unchanged re-save.');
+    }
+
     public function testTheSingleHeadGuardJudgesTheRawValueNeverAPreCast()
     {
         /*

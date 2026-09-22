@@ -227,6 +227,27 @@ function get_option($option, $default = false)
     return $default;
 }
 
+/**
+ * The STORED copy of an option value — core's own storage shape
+ * (glm19-5).
+ *
+ * Core's head clone (option.php:882-884/:1108-1110, pinned 7.1.1) is
+ * SHALLOW, but core's row is serialized BYTES at the database layer:
+ * the stored value shares NO object reference with the caller, nested
+ * objects included. The harness has no database, so the serialization
+ * detachment rides the WRITE itself — unserialize(serialize()), the
+ * stored row serialized-equal to what core's maybe_serialize() would
+ * persist, cheap at stub scale. Scalars are immutable in PHP and ride
+ * through untouched.
+ *
+ * @param mixed $value The sanitized value about to be stored.
+ * @return mixed The detached stored copy.
+ */
+function wp_connectors_option_stored_copy($value)
+{
+    return (is_object($value) || is_array($value)) ? unserialize(serialize($value)) : $value;
+}
+
 function update_option($option, $value, $autoload = null)
 {
     /*
@@ -315,7 +336,11 @@ function update_option($option, $value, $autoload = null)
      */
     do_action('update_option', $option, $old, $value);
 
-    WpHarness::$options[ $option ] = $value;
+    // glm19-5: the write stores the SERIALIZED-EQUAL copy — core's
+    // row is serialized bytes, so no nested reference survives the
+    // write (the hooks above observe the caller-shaped $value, exactly
+    // core's pre-INSERT vantage).
+    WpHarness::$options[ $option ] = wp_connectors_option_stored_copy($value);
     if (null !== $autoload) {
         WpHarness::$option_autoload[ $option ] = (bool) $autoload;
     } elseif (! array_key_exists($option, WpHarness::$option_autoload)) {
@@ -397,7 +422,10 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
      * natural delegation (never a forced double call), and every
      * subsequent save exactly once.
      */
-    WpHarness::$options[ $option ] = $value;
+    // glm19-5: the INSERT stores the SERIALIZED-EQUAL copy, the same
+    // detached-row shape update_option()'s write owns — storage
+    // semantics identical by entry point.
+    WpHarness::$options[ $option ] = wp_connectors_option_stored_copy($value);
     WpHarness::$option_autoload[ $option ] = null === $autoload ? true : (bool) $autoload;
 
     // Core semantics: adding an option fires the add-option hook family —
