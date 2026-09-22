@@ -1136,6 +1136,37 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1700003600, wp_next_scheduled('glm16_victim'), 'The handler\'s reschedule stands for the next pass.');
     }
 
+    public function testAMidWalkCancelledRecurringMemberStillReschedulesCoreShape()
+    {
+        /*
+         * glm17-7: the recurring reschedule gated on the live
+         * re-location — a handler that unscheduled a not-yet-fired
+         * recurring member mid-walk left the re-arm dead (nothing to
+         * re-locate), a permanently cancelled recurrence where core's
+         * wp-cron.php reschedules UNCONDITIONALLY from the captured
+         * copy before it even attempts the unschedule: the
+         * cancellation stops the FIRE, never the RESCHEDULE (driven
+         * red at HEAD: wp_next_scheduled answered false after the
+         * pass).
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm17_recur', static function () use (&$fires) {
+            ++$fires;
+        });
+        add_action('glm17_cancel_actor', static function () {
+            // Fires first (earlier due): cancels the recurring victim.
+            wp_unschedule_event(1700000000, 'glm17_recur');
+        });
+        wp_schedule_single_event(1700000000 - 60, 'glm17_cancel_actor');
+        wp_schedule_event(1700000000, 'hourly', 'glm17_recur');
+
+        $this->assertSame(2, WpHarness::runDueEvents(), 'Both snapshot members fire — the actor and the cancelled victim (glm16-8\'s own doctrine).');
+        $this->assertSame(1, $fires);
+        $this->assertSame(1700003600, wp_next_scheduled('glm17_recur'), 'The mid-walk-cancelled recurring member RESCHEDULED from the captured copy — the cancellation stopped the fire-target row, never the recurrence (red at HEAD: false, the re-arm gated on the failed re-location).');
+    }
+
     public function testEqualValuedObjectArgsAreOneCronEventCoreDigest()
     {
         /*

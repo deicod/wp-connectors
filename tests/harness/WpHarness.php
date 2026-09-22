@@ -428,9 +428,19 @@ final class WpHarness
      * glm15-4 docblock once claimed as core's snapshot semantics was
      * wrong: core defers only entries scheduled mid-run, which never
      * entered the snapshot). The live list is consulted only to REMOVE
-     * the fired row and re-arm the recurrence — a handler that already
-     * unscheduled the member left nothing to remove, and the fire rides
-     * the snapshot's own args.
+     * the fired row — a handler that already unscheduled the member
+     * left nothing to remove, and the fire rides the snapshot's own
+     * args.
+     *
+     * glm17-7: the recurring RESCHEDULE rides the captured copy
+     * UNCONDITIONALLY too — core's wp-cron.php reschedules each due
+     * recurring member from its captured $v BEFORE it even attempts the
+     * unschedule, so a mid-walk cancellation stops the FIRE, never the
+     * RESCHEDULE. The re-arm once gated on the live re-location, which
+     * a handler's unschedule had already failed — leaving the member
+     * rescheduled only when nobody cancelled it, a permanently dead
+     * recurrence core keeps (driven: mid-walk-cancelled recurring
+     * member rescheduled).
      *
      * @return int Number of events fired.
      */
@@ -462,10 +472,10 @@ final class WpHarness
              * snapshotted — the live list is only the registry's own
              * bookkeeping (glm14-7's index-drift lesson: re-locate the
              * snapshot entry by its id, core's keyed-array identity, to
-             * REMOVE the fired row and re-arm the recurrence). A
-             * handler that already unscheduled the member left nothing
-             * to remove, and the fire still happens: core's wp_cron()
-             * never consults the live registry for permission.
+             * REMOVE the fired row). A handler that already
+             * unscheduled the member left nothing to remove, and the
+             * fire still happens: core's wp_cron() never consults the
+             * live registry for permission.
              */
             $live_index = false;
             foreach (self::$cron[ $hook ] ?? array() as $index => $live) {
@@ -481,7 +491,7 @@ final class WpHarness
                     unset(self::$cron[ $hook ]);
                 }
             }
-            if (false !== $live_index && isset($event['interval']) && (int) $event['interval'] > 0) {
+            if (isset($event['interval']) && (int) $event['interval'] > 0) {
                 /*
                  * glm15-5: core's wp_reschedule_event() GRID-ALIGNS the
                  * next due — now + (interval − ((now − ts) % interval)) —
@@ -493,6 +503,10 @@ final class WpHarness
                  * answers 1700003600, the drift spelling 1700004600).
                  * An on-time fire (ts === now) answers now + interval
                  * under both spellings — the grid term vanishes.
+                 *
+                 * glm17-7: UNCONDITIONAL, from the captured copy —
+                 * core's wp-cron.php reschedules before it unschedules,
+                 * so a mid-walk cancellation never gates the re-arm.
                  */
                 $now = self::now();
                 $interval = (int) $event['interval'];
