@@ -986,6 +986,27 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm26-1: delete_option()'s transient half gates on IDENTITY,
+     * never truthiness — '0' and '' are live transient names, and the
+     * `$transient &&` truthiness gates let their deletes answer the
+     * missing-row false over a live row: set_transient('0', 'v');
+     * delete_transient('0') answered false and get_transient() kept
+     * serving (driven red at HEAD — glm25-7's mirror broken over the
+     * falsy names, the PHP-truthiness class this loop has closed
+     * repeatedly).
+     */
+    public function testFalsyTransientNamesDeleteCleanly()
+    {
+        $this->assertTrue(set_transient('0', 'v'), 'staging: the \'0\'-named row saves.');
+        $this->assertTrue(set_transient('', 'e'), 'staging: the empty-named row saves.');
+
+        $this->assertTrue(delete_transient('0'), 'The \'0\'-named row deletes — the transient half compares identity, never truthiness (red at HEAD: the missing-row false over a live row).');
+        $this->assertFalse(get_transient('0'), 'The \'0\'-named row is gone (red at HEAD: still serving).');
+        $this->assertTrue(delete_transient(''), 'The empty-named row deletes identically — false !== \'\' is the only gate.');
+        $this->assertFalse(get_transient(''), 'The empty-named row is gone.');
+    }
+
+    /**
      * glm25-1: TTL (re)arming survives the stored-false row's MISSING
      * read — glm24-4's keep-guard keyed on $own_entry alone, but a
      * stored-false row answers $existing FALSE (the get_option-shaped

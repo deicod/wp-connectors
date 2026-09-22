@@ -497,9 +497,16 @@ function delete_option($option)
      * family rides the seat's standing no-such-row simplification
      * (nothing creates those rows).
      */
+    /*
+     * glm26-1: the transient half gates on IDENTITY, never truthiness
+     * — '0' and '' are live transient names, and the `$transient &&`
+     * truthiness gates let their deletes answer the missing-row false
+     * over a live row, the row surviving its own delete (driven; the
+     * PHP-truthiness class this loop has closed repeatedly).
+     */
     $transient = 0 === strpos($option, '_transient_') ? substr($option, strlen('_transient_')) : false;
     if (! array_key_exists($option, WpHarness::$options)
-        && ! ($transient && array_key_exists($transient, WpHarness::$transients))
+        && ! (false !== $transient && array_key_exists($transient, WpHarness::$transients))
     ) {
         // Core still runs the DELETE (and its caches) for a missing row;
         // record the ATTEMPT so tests can pin "no needless delete" call
@@ -508,7 +515,7 @@ function delete_option($option)
 
         return false;
     }
-    if ($transient) {
+    if (false !== $transient) {
         unset(WpHarness::$transients[ $transient ]);
     }
     unset(WpHarness::$options[ $option ], WpHarness::$option_autoload[ $option ]);
