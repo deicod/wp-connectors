@@ -107,17 +107,26 @@ function wp_connectors_strip_comments($source)
  * 'require ...;' written inside a quoted string or heredoc counted as
  * real code — a phantom assignment could satisfy (or poison) a variable
  * include's resolution and phantom includes were analyzed as
- * statements. This returns a copy of the SAME LENGTH where every byte
- * belonging to a string region — single/double-quoted literals, heredoc
- * and nowdoc bodies, {$...} interpolations inside them, and inline-HTML
- * regions (glm16-1: ?>-bounded spans and __halt_compiler() tails, both
- * T_INLINE_HTML — bytes the engine never parses as code, string data to
- * every consumer that must not honor comment-lookalike text) — is a
- * space. Real code keeps its bytes and its offsets, so matches found on
- * the masked copy slice the true statement text out of the original.
+ * statements. This returns a copy of the SAME LENGTH and the SAME LINE
+ * COUNT where every byte belonging to a string region —
+ * single/double-quoted literals, heredoc and nowdoc bodies, {$...}
+ * interpolations inside them, and inline-HTML regions (glm16-1:
+ * ?>-bounded spans and __halt_compiler() tails, both T_INLINE_HTML —
+ * bytes the engine never parses as code, string data to every consumer
+ * that must not honor comment-lookalike text) — is a space, except that
+ * a NEWLINE inside the region stays a newline (glm17-1: the blanking is
+ * LINE-PRESERVING — blanking interior newlines too left the masked view
+ * with FEWER lines than the source, so every line-indexed consumer
+ * misaligned past the first multi-line region and a code marker on a
+ * DIFFERENT line exempted a live key; explode("\n", $masked) answers
+ * one line per source line now, and no consumer of this view reads a
+ * newline as a code byte). Real code keeps its bytes and its offsets,
+ * so matches found on the masked copy slice the true statement text
+ * out of the original.
  *
  * @param string $code PHP source (comment-stripping optional).
- * @return string Same-length copy with string contents blanked.
+ * @return string Same-length, same-line-count copy with string
+ *                contents blanked.
  */
 function wp_connectors_mask_string_contents($code)
 {
@@ -126,17 +135,24 @@ function wp_connectors_mask_string_contents($code)
     $in_interpolated = false;
     $curly = 0;
 
+    // glm17-1: the ONE region-blank spelling — every byte but the line
+    // terminator becomes a space (never an inline str_repeat twin per
+    // site; the copies would drift back to newline-blanking).
+    $blank = static function (string $region): string {
+        return (string) preg_replace('/[^\n]/', ' ', $region);
+    };
+
     foreach (token_get_all($code) as $token) {
         $id = is_array($token) ? $token[0] : null;
         $text = is_array($token) ? $token[1] : $token;
 
         if (T_START_HEREDOC === $id) {
-            $masked .= str_repeat(' ', strlen($text));
+            $masked .= $blank($text);
             $in_heredoc = true;
             continue;
         }
         if (T_END_HEREDOC === $id) {
-            $masked .= str_repeat(' ', strlen($text));
+            $masked .= $blank($text);
             $in_heredoc = false;
             continue;
         }
@@ -154,9 +170,10 @@ function wp_connectors_mask_string_contents($code)
              * excluded is now unmatchable — the same "never an import"
              * verdict one screen earlier. The namespace ledger's own
              * inline-HTML blanking (t31-ocr4-9) blanks spaces here, a
-             * harmless no-op.
+             * harmless no-op. glm17-1: the blank keeps interior
+             * newlines like every other string region.
              */
-            $masked .= str_repeat(' ', strlen($text));
+            $masked .= $blank($text);
             continue;
         }
 
@@ -164,7 +181,7 @@ function wp_connectors_mask_string_contents($code)
 
         if (T_CURLY_OPEN === $id || T_DOLLAR_OPEN_CURLY_BRACES === $id) {
             ++$curly;
-            $masked .= str_repeat(' ', strlen($text));
+            $masked .= $blank($text);
             continue;
         }
         if ($curly > 0 && '{' === $token) {
@@ -176,7 +193,7 @@ function wp_connectors_mask_string_contents($code)
             // Simple literals anywhere; content chunks of heredocs and
             // interpolated strings (the quotes ride these tokens except
             // for the opening double quote of an interpolated string).
-            $masked .= str_repeat(' ', strlen($text));
+            $masked .= $blank($text);
             continue;
         }
         if ($in_string) {
@@ -185,7 +202,7 @@ function wp_connectors_mask_string_contents($code)
             if ($in_interpolated && 0 === $curly && '"' === $token) {
                 $in_interpolated = false;
             }
-            $masked .= str_repeat(' ', strlen($text));
+            $masked .= $blank($text);
             continue;
         }
         if ('"' === $token) {

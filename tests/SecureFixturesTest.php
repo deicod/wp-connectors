@@ -802,6 +802,46 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_scan_string("{$key} // secrets:allow", 'txt'));
     }
 
+    public function testTheMaskedViewKeepsLineAlignmentSoAMarkerExemptsOnlyItsOwnLine()
+    {
+        /*
+         * glm17-1: the glm16-1 mask ride was length-preserving but NOT
+         * line-preserving — newlines inside multi-line string regions
+         * blanked to spaces, so explode("\n", $masked) answered FEWER
+         * lines than the source and every line past the first
+         * multi-line region shifted UP into an earlier line's view: a
+         * code marker lines BELOW a live key landed on the key's own
+         * index and exempted it (driven red at HEAD: zero findings).
+         * The blanking keeps interior newlines now; the view lines map
+         * 1:1 onto the source lines and a marker exempts only ITS line.
+         */
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+
+        // The driven shape: a multi-line quoted interior (three
+        // swallowed newlines) above the key, a REAL code marker three
+        // lines below it — at HEAD the marker's view rode the key's
+        // index and the key laundered to zero findings.
+        $shifted = "<?php\n\$m = \"\na\nb\n\";\n\$k = '{$key}';\n\$a = 1;\n\$b = 1;\n\$c = 1; // secrets:allow\n";
+        $this->assertSame(
+            array( "shifted:6 {$expect}" ),
+            wp_connectors_scan_string($shifted, 'shifted'),
+            'A code marker three lines DOWN exempts nothing above it (red at HEAD: the collapsed view carried the marker onto the key\'s line — zero findings).'
+        );
+
+        // The control: a code-level marker still exempts ITS OWN line.
+        $this->assertSame(array(), wp_connectors_scan_string("\$v = '{$key}'; // secrets:allow", 'ownline'));
+
+        // And the alignment holds over the heredoc class too: the
+        // marker below a heredoc body never exempts the body's key.
+        $heredoc = "<?php\n\$p = <<<EOT\n{$key}\nEOT;\n\$z = 2; // secrets:allow\n";
+        $this->assertSame(
+            array( "hdshift:3 {$expect}" ),
+            wp_connectors_scan_string($heredoc, 'hdshift'),
+            'The heredoc body\'s interior newlines survive the blanking — the marker below exempts only its own line.'
+        );
+    }
+
     public function testADenseEntryOverTheTokenMemoryBoundAnswersAVerdictNeverAFatal()
     {
         /*

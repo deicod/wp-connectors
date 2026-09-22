@@ -244,6 +244,16 @@ function wp_connectors_scan_string($contents, $label)
      * and the fail-closed direction survives: an unterminated heredoc
      * blanks through EOF whatever the trailing byte.
      *
+     * glm17-1: the mask is LINE-PRESERVING (interior newlines stay
+     * newlines through the blanking), so the explode below answers one
+     * view line per source line and $views[$index] is the SAME line's
+     * code view — the mask once swallowed interior newlines into
+     * spaces, leaving fewer view lines than $lines, so every line past
+     * the first multi-line region shifted UP into an earlier line's
+     * view and a code marker lines BELOW a live key exempted it
+     * (driven: a multi-line string plus a marker three lines down
+     * scanned to zero findings).
+     *
      * A payload carrying no '<?' anywhere can lex no PHP tokens at all
      * (every open-tag spelling starts with those two bytes), so it
      * keeps the line-local tolerance arm instead — the pinned glm15-1
