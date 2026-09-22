@@ -200,24 +200,24 @@ function wp_connectors_scan_token_memory_headroom()
 }
 
 /**
- * The byte offset of an UNCLOSED embedded sample's open tag, or false
- * (glm18-1).
+ * The PHP sample REGIONS of a text-family payload (glm18-1/glm18-11).
  *
  * The open spellings are the engine's INI-independent ones — '<?=' and
  * '<?php' with core's own follower class ([ \t\r\n] or end of input; a
- * glued '<?phpecho' is inline HTML under the production-default INI, the
- * t31-ocr64-1 doctrine) — walked open-to-close in order; the first open
- * with no '?>' after it names a tail the engine lexes as CODE to EOF.
- * The unclosed-opener spellings this walk refuses stay the recorded
- * lexer-refused-opener INI corner (glm16-1's residual), never a new
- * class here.
+ * glued '<?phpecho' is inline HTML under the production-default INI,
+ * the t31-ocr64-1 doctrine) — walked open-to-close in order. Every
+ * matched pair is a region; an open with no '?>' after it names the
+ * unclosed TAIL (open→EOF) the engine lexes as code — the tail region
+ * glm18-1 routed onto the masked view. The INI-dependent spellings
+ * (a bare '<?', the glued opener) stay the recorded
+ * lexer-refused-opener corner, never a new class here.
  *
  * @param string $contents File contents.
- * @return int|false Byte offset of the unclosed open tag, or false when
- *                   every open closes.
+ * @return list<array{int, int}> The sorted inclusive [start, end] byte spans.
  */
-function wp_connectors_unclosed_php_sample_open($contents)
+function wp_connectors_php_sample_regions($contents)
 {
+    $regions = array();
     $at = 0;
     while (false !== ($open = strpos($contents, '<?', $at))) {
         $after = $open + 2;
@@ -238,12 +238,59 @@ function wp_connectors_unclosed_php_sample_open($contents)
         }
         $close = strpos($contents, '?>', $after);
         if (false === $close) {
-            return $open;
+            $regions[] = array( $open, strlen($contents) - 1 );
+            break;
         }
+        $regions[] = array( $open, $close + 1 );
         $at = $close + 2;
     }
 
-    return false;
+    return $regions;
+}
+
+/**
+ * One line's code view under PAIR-BOUNDED routing (glm18-11): the
+ * bytes inside a sample region read the token-masked view (string
+ * data blanked, the marker judge's one honest lens), the bytes
+ * outside keep the line-local arm — a prose marker beside a mentioned
+ * sample stays a real prose marker.
+ *
+ * The masked view is same-length by construction, so its bytes slice
+ * 1:1 against the line's.
+ *
+ * @param string                $line       One source line.
+ * @param int                   $line_start The line's byte offset in the payload.
+ * @param list<array{int, int}> $regions    Sorted inclusive sample spans.
+ * @param string                $masked     The payload's token-masked view.
+ * @return string The line's composed code view.
+ */
+function wp_connectors_sample_region_line_view($line, $line_start, array $regions, $masked)
+{
+    $len = strlen($line);
+    $view = '';
+    $cursor = 0;
+    foreach ($regions as $region) {
+        $start = $region[0] - $line_start;
+        if ($start >= $len) {
+            break; // The region begins on a later line.
+        }
+        $end = $region[1] - $line_start; // Inclusive, line-relative.
+        if ($end < $cursor) {
+            continue; // The region closed on an earlier line.
+        }
+        if ($start > $cursor) {
+            $view .= wp_connectors_line_without_string_literals((string) substr($line, $cursor, $start - $cursor));
+        }
+        $from = max($start, $cursor);
+        $through = min($end, $len - 1);
+        $view .= (string) substr($masked, $line_start + $from, $through - $from + 1);
+        $cursor = $through + 1;
+        if ($cursor >= $len) {
+            return $view;
+        }
+    }
+
+    return $view . wp_connectors_line_without_string_literals((string) substr($line, $cursor));
 }
 
 /**
@@ -401,6 +448,18 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * worst-case bound on a tokenized tail is the loud refusal,
      * glm17-2's own recorded 'no honest factor passes 1.4 MB while
      * refusing 2.4 MB' premise).
+     *
+     * glm18-11 completes the routing to PAIR-BOUNDED for the matched
+     * class too, closing the recorded-residual false positive: prose
+     * MERELY MENTIONING a complete '<?php … ?>' pair routed the WHOLE
+     * file onto the masked view, where the mention's surrounding prose
+     * blanked as inline HTML and a legitimately marked fixture's
+     * marker vanished (identical at base, pre-existing, unrecorded —
+     * the marked-fixture false positive survived for this spelling).
+     * The region walk (wp_connectors_php_sample_regions()) owns the
+     * routing for every text-family shape now: the sample regions —
+     * matched pairs AND the unclosed tail — ride the masked view, the
+     * bytes outside them keep the line-local arm.
      */
     $label_ext = strtolower((string) pathinfo($label, PATHINFO_EXTENSION));
     /*
@@ -417,23 +476,14 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
     $php_family = '' === $label_ext || 'php' === $label_ext || 'phtml' === $label_ext
         || ($named_target && wp_connectors_head_opens_php($contents));
     $has_php = false;
-    $tail_views = null;
-    $open_line = 0;
-    $open_prefix = 0;
+    $regions = null;
     if ($php_family) {
         $has_php = false !== strpos($contents, '<?');
-    } elseif (false !== ($sample_open = stripos($contents, '<?php'))
-        && false !== strpos($contents, '?>', $sample_open + 5)) {
-        $has_php = true;
-    } elseif (false !== ($sample_open = wp_connectors_unclosed_php_sample_open($contents))) {
-        $tail_bytes = strlen($contents) - $sample_open;
-        if ($tail_bytes * 98 > wp_connectors_scan_token_memory_headroom()) {
-            return array( sprintf('%s: over the secret-scan token-memory bound — the secret scan cannot run', $label) );
+    } else {
+        $regions = wp_connectors_php_sample_regions($contents);
+        if ($regions !== array()) {
+            $has_php = true;
         }
-        $tail_views = explode("\n", wp_connectors_mask_string_contents((string) substr($contents, $sample_open)));
-        $open_line = substr_count((string) substr($contents, 0, $sample_open), "\n");
-        $last_nl = strrpos((string) substr($contents, 0, $sample_open), "\n");
-        $open_prefix = false === $last_nl ? $sample_open : $sample_open - ($last_nl + 1);
     }
     if ($has_php) {
         /*
@@ -508,16 +558,23 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * doctrine that non-PHP payloads (.txt/.md fixtures) answer no
      * tokens and no behavior change. glm17-3 widens that arm to the
      * text-family shapes with no matched '<?php'...'?>' sample — the
-     * pre-gate above owns the routing, and glm18-1 splits the
-     * unclosed-sample class out of it: the tail's lines ride the
-     * masked view, the prose above keeps the line-local arm (a marker
-     * in REAL code beside the sample stays honored in both — comments
-     * are not string data, the masker never blanks them).
+     * pre-gate above owns the routing, glm18-1 splits the
+     * unclosed-sample class out of it, and glm18-11 completes the
+     * split for the matched class: the SAMPLE REGIONS' lines ride the
+     * masked view, the bytes outside them keep the line-local arm (a
+     * marker in REAL code beside a sample stays honored in both —
+     * comments are not string data, the masker never blanks them).
      */
-    $views = $has_php
-        ? explode("\n", wp_connectors_mask_string_contents($contents))
-        : null;
+    $views = null;
+    $masked_view = null;
+    if ($has_php) {
+        $masked_view = wp_connectors_mask_string_contents($contents);
+        if (null === $regions) {
+            $views = explode("\n", $masked_view);
+        }
+    }
     $lines = explode("\n", $contents);
+    $line_start = 0;
     foreach ($lines as $index => $line) {
         /*
          * Markers count only in REAL comments: the judge reads the
@@ -528,19 +585,14 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
          */
         if (null !== $views) {
             $codeView = $views[ $index ] ?? '';
-        } elseif (null !== $tail_views) {
-            if ($index < $open_line) {
-                $codeView = wp_connectors_line_without_string_literals($line);
-            } elseif ($index > $open_line) {
-                $codeView = $tail_views[ $index - $open_line ] ?? '';
-            } else {
-                // The open tag's own line: line-local prose prefix,
-                // masked code suffix (glm18-1).
-                $codeView = wp_connectors_line_without_string_literals((string) substr($line, 0, $open_prefix)) . ($tail_views[0] ?? '');
-            }
+        } elseif (null !== $regions) {
+            $codeView = wp_connectors_sample_region_line_view($line, $line_start, $regions, $masked_view);
         } else {
             $codeView = wp_connectors_line_without_string_literals($line);
         }
+        // glm18-11: the region view walks byte offsets — advance past
+        // the line (+ its newline) before any `continue` below.
+        $line_start += strlen($line) + 1;
         if (preg_match($allowMarker, $codeView) === 1) {
             continue;
         }

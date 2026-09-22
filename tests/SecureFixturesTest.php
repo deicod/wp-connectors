@@ -1108,13 +1108,18 @@ CHILD;
                 file_put_contents($tempDir . '/docs.md', "# Provider configuration\n\napi_key = {$key} // secrets:allow\n\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"),
                 "staging: {$tempDir}/docs.md must write — a staging failure fails as staging, never as the shape verdict."
             );
-            // The same short-echo script spelled '.txt' inside a WALKED
+            // The same php-headed script spelled '.inc' inside a WALKED
             // tree: the walk never chooses its files, so the extension
-            // screen rules it — the file-root doctrine is arm-scoped.
+            // screen rules it — the allowlist never reads a non-member
+            // extension at all. The file-root doctrine is arm-scoped
+            // (CORRECTED at glm18-11: the region walk routes embedded
+            // samples through the mask for every TEXT-family extension
+            // the allowlist reads, so the walk's screen and the content
+            // shape are different questions — this leg pins the screen).
             $this->assertTrue(mkdir($tempDir . '/tree', 0755, true), "staging: {$tempDir}/tree must create — a staging failure fails as staging, never as the shape verdict.");
             $this->assertNotFalse(
-                file_put_contents($tempDir . '/tree/echo.txt', "<?= \"\n{$key} // secrets:allow\n\" ?>\n"),
-                "staging: {$tempDir}/tree/echo.txt must write — a staging failure fails as staging, never as the shape verdict."
+                file_put_contents($tempDir . '/tree/config.inc', "<?= \"\n{$key} // secrets:allow\n\" ?>\n"),
+                "staging: {$tempDir}/tree/config.inc must write — a staging failure fails as staging, never as the shape verdict."
             );
 
             $namedEcho = wp_connectors_scan_paths(array( $tempDir . '/config.inc' ));
@@ -1136,7 +1141,7 @@ CHILD;
             'The <?php-headed twin flags through the same arm.'
         );
         $this->assertSame(array(), $namedDocs, 'Text content keeps glm17-3\'s benign extension routing under a directly-named target.');
-        $this->assertSame(array(), $walked, 'The WALK keeps its extension screen — the content-shape doctrine is the file-root arm\'s own.');
+        $this->assertSame(array(), $walked, 'The WALK\'s extension screen never reads the non-allowlisted \'.inc\' at all — the content-shape doctrine is the file-root arm\'s own.');
     }
 
     public function testUnclosedTextFamilySamplesMaskStringDataInteriorsNotProse()
@@ -1251,6 +1256,55 @@ CHILD;
         $short_ini = implode("\n", $output);
         $this->assertSame(0, $exit, "Under short_open_tag=1 the payload answers the refusal as a verdict, never a fatal: {$short_ini}");
         $this->assertStringContainsString('pi.php: over the secret-scan token-memory bound — the secret scan cannot run', $short_ini, 'The same PI bytes ARE spans an INI that opens the short spelling — the honest refusal stands.');
+    }
+
+    public function testACompletePairMentionRoutesOnlyTheSampleRegionNotTheWholeFile()
+    {
+        /*
+         * glm18-11 (the round's residual closure — finding 6): prose
+         * MERELY MENTIONING a complete '<?php … ?>' pair routed the
+         * WHOLE text-family file onto the masked view, where the
+         * mention's surrounding prose blanked as inline HTML and a
+         * legitimately marked fixture's marker vanished — the
+         * marked-fixture false positive glm17-3 closed for the
+         * declaration/unclosed spellings survived for this one
+         * (identical at base, pre-existing, unrecorded). The routing
+         * is PAIR-BOUNDED now — the round's region walk generalizes
+         * glm18-1's unclosed-tail split to the matched class: the
+         * sample regions ride the masked view, the bytes outside them
+         * keep the line-local arm.
+         */
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+
+        // The driven shape: a marked fixture line OUTSIDE the mentioned
+        // pair stays exempt (red at HEAD: the whole-file mask blanked
+        // the prose marker — 1 finding).
+        $mention = "# Guide\n\nUse `<?php echo 1; ?>` inline.\n\napi_key = {$key} // secrets:allow\n";
+        $this->assertSame(array(), wp_connectors_scan_string($mention, 'guide.md'), 'A marker in prose beside a mentioned pair keeps exempting its own line (red at HEAD: the whole-file mask blanked it — 1 finding).');
+
+        // A live key outside the pair with no marker still flags —
+        // pair-bounded routing launders nothing outside the region.
+        $unmarked = "# Guide\n\nUse `<?php echo 1; ?>` inline.\n\napi_key = {$key}\n";
+        $this->assertSame(
+            array( "guide2.md:5 {$expect}" ),
+            wp_connectors_scan_string($unmarked, 'guide2.md'),
+            'An unmarked key outside the region flags exactly as before.'
+        );
+
+        // The mention's own region keeps the masked view — a marker
+        // inside the sample's multi-line string data exempts nothing
+        // (the glm17-3 laundering pin, on the mention spelling).
+        $inPair = "<?php \$x = \"\n{$key} // secrets:allow\n\"; ?>\n";
+        $this->assertSame(
+            array( "sample.md:2 {$expect}" ),
+            wp_connectors_scan_string($inPair, 'sample.md'),
+            'Inside the mentioned pair the masked view owns the marker judgment.'
+        );
+
+        // Prose BETWEEN two mentioned pairs keeps the line-local arm.
+        $between = "<?php \$a = 1; ?>\napi_key = {$key} // secrets:allow\n<?php \$b = 2; ?>\n";
+        $this->assertSame(array(), wp_connectors_scan_string($between, 'between.md'), 'Prose between two pairs keeps the line-local arm.');
     }
 
     public function testTheMemoryLimitParserIsWidthAwareAndNeverWraps()
