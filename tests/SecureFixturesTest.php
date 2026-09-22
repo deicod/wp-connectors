@@ -1175,6 +1175,53 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             wp_connectors_scan_string("{$key} in prose\n", 'textglued-control.svg'),
             'Unmarked keys in the same shapes still flag — the widened boundary exempts the marker, never the payload.'
         );
+
+        /*
+         * glm24-1: the markup family's enumeration is COMPLETED —
+         * php/phtml/htm/xhtml ride the arm beside html/svg/xml/md.
+         * A .php template IS a payload whose comment grammar
+         * includes HTML comments (the round's own doctrine: the
+         * template spellings carry HTML bytes), and the SHORT
+         * spellings join their long twins — a glued
+         * `<!-- secrets:allow -->` in a .php template flagged at
+         * HEAD while the identical .html exempted, and a .htm
+         * flagged where .html exempted: the family is the
+         * payload's comment grammar, never a hand-list of
+         * extensions one spelling short.
+         */
+        $this->assertSame(
+            array(),
+            wp_connectors_scan_string("<input value=\"{$key}\"><!-- secrets:allow -->\n", 'template.php'),
+            'A quote-glued marker in a .php template exempts (red at HEAD: flagged) — a .php template is a payload whose comment grammar includes HTML comments.'
+        );
+        $this->assertSame(
+            array(),
+            wp_connectors_scan_string("<input value=\"{$key}\"><!-- secrets:allow -->\n", 'template.phtml'),
+            'The .phtml template spelling answers identically — the same template grammar, the same family.'
+        );
+        $this->assertSame(
+            array(),
+            wp_connectors_scan_string("<input value=\"{$key}\"><!-- secrets:allow -->\n", 'page.htm'),
+            'The SHORT .htm spelling joins its .html twin (red at HEAD: flagged while .html exempted) — the family owns the grammar, not one spelling of it.'
+        );
+        $this->assertSame(
+            array(),
+            wp_connectors_scan_string("<input value=\"{$key}\"><!-- secrets:allow -->\n", 'page.xhtml'),
+            'The .xhtml spelling answers identically — every markup spelling the walk can name rides the one family.'
+        );
+        $this->assertSame(
+            array( "unmarked.php:1 {$expect}" ),
+            wp_connectors_scan_string("<input value=\"{$key}\">\n", 'unmarked.php'),
+            'The unmarked .php control still flags — the widened family exempts the marker, never the payload.'
+        );
+        // The non-markup refusal keeps its members: .txt joins .env/.json
+        // above in refusing the glued form (the split is the grammar's,
+        // never the extension's popularity).
+        $this->assertSame(
+            array( "launder.txt:1 {$expect}" ),
+            wp_connectors_scan_string("api_key=\"{$key}\"<!-- secrets:allow -->\n", 'launder.txt'),
+            'A quote-glued <!-- marker in a .txt still does NOT exempt — the completed markup family changed nothing for the non-markup members.'
+        );
     }
 
     public function testScannerExemptsOnlyStrictMarkerAndFakeValues()

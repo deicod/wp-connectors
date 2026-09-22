@@ -124,12 +124,25 @@ function wp_connectors_secret_patterns()
  * spaced spelling). The line-comment spellings keep the whitespace
  * guard in both families.
  *
+ * glm24-1: the family's ENUMERATION is completed — php/phtml ride
+ * the markup arm beside html/svg/xml/md, and the short spellings
+ * htm/xhtml join their long twins. A .php template IS a payload
+ * whose comment grammar includes HTML comments (the template
+ * spellings carry HTML bytes the line-local arm judges exactly as
+ * a .html twin judges its own), so a glued `<!-- secrets:allow -->`
+ * in a .php template laundered at the old enumeration exactly as
+ * the glued .env shape glm23-6 refused to (driven red at HEAD);
+ * and a .htm flagged while .html exempted — the family is the
+ * payload's comment GRAMMAR, never a hand-list of extensions one
+ * spelling short. The non-markup refusal keeps every member
+ * (.env/.json/.txt and the rest) exactly as glm23-6 pinned it.
+ *
  * @param string $extension The payload's lowercased extension ('' when none).
  * @return string PCRE pattern matching the marker inside a comment.
  */
 function wp_connectors_allow_marker_pattern($extension = '')
 {
-    if (! in_array($extension, array( 'html', 'svg', 'xml', 'md' ), true)) {
+    if (! in_array($extension, array( 'html', 'htm', 'xhtml', 'svg', 'xml', 'md', 'php', 'phtml' ), true)) {
         return '/(?:^|\s)(?:\/\/|#|\/\*|\*|<!--)\s*secrets:allow\b/';
     }
 
