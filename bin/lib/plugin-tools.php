@@ -3169,7 +3169,17 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
         }
     }
 
-    if (preg_match_all('/foreach\s*\((.+?)\)\s*\{/', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
+    /*
+     * glm18-3: the header match rides /s like the as-split below it —
+     * the mask is LINE-PRESERVING (glm17-1), so a multi-line string
+     * region inside a foreach header keeps its interior newlines and
+     * the once-dot-only header capture never matched: the VALUE
+     * binding went uncollected and the include over it phantom-flagged
+     * (driven: a multi-line string KEY inside the header's array
+     * literal, values __DIR__-anchored — 0 violations at base, 1 at
+     * HEAD).
+     */
+    if (preg_match_all('/foreach\s*\((.+?)\)\s*\{/s', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
         foreach ($foreaches[1] as $foreach_match) {
             if (! $visible($foreach_match[1])) {
                 // The binding is outside every region the include reads.

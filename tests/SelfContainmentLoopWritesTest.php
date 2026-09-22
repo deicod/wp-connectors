@@ -262,6 +262,38 @@ final class SelfContainmentLoopWritesTest extends TestCase
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
     }
 
+    public function testAMultiLineStringRegionInsideAForeachHeaderKeepsTheBindingCollected(): void
+    {
+        /*
+         * glm18-3 (the t31 round's third finding): glm17-1 made the
+         * mask LINE-PRESERVING, so a multi-line string region inside a
+         * foreach header keeps its interior newline on the masked view
+         * — and the collector's header regex had no /s (the as-split
+         * right below it always did), so the header never matched, the
+         * VALUE binding went uncollected, and the include over it
+         * phantom-flagged (driven: 1 violation at HEAD, 0 at base —
+         * the pre-glm17-1 mask swallowed the newline and matched).
+         * The driven shape keeps the resolution clean through the
+         * array-literal source: the multi-line string is an array KEY,
+         * never a value, so every resolved path stays __DIR__-anchored.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nforeach (array(\"k\nk\" => __DIR__ . '/e.php') as \$file) {\n    require \$file;\n}\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A multi-line string region inside a foreach header keeps the binding collected (red at HEAD: the header regex missed the newline — phantom variable-include violation).');
+
+        // The single-line control: the same header shape without the
+        // interior newline (both-green pin of the routing).
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nforeach (array('k' => __DIR__ . '/e.php') as \$file) {\n    require \$file;\n}\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
+    }
+
     public function testALoopWriteAfterTheIncludeRefusesTheLiteralMapProof(): void
     {
         /*
