@@ -834,8 +834,14 @@ function set_transient($transient, $value, $expiration = 0)
      * sharing is the agreeing-stores doctrine's OWN shape (glm23-3):
      * core writes ONE row, so the mirror holding the same detached
      * instance is the honest model — a mutation through either
-     * store's row lands in both, exactly one row's semantics — and
-     * copy-on-write keeps the value-sharing safe besides.
+     * store's row lands in both, exactly one row's semantics. glm26-11
+     * (the round-25 ledgering (b), corrected in place by grant): the
+     * ONE-ROW DOCTRINE is the sharing's whole basis — the former
+     * 'copy-on-write keeps the value-sharing safe' clause was WRONG
+     * for nested objects (copy-on-write is an engine optimization
+     * over the shared zval, never a detachment: a nested mutation
+     * lands in both stores, which is one row's own meaning, not a
+     * hazard the doctrine needs saving from).
      */
     $stored = wp_connectors_option_stored_copy($value);
     WpHarness::$transients[ $transient ] = array(
