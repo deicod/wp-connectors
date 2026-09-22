@@ -302,25 +302,35 @@ function wp_connectors_php_sample_regions($contents)
 }
 
 /**
- * One line's code view under PAIR-BOUNDED routing (glm18-11): the
- * bytes inside a sample region read the token-masked view (string
- * data blanked, the marker judge's one honest lens), the bytes
- * outside keep the line-local arm — a prose marker beside a mentioned
- * sample stays a real prose marker.
+ * One line's PER-ARM views under PAIR-BOUNDED routing (glm18-11,
+ * glm19-2): the bytes inside a sample region read the token-masked
+ * view (string data blanked, the marker judge's honest lens for CODE
+ * bytes), the bytes outside keep the line-local arm — a prose marker
+ * beside a mentioned sample stays a real prose marker.
+ *
+ * The arms answer separately, never composed: the line-skip does not
+ * cross a region boundary — a marker in the prose bytes exempts only
+ * prose matches, a marker in the region's code view (a real comment
+ * the masker never blanks) exempts only the region's bytes.
  *
  * The masked view is same-length by construction, so its bytes slice
- * 1:1 against the line's.
+ * 1:1 against the line's, and each served span is the line-relative
+ * inclusive byte range that rode the masked view.
  *
  * @param string                $line       One source line.
  * @param int                   $line_start The line's byte offset in the payload.
  * @param list<array{int, int}> $regions    Sorted inclusive sample spans.
  * @param string                $masked     The payload's token-masked view.
- * @return string The line's composed code view.
+ * @return array{prose: string, code: string, spans: list<array{int, int}>}
+ *         The line-local view of the outside bytes, the masked view of
+ *         the region bytes, and the line-relative region spans.
  */
 function wp_connectors_sample_region_line_view($line, $line_start, array $regions, $masked)
 {
     $len = strlen($line);
-    $view = '';
+    $prose = '';
+    $code = '';
+    $spans = array();
     $cursor = 0;
     foreach ($regions as $region) {
         $start = $region[0] - $line_start;
@@ -332,18 +342,23 @@ function wp_connectors_sample_region_line_view($line, $line_start, array $region
             continue; // The region closed on an earlier line.
         }
         if ($start > $cursor) {
-            $view .= wp_connectors_line_without_string_literals((string) substr($line, $cursor, $start - $cursor));
+            $prose .= wp_connectors_line_without_string_literals((string) substr($line, $cursor, $start - $cursor));
         }
         $from = max($start, $cursor);
         $through = min($end, $len - 1);
-        $view .= (string) substr($masked, $line_start + $from, $through - $from + 1);
+        $code .= (string) substr($masked, $line_start + $from, $through - $from + 1);
+        $spans[] = array( $from, $through );
         $cursor = $through + 1;
         if ($cursor >= $len) {
-            return $view;
+            return array( 'prose' => $prose, 'code' => $code, 'spans' => $spans );
         }
     }
 
-    return $view . wp_connectors_line_without_string_literals((string) substr($line, $cursor));
+    return array(
+        'prose' => $prose . wp_connectors_line_without_string_literals((string) substr($line, $cursor)),
+        'code' => $code,
+        'spans' => $spans,
+    );
 }
 
 /**
@@ -644,30 +659,55 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
     foreach ($lines as $index => $line) {
         /*
          * Markers count only in REAL comments: the judge reads the
-         * masked view of the line, so a marker that is itself string
-         * data — quoted contents, a heredoc body, an HTML region —
-         * cannot exempt the live secret sitting next to it; the marker
-         * must sit in CODE.
+         * masked view of the code bytes, so a marker that is itself
+         * string data — quoted contents, a heredoc body, an HTML
+         * region — cannot exempt the live secret sitting next to it;
+         * the marker must sit in CODE.
+         *
+         * glm19-2: the exemption is PER-ARM — the composed view fed
+         * the WHOLE line to the marker judge, so a prose marker
+         * OUTSIDE a region exempted a key INSIDE it on a mixed line
+         * (driven): the line-skip crossed the region boundary. A
+         * match inside a region's bytes is exempt only by a marker in
+         * the REGION's code view; a match in the prose bytes keeps
+         * the line-local arm's own marker — never crossed in either
+         * direction.
          */
         if (null !== $views) {
-            $codeView = $views[ $index ] ?? '';
+            $prose_view = '';
+            $code_view = $views[ $index ] ?? '';
+            $spans = '' === $line ? array() : array( array( 0, strlen($line) - 1 ) );
         } elseif (null !== $regions) {
-            $codeView = wp_connectors_sample_region_line_view($line, $line_start, $regions, $masked_view);
+            $arm = wp_connectors_sample_region_line_view($line, $line_start, $regions, $masked_view);
+            $prose_view = $arm['prose'];
+            $code_view = $arm['code'];
+            $spans = $arm['spans'];
         } else {
-            $codeView = wp_connectors_line_without_string_literals($line);
+            $prose_view = wp_connectors_line_without_string_literals($line);
+            $code_view = '';
+            $spans = array();
         }
         // glm18-11: the region view walks byte offsets — advance past
         // the line (+ its newline) before any `continue` below.
         $line_start += strlen($line) + 1;
-        if (preg_match($allowMarker, $codeView) === 1) {
-            continue;
-        }
+        $prose_marker = 1 === preg_match($allowMarker, $prose_view);
+        $code_marker = 1 === preg_match($allowMarker, $code_view);
         foreach (wp_connectors_secret_patterns() as $name => $pattern) {
-            if (preg_match_all($pattern[0], $line, $matches) === 0) {
+            if (preg_match_all($pattern[0], $line, $matches, PREG_OFFSET_CAPTURE) === 0) {
                 continue;
             }
-            foreach ($matches[0] as $matched) {
-                if (wp_connectors_is_recognizably_fake_secret($matched)) {
+            foreach ($matches[0] as $match) {
+                if (wp_connectors_is_recognizably_fake_secret($match[0])) {
+                    continue;
+                }
+                $in_code = false;
+                foreach ($spans as $span) {
+                    if ($match[1] >= $span[0] && $match[1] <= $span[1]) {
+                        $in_code = true;
+                        break;
+                    }
+                }
+                if ($in_code ? $code_marker : $prose_marker) {
                     continue;
                 }
                 // Never include the matched text in the finding.

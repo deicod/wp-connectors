@@ -1350,6 +1350,44 @@ CHILD;
         $this->assertSame((int) strrpos($inString, '?>') + 1, $regions[0][1], 'The region closes at the REAL close tag — the in-string ?> is interior, never a boundary.');
     }
 
+    public function testTheLineSkipNeverCrossesARegionBoundary()
+    {
+        /*
+         * glm19-2: the composed code view fed the WHOLE mixed line to
+         * the marker judge, so a prose marker OUTSIDE the region
+         * exempted a key INSIDE it (driven: 0 findings at HEAD, 1 at
+         * base) — the line-skip crossed the region boundary. The
+         * exemption is PER-ARM: a match inside a region's bytes is
+         * exempt only by a marker inside the REGION's code view (the
+         * marker must sit in CODE for the region's bytes), a match in
+         * the prose bytes keeps the line-local arm's own marker.
+         */
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+
+        // The driven shape: the key inside the mentioned pair, the
+        // marker in the prose after it (red at HEAD: the composed view
+        // carried the prose marker across the boundary — zero
+        // findings).
+        $mixed = "<?php \$k = \"{$key}\"; ?> // secrets:allow\n";
+        $this->assertSame(
+            array( "mixed.md:1 {$expect}" ),
+            wp_connectors_scan_string($mixed, 'mixed.md'),
+            'A prose marker outside the region never exempts a key inside it (red at HEAD: the composed view carried the marker across the boundary — zero findings).'
+        );
+
+        // The pure-code marker keeps exempting: the marker inside the
+        // sample's own code comment, on the same one-line shape.
+        $inCode = "<?php \$k = \"{$key}\"; // secrets:allow ?>\n";
+        $this->assertSame(array(), wp_connectors_scan_string($inCode, 'incode.md'), 'A marker in the sample\'s real code comment keeps exempting the region\'s own line.');
+
+        // And the boundary never crosses BACK either: a prose marker
+        // keeps exempting a PROSE key on the same mixed line — the
+        // glm17-3 short-echo doctrine, pinned on the mixed line now.
+        $proseKey = "<?= \$k ?> with the key {$key} // secrets:allow\n";
+        $this->assertSame(array(), wp_connectors_scan_string($proseKey, 'prose.md'), 'A prose marker keeps exempting a PROSE key on the same mixed line.');
+    }
+
     public function testTheMemoryLimitParserIsWidthAwareAndNeverWraps()
     {
         /*
