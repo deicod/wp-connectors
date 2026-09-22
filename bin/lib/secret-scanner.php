@@ -200,17 +200,59 @@ function wp_connectors_scan_token_memory_headroom()
 }
 
 /**
+ * Whether a payload carries an INI-independent sample open at BYTE
+ * level (glm19-1) — the pre-screen that gates a text-family payload's
+ * token passes.
+ *
+ * The region walk itself rides the tokenizer now (the engine's own
+ * close), but the token-memory census must judge BEFORE any token
+ * pass, so this boolean carries the old walk's open classification:
+ * '<?=' or '<?php' with core's follower class ([ \t\r\n] or end of
+ * input). A payload without one never reaches a token pass at all —
+ * exactly the pre-screening shape the byte walk gave.
+ *
+ * @param string $contents File contents.
+ * @return bool True when an INI-independent open spelling exists.
+ */
+function wp_connectors_payload_has_sample_open($contents)
+{
+    $at = 0;
+    while (false !== ($open = strpos($contents, '<?', $at))) {
+        $after = $open + 2;
+        if ('=' === ($contents[ $after ] ?? '')) {
+            return true;
+        }
+        if ('php' === wp_connectors_ascii_lower((string) substr($contents, $after, 3))) {
+            $follower = $contents[ $after + 3 ] ?? '';
+            if ('' === $follower || str_contains(" \t\r\n", $follower)) {
+                return true;
+            }
+        }
+        $at = $after;
+    }
+
+    return false;
+}
+
+/**
  * The PHP sample REGIONS of a text-family payload (glm18-1/glm18-11).
  *
  * The open spellings are the engine's INI-independent ones — '<?=' and
  * '<?php' with core's own follower class ([ \t\r\n] or end of input; a
  * glued '<?phpecho' is inline HTML under the production-default INI,
- * the t31-ocr64-1 doctrine) — walked open-to-close in order. Every
- * matched pair is a region; an open with no '?>' after it names the
- * unclosed TAIL (open→EOF) the engine lexes as code — the tail region
- * glm18-1 routed onto the masked view. The INI-dependent spellings
- * (a bare '<?', the glued opener) stay the recorded
- * lexer-refused-opener corner, never a new class here.
+ * the t31-ocr64-1 doctrine). The close rides the TOKENIZER, the
+ * masker's own pass (glm19-1): the engine's lexer is the one owner of
+ * where PHP mode ends, so a '?>' spelled inside a quoted or heredoc
+ * interior does not close the region — the byte-level scan this
+ * replaces split it there and the code after the in-string close fell
+ * to the line-local arm, reopening the glm18-1 laundering class
+ * through the region walk. Every matched open-close pair is a region;
+ * an open with no close names the unclosed TAIL (open→EOF) the engine
+ * lexes as code — the tail region glm18-1 routed onto the masked
+ * view. The INI-dependent spellings (a bare '<?', the glued opener)
+ * stay the recorded lexer-refused-opener corner, never a new class
+ * here — on a short_open_tag host those bytes lex as PHP mode to the
+ * tokenizer, and the walk simply does not open a region at them.
  *
  * @param string $contents File contents.
  * @return list<array{int, int}> The sorted inclusive [start, end] byte spans.
@@ -218,31 +260,42 @@ function wp_connectors_scan_token_memory_headroom()
 function wp_connectors_php_sample_regions($contents)
 {
     $regions = array();
+    $tokens = token_get_all($contents);
     $at = 0;
-    while (false !== ($open = strpos($contents, '<?', $at))) {
-        $after = $open + 2;
-        $opens = false;
-        if ('=' === ($contents[ $after ] ?? '')) {
-            $opens = true;
-            ++$after;
-        } elseif ('php' === wp_connectors_ascii_lower((string) substr($contents, $after, 3))) {
-            $follower = $contents[ $after + 3 ] ?? '';
-            if ('' === $follower || str_contains(" \t\r\n", $follower)) {
-                $opens = true;
-                $after += 3;
-            }
+    for ($i = 0, $n = count($tokens); $i < $n; ++$i) {
+        $token = $tokens[ $i ];
+        $text = is_array($token) ? $token[1] : $token;
+        $id = is_array($token) ? $token[0] : null;
+        $opens = T_OPEN_TAG_WITH_ECHO === $id;
+        if (! $opens && T_OPEN_TAG === $id) {
+            $follower = (string) substr($text, 5);
+            $opens = 'php' === wp_connectors_ascii_lower((string) substr($text, 2, 3))
+                && ('' === $follower || str_contains(" \t\r\n", $follower));
         }
         if (! $opens) {
-            $at = $open + 2;
+            $at += strlen($text);
             continue;
         }
-        $close = strpos($contents, '?>', $after);
-        if (false === $close) {
-            $regions[] = array( $open, strlen($contents) - 1 );
-            break;
+        // The region closes at the next close TAG the engine lexes —
+        // never at an in-string close spelling — or runs to EOF.
+        $pos = $at + strlen($text);
+        $end = strlen($contents) - 1;
+        $close = $n;
+        for ($j = $i + 1; $j < $n; ++$j) {
+            $inner = $tokens[ $j ];
+            if (T_CLOSE_TAG === (is_array($inner) ? $inner[0] : null)) {
+                $end = $pos + 1; // Inclusive through the '>' byte.
+                $close = $j;
+                break;
+            }
+            $pos += strlen(is_array($inner) ? $inner[1] : $inner);
         }
-        $regions[] = array( $open, $close + 1 );
-        $at = $close + 2;
+        $regions[] = array( $at, $end );
+        if ($n === $close) {
+            break; // The unclosed tail runs to EOF.
+        }
+        $i = $close;
+        $at = $pos + strlen(is_array($tokens[ $close ]) ? $tokens[ $close ][1] : $tokens[ $close ]);
     }
 
     return $regions;
@@ -475,15 +528,21 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      */
     $php_family = '' === $label_ext || 'php' === $label_ext || 'phtml' === $label_ext
         || ($named_target && wp_connectors_head_opens_php($contents));
+    /*
+     * glm19-1: the region walk rides the tokenizer now, so the census
+     * judges BEFORE it — a text-family payload reaches any token pass
+     * only through the byte-level INI-independent open pre-screen
+     * (wp_connectors_payload_has_sample_open(), the old walk's open
+     * classification as a boolean), and the census rides ahead of the
+     * walk exactly as it rides ahead of the mask. A payload the
+     * pre-screen refuses never tokenizes at all — the pre-screening
+     * shape the byte walk itself gave.
+     */
     $has_php = false;
-    $regions = null;
     if ($php_family) {
         $has_php = false !== strpos($contents, '<?');
-    } else {
-        $regions = wp_connectors_php_sample_regions($contents);
-        if ($regions !== array()) {
-            $has_php = true;
-        }
+    } elseif (wp_connectors_payload_has_sample_open($contents)) {
+        $has_php = true;
     }
     if ($has_php) {
         /*
@@ -567,7 +626,14 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      */
     $views = null;
     $masked_view = null;
+    $regions = null;
     if ($has_php) {
+        // glm19-1: the region walk tokenizes, so it rides AFTER the
+        // census refusal above — never a fatal where the bound answers
+        // the loud refusal.
+        if (! $php_family) {
+            $regions = wp_connectors_php_sample_regions($contents);
+        }
         $masked_view = wp_connectors_mask_string_contents($contents);
         if (null === $regions) {
             $views = explode("\n", $masked_view);

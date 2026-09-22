@@ -1307,6 +1307,49 @@ CHILD;
         $this->assertSame(array(), wp_connectors_scan_string($between, 'between.md'), 'Prose between two pairs keeps the line-local arm.');
     }
 
+    public function testAnInStringCloseTagDoesNotSplitTheSampleRegion()
+    {
+        /*
+         * glm19-1: wp_connectors_php_sample_regions() closed each
+         * region at the first BYTE-level '?>' — a close spelled inside
+         * a quoted interior split the region, the code after the
+         * in-string close fell to the line-local arm, and the
+         * interior's marker honored there: the glm18-1 laundering
+         * class reopened through the region walk (driven: 0 findings
+         * at HEAD, 1 at base). The region close rides the tokenizer
+         * now — the engine's lexer is the one owner of where PHP mode
+         * ends.
+         */
+        $key = 'sk-ant-api3-' . str_repeat('q', 30);
+        $expect = 'openai-anthropic-key (OpenAI/Anthropic API key)';
+
+        // The driven shape: the sample's string data carries a close
+        // tag itself; the multi-line interior after the in-string
+        // close keeps the masked view (red at HEAD: the split dropped
+        // the tail onto the line-local arm — the marker honored, zero
+        // findings).
+        $inString = "<?php \$s = \"?>\"; \$k = \"\n{$key} // secrets:allow\n\";?>\n";
+        $this->assertSame(
+            array( "instr.md:2 {$expect}" ),
+            wp_connectors_scan_string($inString, 'instr.md'),
+            'A ?> inside the sample\'s string data does not close the region (red at HEAD: the split dropped the tail onto the line-local arm — zero findings).'
+        );
+
+        // The genuine close OUTSIDE string data still closes: the
+        // prose below the sample keeps the line-local arm, and a prose
+        // marker beside the sample stays honored.
+        $after = "<?php \$s = \"?>\"; ?>\n{$key} // secrets:allow\n";
+        $this->assertSame(array(), wp_connectors_scan_string($after, 'after.md'), 'The genuine ?> outside string data still closes the region — the prose below keeps the line-local arm.');
+
+        // And the region walk's own answer is pinned: the matched pair
+        // spans through the REAL close, the in-string spelling never a
+        // boundary.
+        $regions = wp_connectors_php_sample_regions($inString);
+        $this->assertCount(1, $regions, 'One region — the in-string ?> never splits it.');
+        $this->assertSame(0, $regions[0][0], 'The region opens at the sample\'s open tag.');
+        $this->assertSame((int) strrpos($inString, '?>') + 1, $regions[0][1], 'The region closes at the REAL close tag — the in-string ?> is interior, never a boundary.');
+    }
+
     public function testTheMemoryLimitParserIsWidthAwareAndNeverWraps()
     {
         /*
