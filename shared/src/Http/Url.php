@@ -62,6 +62,26 @@ final class Url {
 	private const PORT_MUST_NOT_HAVE_LEADING_ZEROS_MESSAGE = 'The URL port must be spelled without leading zeros — ":0443" reads as 443 while the URL string keeps the raw spelling, and the two must agree (write ":443").';
 
 	/**
+	 * The ONE zero-valued-port sentence, shared by the success-path raw
+	 * screen and the failed-parse entry screen (glm23-8).
+	 *
+	 * A zero-valued port spelling has no canonical form to write —
+	 * complying with the leading-zeros remediation lands on ':0', itself
+	 * refused by range — so the ocr25-3 rule owns the class whole: every
+	 * member answers the range verdict. The class once split across TWO
+	 * range sentences: the spellings the engine parses (':0/' through
+	 * ':00000/') answered this sentence through the raw screen's < 1 arm
+	 * while the parse-false spellings (':000000/', six digits and up)
+	 * answered the entry screen's long out-of-range sentence beside its
+	 * > 65535 head (glm22-2's own half-close — its substring pin,
+	 * 'out of range', masked the split; the loose-pin class). The
+	 * over-range class KEEPS the long sentence — its remediation (an
+	 * authority port must be 1–65535) is live for ':70000/' — and the
+	 * leading-zeros text stays with the in-range class it serves.
+	 */
+	private const PORT_OUT_OF_RANGE_MESSAGE = 'The URL port is out of range.';
+
+	/**
 	 * The ONE backslash sentence, shared by the whole-input screen on the
 	 * success path and the failed-parse entry screen (glm16-11).
 	 *
@@ -331,12 +351,26 @@ final class Url {
 						 * sentence. The ocr25-3 rule owns the class
 						 * whole: range outranks zeros — a zero-valued
 						 * spelling has no canonical form, and every
-						 * member answers the range verdict (the
-						 * raw screen's own sentence for the spellings
-						 * that parse).
+						 * member answers the range verdict.
+						 *
+						 * glm23-8 CORRECTS the sentence split the
+						 * half-close left: this arm's zero-valued
+						 * members answered the LONG sentence below
+						 * while their parseable twins answered the
+						 * raw screen's short one — one class, two
+						 * range sentences, the substring pin masking
+						 * it. The < 1 half answers the ONE class
+						 * sentence (PORT_OUT_OF_RANGE_MESSAGE, the
+						 * raw screen's own); the > 65535 half keeps
+						 * the long sentence, whose remediation is
+						 * live for the over-range class alone.
 						 */
-						if ( '' === $entry_tail && ( (int) $entry_digits[1] > 65535 || (int) $entry_digits[1] < 1 ) ) {
+						if ( '' === $entry_tail && (int) $entry_digits[1] > 65535 ) {
 							throw new InvalidArgumentException( 'The URL port is out of range — an authority port must be 1–65535, and the engine cannot parse one beyond it.' );
+						}
+						if ( '' === $entry_tail && (int) $entry_digits[1] < 1 ) {
+							// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+							throw new InvalidArgumentException( self::PORT_OUT_OF_RANGE_MESSAGE );
 						}
 						if ( '' !== $entry_tail ) {
 							// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
@@ -563,7 +597,8 @@ final class Url {
 			 * sentence where the failed parse actually lands).
 			 */
 			if ( $raw_port_int < 1 ) {
-				throw new InvalidArgumentException( 'The URL port is out of range.' );
+				// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data (glm23-8: the ONE zero-valued-class sentence, shared with the entry screen's < 1 arm).
+				throw new InvalidArgumentException( self::PORT_OUT_OF_RANGE_MESSAGE );
 			}
 
 			/*

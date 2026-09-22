@@ -931,6 +931,18 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
          * 'without leading zeros'). The ocr25-3 rule owns the class
          * whole: a zero-valued spelling has no canonical form, and
          * every member answers the range verdict.
+         *
+         * glm23-8: the pin is the FULL sentence now — glm22-2's own
+         * leg asserted the substring 'out of range', which both range
+         * sentences carry, masking that the class still split TWO
+         * ways: ':0/' answered the raw screen's short sentence while
+         * ':000000/' answered the entry screen's long one beside the
+         * > 65535 head (the loose-pin class). Every member answers
+         * the ONE short sentence (red at HEAD over the parse-false
+         * spellings: the long sentence), the over-range class keeping
+         * the long sentence whose remediation is live for it, and the
+         * in-range leading-zero class (':0065535/' among them — write
+         * ':65535') keeping the zeros remediation that serves it.
          */
         foreach (array(
             'zero, one digit (parses; the raw screen)' => 'https://host.example:0/',
@@ -942,7 +954,7 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
                 Url::parse_validated($zero_url);
                 $this->fail(sprintf('A zero-valued port spelling (%s) must be refused — 0 is outside the 1–65535 band whichever screen its spelling reaches.', $label));
             } catch (\InvalidArgumentException $e) {
-                $this->assertStringContainsString('out of range', $e->getMessage(), sprintf('The zero-valued class answers the RANGE verdict through whichever screen its spelling reaches (%s) — never the dead-end leading-zeros remediation (red at HEAD: the six-digit spelling wore it).', $label));
+                $this->assertSame('The URL port is out of range.', $e->getMessage(), sprintf('The zero-valued class answers the ONE range sentence, full-text pinned, through whichever screen its spelling reaches (%s) — red at HEAD over the parse-false spellings: the entry screen\'s long sentence (the substring pin glm22-2 rode masked the split).', $label));
                 $this->assertStringNotContainsString('without leading zeros', $e->getMessage(), sprintf('A zero-valued spelling has no canonical form to write — the zeros sentence is a dead end for it (%s).', $label));
             }
         }
