@@ -935,19 +935,8 @@ final class SecureFixturesTest extends WpConnectorsTestCase
      * anchored-needle idiom), and an executed substitution would
      * REWRITE the line and fail the same needle — the non-execution
      * proof riding the same line. The unquoted semicolon cut stays
-     * pinned beside it: the engine's semantics, stated, never the
-     * shell's.
-     *
-     * glm23-9 CORRECTS the round's own red claim: at the raw splice
-     * of THIS test's INI-quoted flag spelling exec answers EXIT 0
-     * with the child's own INI diagnostic printed and the value
-     * arriving MANGLED — never the 'shell's own syntax error, exit
-     * 2, no child' the round documented (that shape held for the
-     * round-21 UNQUOTED poison alone; driven below). The exit-0
-     * assertion is green over the mutation; the ANCHORED NEEDLE is
-     * the one red, and the mutation driver below pins the child-side
-     * evidence it rides: the flag-token line at the raw splice does
-     * NOT carry the whole value.
+     * pinned beside it below: the engine's semantics, stated, never
+     * the shell's.
      */
     public function testTheSpawnOwnerEscapesItsIniFlagsAtTheExecBoundary()
     {
@@ -969,41 +958,77 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         );
 
         /*
-         * glm23-9: the MUTATION DRIVER — this test's own flag spelling
-         * spliced RAW (the escapeshellarg the owner rides removed, the
-         * seam's mutation): the shell passes the single-quoted token
-         * whole, php RUNS, and the value arrives MANGLED — the
-         * engine's own parser cutting it and printing its own
-         * diagnostic (driven: exit 0, 'PHP:  syntax error, unexpected
-         * \')\'', the flag-token line short of the whole value). The
-         * exit-0 fact falsifies glm22-9's documented red claim ('exit
-         * 2, no child' — the unquoted poison's shape alone); the
-         * child-side evidence that actually distinguishes the seam is
-         * the flag-token line, and the anchored needle above is the
-         * one assertion that goes red over this splice — proven here
-         * by the needle FAILING to match the mangled arrival.
-         *
-         * glm24-6: the driver premises the POSIX SHELL's single-quote
-         * grammar (the flag spliced RAW as one single-quoted token —
-         * the vocabulary a non-POSIX host spells differently) and the
-         * anchored needle pins THIS ENGINE'S own INI quoted-value
-         * mangle (the grammar the docblock above states — the
-         * premise named, never assumed portable): ungated, the
-         * t31-ocr29-7 class glm23-12 closed two commits earlier in
-         * this same file — a non-POSIX host would red over the
-         * platform's own quoting vocabulary, never the escaping seam
-         * the driver exists to pin. The leg gates with its own named
-         * skip; POSIX behavior unchanged.
+         * The UNQUOTED semicolon cut the docblock above states,
+         * pinned at the engine itself: ';' is the INI comment byte —
+         * the pre-semicolon run alone is the value, the round-21
+         * pin's hidden premise stated and driven.
          */
+        $spawned_cut = $this->spawnScannerChild(
+            'require %s; echo "flag-token=", ini_get("user_agent"), "\n";',
+            array( 'user_agent=wpct probe; $(echo pwned) & |' )
+        );
+        $this->assertSame(0, $spawned_cut['exit'], "The unquoted semicolon-bearing twin runs too — one token at the boundary: {$spawned_cut['report']}");
+        $this->assertSame(
+            1,
+            preg_match('/^flag-token=wpct probe$/m', $spawned_cut['report']),
+            'A semicolon cuts an unquoted INI value at the engine\'s own comment grammar — the pre-semicolon run alone reaches the child, the hidden premise of the round-21 pin stated and pinned.'
+        );
+    }
+
+    /**
+     * glm23-9: the MUTATION DRIVER — the escaped-flag leg's own flag
+     * spelling spliced RAW (the escapeshellarg the owner rides
+     * removed, the seam's mutation): the shell passes the
+     * single-quoted token whole, php RUNS, and the value arrives
+     * MANGLED — the engine's own parser cutting it and printing its
+     * own diagnostic (driven: exit 0, 'PHP:  syntax error, unexpected
+     * \')\'', the flag-token line short of the whole value). This
+     * CORRECTS round-22's own red claim: at the raw splice of the
+     * INI-quoted flag spelling exec answers EXIT 0 with the child's
+     * own INI diagnostic printed — never the 'shell's own syntax
+     * error, exit 2, no child' the round documented (that shape held
+     * for the round-21 UNQUOTED poison alone). The exit-0 assertion
+     * is green over the mutation; the ANCHORED NEEDLE is the one
+     * red, and this driver pins the child-side evidence it rides:
+     * the flag-token line at the raw splice does NOT carry the whole
+     * value.
+     *
+     * glm24-6: the driver premises the POSIX SHELL's single-quote
+     * grammar (the flag spliced RAW as one single-quoted token — the
+     * vocabulary a non-POSIX host spells differently) and the
+     * anchored needle pins THIS ENGINE'S own INI quoted-value mangle
+     * (the grammar the escaped-flag leg's docblock states — the
+     * premise named, never assumed portable): ungated, the
+     * t31-ocr29-7 class glm23-12 closed in the same file — a non-POSIX
+     * host would red over the platform's own quoting vocabulary,
+     * never the escaping seam the driver exists to pin. The leg gates
+     * with its own named skip; POSIX behavior unchanged.
+     *
+     * glm25-2: the gate rides the method's TOP now — glm24-6 placed
+     * it MID-METHOD, one leg deep (the escaped-flag leg's verdicts
+     * already run above it), so on a non-POSIX host the skip folded
+     * those already-run verdicts: the escaped-flag leg lost its
+     * coverage there for a premise it does not carry (its own gate is
+     * canSpawnChildren alone), and the unquoted-cut twin never ran at
+     * all. The driver in its own method restores the shapes (each
+     * method's verdicts independent, the file's own idiom).
+     */
+    public function testTheRawSpliceMutationDriverPinsTheMangledArrival()
+    {
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the raw-splice driver cannot run (the probe rides a spawned engine).');
+        }
         if (! WpHarness::isPosixHost()) {
             $this->markTestSkipped('This host\'s platform separator is not the POSIX one — the raw-splice driver splices its INI-quoted flag through the POSIX shell\'s single-quote grammar and its needle pins this engine\'s own INI mangle, so a non-POSIX host would judge the platform\'s quoting vocabulary, never the escaping seam the driver pins (glm24-6, the t31-ocr29-7 class).');
         }
+
+        $poison = 'wpct $(echo pwned) "quoted" & |';
         /*
-         * glm24-7: the driver rides the SPAWN OWNER now (the mutation
-         * as one raw-flags parameter) — the hand-copied plumbing
+         * glm24-7: the driver rides the SPAWN OWNER (the mutation as
+         * one raw-flags parameter) — the hand-copied plumbing
          * (realpath/timeout-30/escapeshellarg/sprintf bind/2>&1/
          * implode) was the glm23-15 hand-copied-spelling class one
-         * round later: a later edit to the owner would leave this
+         * round later: a later edit to the owner would leave a
          * re-spelled stanza spawning a STALE child beside the green
          * run's twin, a false verdict on the leg whose purpose is
          * proving the refusal. The command is byte-identical by
@@ -1020,24 +1045,7 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertSame(
             0,
             preg_match('/^' . preg_quote('flag-token=' . $poison, '/') . '$/m', $raw_report),
-            "The child-side evidence the pin rides: the flag-token line at the raw splice does NOT carry the whole value ({$raw_report}) — the mangled arrival is exactly what the anchored needle above goes red over, the one distinguishing assertion at this mutation."
-        );
-
-        /*
-         * The UNQUOTED semicolon cut the corrected docblock states,
-         * pinned at the engine itself: ';' is the INI comment byte —
-         * the pre-semicolon run alone is the value, the round-21
-         * pin's hidden premise stated and driven.
-         */
-        $spawned_cut = $this->spawnScannerChild(
-            'require %s; echo "flag-token=", ini_get("user_agent"), "\n";',
-            array( 'user_agent=wpct probe; $(echo pwned) & |' )
-        );
-        $this->assertSame(0, $spawned_cut['exit'], "The unquoted semicolon-bearing twin runs too — one token at the boundary: {$spawned_cut['report']}");
-        $this->assertSame(
-            1,
-            preg_match('/^flag-token=wpct probe$/m', $spawned_cut['report']),
-            'A semicolon cuts an unquoted INI value at the engine\'s own comment grammar — the pre-semicolon run alone reaches the child, the hidden premise of the round-21 pin stated and pinned.'
+            "The child-side evidence the pin rides: the flag-token line at the raw splice does NOT carry the whole value ({$raw_report}) — the mangled arrival is exactly what the escaped-flag leg's anchored needle goes red over, the one distinguishing assertion at this mutation."
         );
     }
 
