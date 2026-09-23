@@ -137,7 +137,24 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
          * note), pcre.jit=0 beside the recursion floor exactly as
          * PHP's own ext/pcre recursion_limit test pairs them; the
          * child is deterministically abortable on every host.
-         * Exec-less hosts skip loudly (the ocr20-5 doctrine). The
+         * Exec-less hosts skip loudly (the ocr20-5 doctrine). ROUND
+         * 34 RESTORED THE PIN'S FULL REGIME (the review's
+         * R34-4/5/7): the child scans BOTH roots — the
+         * candidate-bearing file answering exactly ONE line (the
+         * count printed ahead of the verdicts, the deleted
+         * assertCount restored in child form: a duplicated refusal
+         * or an extra line beside it reddens) and the
+         * candidate-free plain file keeping its CLEAN verdict under
+         * the same floor (the recursion-lever leg round 33's
+         * rewrite dropped — nothing else pins it, the include
+         * seat's plain leg riding the backtrack lever); the spawn
+         * rides coreutils timeout(1) on POSIX hosts (the glm20-6
+         * doctrine — a stalled scan hangs phpunit inside exec()
+         * forever otherwise, this very loop having measured
+         * minutes-per-megabyte quadratic seats) and the child's
+         * report carries the negative diagnostics needle
+         * (glm20-3): a Warning/Notice/Deprecated printed beside
+         * the verdicts fails the test, never passes green. The
          * control at the restored limit flags normally in-process
          * on its own root.
          */
@@ -149,14 +166,25 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
             $this->root . '/fixture.php',
             '<?php $x = "../shared/foo.php";'
         );
+        $plain_root = $this->root . '-plain';
+        mkdir($plain_root, 0755, true);
+        $this->extra_roots[] = $plain_root;
+        file_put_contents(
+            $plain_root . '/plain.php',
+            "<?php \$plain = 1;\n"
+        );
 
         $library = realpath(__DIR__ . '/../bin/check-conventions.php');
         $this->assertNotFalse($library, 'The conventions library resolves before the child embeds it.');
-        $fixture = $this->root . '/fixture.php';
         $child_code = 'require ' . var_export($library, true) . ';'
-            . ' print(implode("\\n", wp_connectors_self_containment_violations(' . var_export($this->root, true) . ')));';
+            . ' $candidate = wp_connectors_self_containment_violations(' . var_export($this->root, true) . ');'
+            . ' $plain = wp_connectors_self_containment_violations(' . var_export($plain_root, true) . ');'
+            . ' print("candidate=" . count($candidate) . "\\n" . implode("\\n", $candidate)'
+            . ' . "\\nplain=" . count($plain) . "\\n" . implode("\\n", $plain));';
+        $timeout_prefix = WpHarness::isPosixHost() ? 'timeout 30 ' : '';
         $command = sprintf(
-            '%s -d pcre.jit=0 -d pcre.recursion_limit=1 -r %s 2>&1',
+            '%s%s -d pcre.jit=0 -d pcre.recursion_limit=1 -r %s 2>&1',
+            $timeout_prefix,
             escapeshellarg(PHP_BINARY),
             escapeshellarg($child_code)
         );
@@ -165,10 +193,13 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
         exec($command, $output, $exit);
         $report = implode("\n", $output);
 
-        $this->assertSame(0, $exit, 'The floor child completes — the abort is a verdict, never a fatal.');
+        $this->assertSame(0, $exit, 'The floor child completes — the abort is a verdict, never a fatal (a timeout exit 124 is the stall it bounds).');
+        $this->assertMatchesRegularExpression('/^candidate=1$/m', $report, 'The aborting shared/ scan answers EXACTLY the one refusal line — the count restored in child form, a duplicated refusal or any extra line reddening (round 33\'s rewrite had weakened assertCount to contains-only).');
         $this->assertStringContainsString('fixture.php could not be scanned for shared/ references', $report, 'The aborting shared/ scan answers the loud refusal naming the file — on every host, JIT or not (round 32\'s in-process floor was JIT-blind).');
         $this->assertStringContainsString('the self-containment scan aborted (PCRE:', $report, 'The refusal rides the seat\'s own loud vocabulary with the engine\'s diagnostic.');
         $this->assertStringNotContainsString('references shared/ (generated copies only', $report, 'The floor answers the refusal, never the violation — the abort fired before any match completed.');
+        $this->assertMatchesRegularExpression('/^plain=0$/m', $report, 'The candidate-free payload keeps its CLEAN verdict under the same recursion floor — the refusal is the abort, never the size (round 33\'s rewrite dropped this leg; nothing else pins the recursion lever).');
+        $this->assertDoesNotMatchRegularExpression('/^(?:PHP )?(?:Warning|Notice|Deprecated):/m', $report, 'The child\'s report carries no engine diagnostic beside the verdicts (the glm20-3 boundary-regime needle).');
 
         // The control at the host default, in-process on its own root
         // (the views cache keys the path it already answered): the same
