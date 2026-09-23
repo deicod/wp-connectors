@@ -2000,6 +2000,31 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('https://x.test/cb?code=1&p=v', add_query_arg(array( 'p' => 'v' ), 'https://x.test/cb?code=1'));
     }
 
+    /**
+     * glm28-4: core's false-value idiom — a FALSE param UNSETS the
+     * key (the merge once stored it and http_build_query() emitted
+     * 'key=0'), and remove_query_arg() exists (core's shape, the
+     * false channel's own consumer; the Task-3.2 OAuth code/state
+     * strip is the canonical future caller).
+     */
+    public function testFalseValuedParamsUnsetAndRemoveQueryArgStripsKeys()
+    {
+        $this->assertSame('https://x.test/cb?kept=1&p=v', add_query_arg(array( 'p' => 'v', 'gone' => false ), 'https://x.test/cb?kept=1'), 'A false-valued param never emits — core unsets, never key=0 (red at HEAD: https://x.test/cb?kept=1&p=v&gone=0).');
+        $this->assertSame('https://x.test/cb', add_query_arg(array( 'gone' => false ), 'https://x.test/cb?gone=1'), 'Removing the only param answers the bare path, no trailing ?.');
+
+        $this->assertSame('https://x.test/cb?state=x', remove_query_arg('code', 'https://x.test/cb?code=abc&state=x'), 'remove_query_arg strips the named key (red at HEAD: Call to undefined function).');
+        $this->assertSame('https://x.test/cb', remove_query_arg(array( 'code', 'state' ), 'https://x.test/cb?code=abc&state=x'), 'The array form strips every named key.');
+        $this->assertSame('https://x.test/cb#frag', remove_query_arg('code', 'https://x.test/cb?code=abc#frag'), 'The strip composes with the fragment tail.');
+        $this->assertSame('/?p=v', (static function () {
+            $_SERVER['REQUEST_URI'] = '/?p=v&gone=1';
+            try {
+                return remove_query_arg('gone');
+            } finally {
+                unset($_SERVER['REQUEST_URI']);
+            }
+        })(), 'The default query resolves against the current REQUEST_URI — core\'s false arm.');
+    }
+
     public function testWpRemoteRequestDefaultsToGetCoreNotPost()
     {
         /*

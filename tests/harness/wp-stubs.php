@@ -2148,10 +2148,54 @@ function add_query_arg(...$args)
         parse_str($parts[1], $params);
     }
     foreach ($query as $key => $value) {
+        /*
+         * glm28-4: core's idiom (functions.php, pinned 7.1.1) — a
+         * FALSE value UNSETS the key; the merge once stored it and
+         * http_build_query() emitted 'key=0', a parameter the caller
+         * meant to remove (the remove_query_arg() sibling below
+         * speaks exactly this value, core's own channel).
+         */
+        if (false === $value) {
+            unset($params[ (string) $key ]);
+
+            continue;
+        }
         $params[ (string) $key ] = $value; // Replace, do not duplicate.
     }
 
     return $path . ($params === array() ? '' : '?' . http_build_query($params)) . $fragment;
+}
+
+/**
+ * Removes an item or items from a query string (core's shape,
+ * functions.php pinned): the scalar form and the array-of-keys form
+ * both speak add_query_arg()'s false-value channel — the idiom the
+ * merge above honors. The default $query resolves against the
+ * current REQUEST_URI exactly like the two-scalar add_query_arg()
+ * form (core's `false === $args[2]` arm).
+ *
+ * glm28-4: the stub did not exist — the architecture gate's allowed
+ * WP-token vocabulary names it (an OAuth redirect's code/state strip
+ * is the canonical future consumer), so any connector using it
+ * passed the sweep and fataled under the harness.
+ *
+ * @param string|array $key   The query key (or list of keys) to remove.
+ * @param string|false $query The URL (false: the current REQUEST_URI).
+ * @return string The URL with the named keys stripped.
+ */
+function remove_query_arg($key, $query = false)
+{
+    if (is_array($key)) {
+        foreach ($key as $k) {
+            $query = remove_query_arg($k, $query);
+        }
+
+        return $query;
+    }
+
+    return false === $query
+        ? add_query_arg($key, false)
+        : add_query_arg($key, false, $query);
 }
 
 /*
