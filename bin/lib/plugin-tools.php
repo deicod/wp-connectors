@@ -4646,14 +4646,38 @@ function wp_connectors_autoloader_violations($pluginDir)
 
         return $violations;
     }
-    $code = wp_connectors_strip_comments($source);
-    if (strpos($code, 'spl_autoload_register') === false) {
+    /*
+     * t31-glm38-1 [R38-1+R38-4, security:medium, driven — round 37's
+     * sweep stopped one view short at this seat]: every probe now
+     * rides the memoized views provider (glm25-8 — one read, one
+     * lex pair, where the seat had paid its own read plus a third
+     * lex; the same run's self-containment walk re-consults the
+     * memo) over the STRIPPED+MASKED composition: the provider's
+     * masked view blanks COMMENTS beside string contents (the
+     * round-37 prefix probe composed the masker over RAW source, so
+     * a comment or docblock naming the expected prefix satisfied
+     * the code-byte arm — driven: a foreign autoloader plus the
+     * comment '// expected prefix Deicod\WpConnectors\Zai\ bound
+     * below' answering 0 violations, master's comment-stripped
+     * probe having refused the same bytes), and the register probes
+     * ride the masked view CASE-INSENSITIVELY — PHP lexes function
+     * names case-insensitively (the R33-6 axis at this seat's own
+     * keyword: a legal 'Spl_AutoLoad_Register(...)' was refused as
+     * no-registration while a string '$note =
+     * "spl_autoload_register";' satisfied both register arms over
+     * string data).
+     */
+    $views = wp_connectors_file_code_views($autoload);
+    $code = null !== $views ? $views['code'] : '';
+    $masked = null !== $views ? $views['masked'] : '';
+    $register_count = preg_match_all('/spl_autoload_register/i', $masked);
+    if (false === $register_count || 0 === $register_count) {
         $violations[] = sprintf('%s: src/autoload.php must register a PSR-4 autoloader.', $slug);
     }
-    if (substr_count($code, 'spl_autoload_register') !== 1) {
+    if (1 !== $register_count) {
         $violations[] = sprintf('%s: src/autoload.php must register exactly one autoloader.', $slug);
     }
-    if (stripos($code, 'composer') !== false || stripos($code, 'vendor') !== false) {
+    if (stripos($masked, 'composer') !== false || stripos($masked, 'vendor') !== false) {
         $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
     }
     $expectedPrefix = 'Deicod\\WpConnectors\\' . wp_connectors_namespace_suffix_from_slug($slug) . '\\';
@@ -4672,12 +4696,14 @@ function wp_connectors_autoloader_violations($pluginDir)
      * contents blanked — a concatenated or heredoc-composed
      * spelling) OR stand as a quoted literal whose DECODED VALUE
      * EQUALS the prefix (the canonical spelling — containment in a
-     * longer literal is prose, never a binding; equality is).
+     * longer literal is prose, never a binding; equality is). The
+     * literal walk rides the STRIPPED view (t31-glm38-1): a quoted
+     * literal spelled inside a comment must not feed the equality
+     * arm — blanked comment bytes carry no quote pairs.
      */
-    $masked = wp_connectors_mask_string_contents($source);
     $normalized = str_replace('\\\\', '\\', $masked);
     $prefix_bound = strpos($normalized, $expectedPrefix) !== false;
-    foreach (wp_connectors_quoted_literals($source) as $literal_pair) {
+    foreach (wp_connectors_quoted_literals($code) as $literal_pair) {
         if (str_replace('\\\\', '\\', $literal_pair[1]) === $expectedPrefix) {
             $prefix_bound = true;
             break;

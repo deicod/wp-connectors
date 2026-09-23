@@ -84,4 +84,44 @@ final class SelfContainmentAutoloaderPrefixBindingTest extends TestCase
         $substring = $this->autoloadWith("<?php\nspl_autoload_register(function (\$c) {\n    \$p = 'src/' . \$c . '-Deicod\\\\WpConnectors\\\\Zai\\\\.php';\n    require __DIR__ . '/' . \$p;\n});\n");
         $this->assertNotEmpty($substring, 'A literal whose decoded value merely CONTAINS the prefix as a substring is prose, never a binding — equality is the bar.');
     }
+
+    public function testACommentNamingThePrefixAndStringDataNamingTheRegisterProbeBindNothing(): void
+    {
+        /*
+         * R38-1+R38-4 (security:medium, driven — round 37's sweep
+         * stopped one view short at this seat): the prefix probe
+         * composed the masker over RAW source, so a comment naming
+         * the expected prefix satisfied the code-byte arm (driven: a
+         * foreign autoloader plus the comment answering 0 violations,
+         * master's comment-stripped probe having refused the same
+         * bytes), and the register probes judged string data
+         * case-sensitively — a '$note = "spl_autoload_register";'
+         * satisfying both arms, a legal 'Spl_AutoLoad_Register(...)'
+         * refused. Every probe rides the provider's STRIPPED+MASKED
+         * view now, the register count case-insensitive: comments
+         * and string contents blank, the keyword folding.
+         */
+        $comment = $this->autoloadWith("<?php
+// expected prefix Deicod\\WpConnectors\\Zai\\ bound below
+spl_autoload_register(function (\$c) {
+    \$p = 'foreign/' . \$c . '.php';
+    require __DIR__ . '/' . \$p;
+});
+");
+        $this->assertNotEmpty($comment, 'A comment naming the prefix binds nothing — the provider view blanks comments (red at HEAD: 0 violations).');
+
+        $this->base .= '-string';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $string = $this->autoloadWith("<?php
+\$note = 'spl_autoload_register';
+");
+        $this->assertCount(3, $string, 'String data naming the register probe satisfies nothing — all three verdicts fire (red at HEAD: 1 violation, the string satisfying both register arms).');
+
+        $this->base .= '-case';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $caseVariant = $this->autoloadWith("<?php
+Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\'; \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php'; require \$path; });
+");
+        $this->assertSame(array(), $caseVariant, 'The legal Spl_AutoLoad_Register spelling registers — PHP lexes function names case-insensitively (red at HEAD: both register violations).');
+    }
 }
