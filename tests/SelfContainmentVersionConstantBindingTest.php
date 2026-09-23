@@ -99,7 +99,7 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         $base = sys_get_temp_dir() . '/wp-connectors-version-r39tag-' . uniqid('', true);
         @mkdir($base . '/myplug', 0755, true);
         $base = $base . '/myplug';
-        foreach (array('upper-tag' => '<?PHP', 'fq-tag' => '<?php \\') as $name => $tag) {
+        foreach (array('upper-tag' => '<?PHP ', 'fq-tag' => '<?php \\') as $name => $tag) {
             file_put_contents(
                 $base . '/myplug.php',
                 $tag . "define( \"MYPLUG_VERSION\", \"1.2.3\" );\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\n"

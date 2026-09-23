@@ -5759,11 +5759,24 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
     $code = wp_connectors_strip_comments($source);
     $masked = wp_connectors_mask_string_contents($source);
     $constantMatch = array();
-    if (preg_match_all('/(?:<\?(?:php|=)?[ \t]*|[ \t]*|^|;|\})\\\\?(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
         foreach ($candidates[0] as $index => $candidate) {
-            // The keyword's own offset inside the candidate (past the open tag,
-            // separator, or whitespace anchor), both views length-preserved.
-            $keyword_at = $candidate[1] + (int) stripos($candidate[0], 'define');
+            /*
+             * t31-glm40-2 [R40-3, security:medium, driven fail-open —
+             * the R39-4 unanchoring's dead-prefix bug]: the R39-4 prefix
+             * alternation was dead by construction ('[ \t]*' matches
+             * empty at every offset, the pattern fully unanchored) and
+             * nothing guarded the define keyword's LEFT boundary, so an
+             * identifier-glued call laundered the gate — 'function
+             * my_define($n,$v){} my_define(\'MYPLUG_VERSION\', ...);'
+             * (php -l clean, executing fatals) answering 0 violations
+             * where the no-define control flags: the keyword bytes real
+             * code inside the identifier, the masked re-confirmation
+             * passing. The left boundary rides the LABEL byte class plus
+             * the separator (the ocr49-3 statement-start doctrine): the
+             * define must START as a name, never continue one.
+             */
+            $keyword_at = $candidate[1];
             if (0 === substr_compare($masked, 'define', $keyword_at, 6, true)) {
                 $constantMatch = array(1 => $candidates[1][ $index ][0]);
                 break;
