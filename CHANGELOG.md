@@ -6,6 +6,55 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 36)
+
+Twenty-second claude-glm pass (/code-review max, ledger-read first;
+the finder fleet partly killed by API rate limits, the main agent
+performing the remaining angles and all drives directly): still not
+zero — 5 candidates, all on round 35's commits. DRIVER ADJUDICATION
+under the scope rule: R36-1/3 (one deletion), R36-2 (the class
+guard), R36-5 (the false provenance) accepted; R36-4 (the
+vendor/autoload prose false-positive, pre-existing and fail-closed)
+recorded as inheritance. Four commits t31-glm36-1..4, the full
+offline check green after EVERY commit. Suite 1933 → 1935 tests,
+48297 → 48308 assertions, 3 skipped unchanged.
+
+- **The megabyte degrade arm deleted — the tokenizer view at every
+  size (t31-glm36-1, security:medium, driven fail-open;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — round 35's
+  >1MB fallback to the quote grammar MIS-PAIRS on a quote byte
+  inside a megabyte nowdoc body, the mis-paired span blanking the
+  real `__DIR__` code token and consuming the traversal literal's
+  opening quote (both driven shapes laundering clean where their
+  one-byte-short controls flag), and a PCRE abort collapses the
+  blanked view to zero bytes silently consumed. A synthetic
+  fail-closed view was tried and refuted in derivation (the seats
+  defer to the literal analysis on an anchor-less view — fail-open
+  through the deferral chain); the tokenizer stands at every size,
+  the OOM motivation having been the 8MB pad whose halving removed
+  it, six consecutive green runs the verification.
+
+- **An assignment that reduces to nothing is no assignment
+  (t31-glm36-2, security:medium, driven fail-open — round 35's
+  guard was one spelling of four; bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — every byte in
+  the value extractor's terminator-trim class launders the same
+  way `;` did: `$f = ;` at the plain collector, `?` and `)`
+  sources, value-side junk — four spellings driven 0 violations
+  where the parse-valid twins flag, all pre-existing at the
+  baseline. One guard at the extractor seam, both collector seats
+  and every spelling closed.
+
+- **The timeout-less corner skips loudly (t31-glm36-3, the false
+  provenance corrected; tests/SelfContainmentSharedReferenceScanAbortTest.php)**
+  — round 35's fallback cited "the SecureFixtures owner's own
+  accepted posture" for degrading to the unbounded child;
+  SecureFixtures' docblock states the opposite ("a host without
+  the tool answers its own loud 127, never a silent unbounded
+  wait"). The absent-binary corner now skips loudly, naming the
+  missing tool and the doctrine.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 35)
 
 Twenty-first claude-glm pass (/code-review max, ledger-read
