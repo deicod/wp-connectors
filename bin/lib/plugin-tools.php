@@ -5677,15 +5677,29 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * claimed seat: the case-insensitive keyword the recorded
      * 'DEFINE(' false-refusal waited on, PHP lexing function names
      * case-insensitively.
+     *
+     * t31-glm38-4 [R38-6, driven false refusals — round 37's anchor
+     * over-narrowed]: '^[ \t]*' refused two legal spellings master's
+     * unanchored probe had accepted — the define as the FIRST
+     * statement on the OPEN-TAG LINE ('<?php define(...)', the
+     * minimal plugin's own spelling) and the fully-qualified global
+     * call '\define(...)' (driven: '<?php define( "MYPLUG_VERSION",
+     * "1.2.3" );' answered 'must define constant' at HEAD and no
+     * violation at the pre-round-37 baseline, check-conventions
+     * exiting 1 on a well-formed plugin). The anchor admits the
+     * open-tag prefix and the leading separator beside whitespace,
+     * the masked re-confirmation unchanged (the confirmation reads
+     * the KEYWORD's own bytes wherever the anchor ends).
      */
     $code = wp_connectors_strip_comments($source);
     $masked = wp_connectors_mask_string_contents($source);
     $constantMatch = array();
-    if (preg_match_all('/^[ \t]*(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/m', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/^(?:<\?(?:php|=)?[ \t]*|[ \t]*\\\\?)(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/m', $code, $candidates, PREG_OFFSET_CAPTURE)) {
         foreach ($candidates[0] as $index => $candidate) {
-            // Both views are length-preserving: the masked view at the same
-            // offset must still carry the call's keyword — heredoc DATA blanks.
-            if (0 === substr_compare($masked, 'define', $candidate[1] + strspn($candidate[0], " \t"), 6, true)) {
+            // The keyword's own offset inside the candidate (past the open tag,
+            // separator, or whitespace anchor), both views length-preserved.
+            $keyword_at = $candidate[1] + (int) stripos($candidate[0], 'define');
+            if (0 === substr_compare($masked, 'define', $keyword_at, 6, true)) {
                 $constantMatch = array(1 => $candidates[1][ $index ][0]);
                 break;
             }
