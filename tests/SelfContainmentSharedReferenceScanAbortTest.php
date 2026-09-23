@@ -45,6 +45,12 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
      */
     private $root;
 
+    /**
+     * @var list<string> Extra scratch roots created mid-test; tearDown
+     *                    releases every exit path through the ONE owner.
+     */
+    private $extra_roots = array();
+
     protected function setUp(): void
     {
         $this->root = sys_get_temp_dir() . '/wp-connectors-shared-abort-' . uniqid('', true);
@@ -53,12 +59,7 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_file($entry)) {
-                @unlink($entry);
-            }
-        }
-        @rmdir($this->root);
+        WpHarness::releaseScratch($this->root, ...$this->extra_roots);
     }
 
     public function testASizeDotDotRunCannotHideTheSharedReference(): void
@@ -179,9 +180,6 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
             '<?php $x = "../shared/foo.php";'
         );
         $this->assertNotEmpty(wp_connectors_self_containment_violations($control), 'The control flags at the host default — the abort above was the pinned limit, never the payload.');
-        foreach ((glob($control . '/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($control);
+        $this->extra_roots[] = $control;
     }
 }

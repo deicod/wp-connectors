@@ -43,6 +43,12 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
      */
     private $root;
 
+    /**
+     * @var list<string> Extra scratch roots created mid-test; tearDown
+     *                    releases every exit path through the ONE owner.
+     */
+    private $extra_roots = array();
+
     protected function setUp(): void
     {
         $this->root = sys_get_temp_dir() . '/wp-connectors-case-variant-' . uniqid('', true);
@@ -51,12 +57,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_file($entry)) {
-                @unlink($entry);
-            }
-        }
-        @rmdir($this->root);
+        WpHarness::releaseScratch($this->root, ...$this->extra_roots);
     }
 
     /**
@@ -108,10 +109,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             implode("\n", $twin_violations),
             'The case variant and its lowercase twin answer byte-identical reports modulo the keyword spelling and the fixture roots the slug names — the widening touched the keyword tokens, never the derivations.'
         );
-        foreach ((glob($twin_root . '/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($twin_root);
+        $this->extra_roots[] = $twin_root;
     }
 
     /**
@@ -140,10 +138,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             implode("\n", $twin_violations),
             'The case variant and its all-lowercase twin answer byte-identical reports modulo the fixture root the slug names — the fold touched the keyword tokens, never the proof machinery.'
         );
-        foreach ((glob($twin_root . '/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($twin_root);
+        $this->extra_roots[] = $twin_root;
     }
 
     public function testACaseVariantForeachHeaderBindingIsCollected(): void
@@ -224,10 +219,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             '<?php require "__DIR__/sub/x.php";'
         );
         $this->assertNotEmpty(wp_connectors_self_containment_violations($root2), 'The exact-case literal spelling flags identically — the pre-existing heuristic hole the fold widened, closed with its root.');
-        foreach ((glob($root2 . '/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($root2);
+        $this->extra_roots[] = $root2;
 
         $root3 = $this->root . '-code';
         mkdir($root3, 0755, true);
@@ -236,10 +228,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             '<?PHP REQUIRE __dir__ . "/sub/x.php";'
         );
         $this->assertSame(array(), wp_connectors_self_containment_violations($root3), 'The code-token anchor stays clean in every casing — the blanked view keeps what the runtime keeps.');
-        foreach ((glob($root3 . '/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($root3);
+        $this->extra_roots[] = $root3;
     }
 
     public function testACaseVariantDoWhileTailWriteStaysVisible(): void
@@ -287,10 +276,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             '<?php interface I { function nb(); } $map = array(__DIR__ . "/safe.php"); foreach ($map as $f) { require $f; } $map[] = 1;'
         );
         $this->assertSame(array(), wp_connectors_self_containment_violations($twin_root), 'The function twin stays clean beside it.');
-        foreach ((glob($twin_root . '/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($twin_root);
+        $this->extra_roots[] = $twin_root;
     }
 
     public function testACaseVariantDirAnchorScansClean(): void
@@ -324,10 +310,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             '<?PHP REQUIRE __DIR__ . "/sub/x.php";'
         );
         $this->assertSame(array(), wp_connectors_self_containment_violations($twin_root), 'The __DIR__ twin stays clean beside it.');
-        foreach ((glob($twin_root . '/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($twin_root);
+        $this->extra_roots[] = $twin_root;
     }
 
     public function testACaseVariantDirnameAnswersItsTwinSReason(): void
@@ -359,9 +342,6 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             implode("\n", wp_connectors_self_containment_violations($twin_root)),
             'DirName and dirname answer byte-identical reports modulo the fixture root and the keyword spelling the statement text carries — the consults fold, never disagree with their own twins.'
         );
-        foreach ((glob($twin_root . '/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($twin_root);
+        $this->extra_roots[] = $twin_root;
     }
 }
