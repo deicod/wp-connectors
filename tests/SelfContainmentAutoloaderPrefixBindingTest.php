@@ -85,6 +85,30 @@ final class SelfContainmentAutoloaderPrefixBindingTest extends TestCase
         $this->assertNotEmpty($substring, 'A literal whose decoded value merely CONTAINS the prefix as a substring is prose, never a binding — equality is the bar.');
     }
 
+    public function testAVendorOrComposerIncludeOperandStillReferencesComposerOrVendor(): void
+    {
+        /*
+         * R39-3 (security:medium, driven true-positive loss — round
+         * 38's masked probe one leg too far): the masked view blanks
+         * string contents, so a RUNTIME OPERAND riding in a quoted
+         * literal — 'require_once __DIR__ .
+         * "/vendor/pkg/lib.php";' — turned invisible where master
+         * flagged it, the hostile plugin passing the gate green.
+         * The prose immunity stands (the masked probe); the OPERAND
+         * probe judges the raw text of every require/include
+         * statement — an include path is never prose, whatever its
+         * quoting. The prose-note twin stays clean beside it.
+         */
+        $canonical = "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) { \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php'; require_once \$path; });\nrequire_once __DIR__ . '/vendor/pkg/lib.php';\n";
+        $operand = $this->autoloadWith($canonical);
+        $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $operand), 'A vendor include path is a runtime operand, never prose — the reference flags (red at HEAD: 0 violations where master flags).');
+
+        $this->base .= '-prose';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $prose = $this->autoloadWith("<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) { \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php'; require_once \$path; });\n\$note = 'no vendor or composer here';\n");
+        $this->assertStringNotContainsString('must not reference composer or vendor', implode("\n", $prose), 'The prose-note twin stays clean — the masked probe\'s immunity intact.');
+    }
+
     public function testACommentNamingThePrefixAndStringDataNamingTheRegisterProbeBindNothing(): void
     {
         /*

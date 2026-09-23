@@ -4744,6 +4744,28 @@ function wp_connectors_autoloader_violations($pluginDir)
     }
     if (stripos($masked, 'composer') !== false || stripos($masked, 'vendor') !== false) {
         $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
+    } else {
+        /*
+         * t31-glm39-3 [R39-3, security:medium, driven true-positive
+         * loss — round 38's masked probe one leg too far]: the masked
+         * view blanks string contents, so a RUNTIME OPERAND riding in
+         * a quoted literal — 'require_once __DIR__ .
+         * "/vendor/pkg/lib.php";' — turned invisible where master
+         * flagged it, the hostile plugin passing the gate green (the
+         * per-file seats catch only 'vendor/autoload' and
+         * require+'composer' spellings). The prose immunity stands
+         * (the masked probe above); the OPERAND probe judges the raw
+         * text of every require/include statement — an include path
+         * is never prose, whatever its quoting.
+         */
+        if (preg_match_all('/(?i:require|include)(?i:_once)?\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>|$)/', $code, $include_statements)) {
+            foreach ($include_statements[0] as $statement) {
+                if (false !== stripos($statement, 'composer') || false !== stripos($statement, 'vendor')) {
+                    $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
+                    break;
+                }
+            }
+        }
     }
     $expectedPrefix = 'Deicod\\WpConnectors\\' . wp_connectors_namespace_suffix_from_slug($slug) . '\\';
     /*
