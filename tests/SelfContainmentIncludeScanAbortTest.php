@@ -185,6 +185,68 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringNotContainsString('could not be scanned for includes', $report, 'The lint-clean composite scans — never refused.');
     }
 
+    public function testAnAbortOverTheForeachBindingCollectorRefusesTheProof(): void
+    {
+        /*
+         * The driven fail-open (R32-5, security): the header
+         * collector's truthiness read a size-triggered
+         * preg_match_all FALSE as "no foreach bindings" — the
+         * tempered lazy dot exhausting pcre.backtrack_limit — so
+         * the '$evil as $f' binding went invisible beside the
+         * benign same-file write and the loop-shaped include
+         * laundered (driven at DEFAULT limits with a 2.5MB ';'
+         * poison: 0 violations where the poison-free twin flags;
+         * the in-suite fixture rides the PINNED-floor idiom — the
+         * suite's deterministic abort injection — because the
+         * 2.5MB spelling OOMs the 128M runner at the tokenizer).
+         * The abort refuses the proof now: no binding is provable
+         * over bytes the collector could not scan, the include
+         * flagging through its no-resolvable-assignment reason —
+         * the reason text that distinguishes the refused proof
+         * ('has no resolvable same-file assignment') from the
+         * normally-collected one ('depends on $evil with …'),
+         * both pinned. THE POISON IS DELIBERATELY NOT LINT-CLEAN
+         * (raw ';' bytes inside the header paren — php -l refuses
+         * it): the seat's own threat model runs the scan BEFORE
+         * any lint rejection, inspect-artifact riding it over
+         * hostile extracted trees with no size cap — recorded,
+         * per the round-31 doctrine, rather than laundered
+         * around.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php $f = __DIR__ . "/safe.php"; foreach (' . str_repeat(';', 8192) . ') { } foreach ($evil as $f) { require $f; }'
+        );
+
+        $host_limit = (string) ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', '4096');
+        try {
+            $violations = wp_connectors_self_containment_violations($this->root);
+        } finally {
+            ini_set('pcre.backtrack_limit', $host_limit);
+        }
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'A size-triggered abort over the foreach binding collector refuses the proof — never a silent clean pass over bindings that went unscanned (red at HEAD: 0 violations on the driven 2.5MB default-limit shape).');
+        $this->assertStringContainsString('variable $f has no resolvable same-file assignment', $report, 'The refused proof\'s own reason — the collector aborting, no binding provable.');
+        $this->assertStringNotContainsString('could not be scanned for includes', $report, 'The include scan itself survives this floor — the abort pinned is the collector\'s alone.');
+
+        // The same fixture at the restored limit collects normally: the
+        // binding visible, the flag naming what $f depends on.
+        $control = $this->root . '-control';
+        mkdir($control, 0755, true);
+        file_put_contents(
+            $control . '/fixture.php',
+            '<?php $f = __DIR__ . "/safe.php"; foreach (' . str_repeat(';', 8192) . ') { } foreach ($evil as $f) { require $f; }'
+        );
+        $control_report = implode("\n", wp_connectors_self_containment_violations($control));
+        $this->assertStringContainsString('variable $f depends on $evil with no resolvable same-file assignment', $control_report, 'At the restored limit the collector runs — the binding collected, the flag naming $evil (the normal-collection twin beside the refused-proof arm).');
+        foreach ((glob($control . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($control);
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*

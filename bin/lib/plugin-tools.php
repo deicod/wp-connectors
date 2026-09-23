@@ -3339,7 +3339,34 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      * token now (the tempered dot never crosses it), and an
      * alternative-syntax header matches its own ':' close.
      */
-    if (preg_match_all('/(?i:foreach)\s*\(((?:(?!(?i:endforeach)\b).)+?)\)\s*(?:\{|:)/s', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
+    /*
+     * t31-glm32-3 [R32-5, security:medium, driven fail-open — the
+     * R30-C1/R31-C1 abort doctrine at the one collector seat both
+     * rounds left silent]: the header collector's truthiness read
+     * a size-triggered FALSE (the tempered lazy dot over a
+     * megabyte span exhausting pcre.backtrack_limit) as "no
+     * foreach bindings" CALL-WIDE — the poison need not be
+     * lint-clean, inspect-artifact scans hostile extracted trees
+     * with no size cap and its php -l rejection runs AFTER the
+     * scan — so a single benign same-file write satisfied every
+     * loop-shaped include proof over the vanished bindings
+     * (driven: a 2.5MB ';' run inside a header made '$evil as
+     * $f' invisible beside '$f = __DIR__ . "/safe.php";' — 0
+     * violations where the poison-free twin flags). FALSE
+     * refuses the proof now (the in-chain glm36-8 idiom the
+     * signature consult one screen up already rides): no
+     * assignment is provable over bytes the collector could not
+     * scan, the include flagging through its own
+     * no-resolvable-assignment reason — the misattribution
+     * (reason text never naming the abort) the fail-closed
+     * direction's recorded shape, the same class round 30's
+     * residual list carries for the sibling seats.
+     */
+    $foreach_scan = preg_match_all('/(?i:foreach)\s*\(((?:(?!(?i:endforeach)\b).)+?)\)\s*(?:\{|:)/s', $masked, $foreaches, PREG_OFFSET_CAPTURE);
+    if (false === $foreach_scan) {
+        return array();
+    }
+    if ($foreach_scan) {
         foreach ($foreaches[1] as $foreach_match) {
             if (! $visible($foreach_match[1])) {
                 // The binding is outside every region the include reads.
