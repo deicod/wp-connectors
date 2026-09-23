@@ -214,21 +214,21 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
 
         $root2 = $this->root . '-canonical';
         mkdir($root2, 0755, true);
+        $this->extra_roots[] = $root2;
         file_put_contents(
             $root2 . '/fixture.php',
             '<?php require "__DIR__/sub/x.php";'
         );
         $this->assertNotEmpty(wp_connectors_self_containment_violations($root2), 'The exact-case literal spelling flags identically — the pre-existing heuristic hole the fold widened, closed with its root.');
-        $this->extra_roots[] = $root2;
 
         $root3 = $this->root . '-code';
         mkdir($root3, 0755, true);
+        $this->extra_roots[] = $root3;
         file_put_contents(
             $root3 . '/fixture.php',
             '<?PHP REQUIRE __dir__ . "/sub/x.php";'
         );
         $this->assertSame(array(), wp_connectors_self_containment_violations($root3), 'The code-token anchor stays clean in every casing — the blanked view keeps what the runtime keeps.');
-        $this->extra_roots[] = $root3;
 
         /*
          * R34-2's heredoc half: round 33's quote-grammar blanker was
@@ -243,12 +243,12 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
          */
         $root4 = $this->root . '-nowdoc';
         mkdir($root4, 0755, true);
+        $this->extra_roots[] = $root4;
         file_put_contents(
             $root4 . '/fixture.php',
             "<?php require <<<'EOT'\n__DIR__ . \"/sub/x.php\"\nEOT;"
         );
         $this->assertNotEmpty(wp_connectors_self_containment_violations($root4), 'A nowdoc body\'s __DIR__ text is a directory NAME at runtime — the unanchored flag fires exactly like the quoted twin (red at HEAD: laundered clean).');
-        $this->extra_roots[] = $root4;
     }
 
     public function testACaseVariantDoWhileTailWriteStaysVisible(): void
