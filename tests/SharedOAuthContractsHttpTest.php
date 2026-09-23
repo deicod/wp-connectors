@@ -1143,6 +1143,52 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
      * A ']' is only legal as the IPv6 closer of ONE well-formed bracket
      * pair; the legal bracket authorities stay green beside it.
      */
+    /**
+     * glm28-10: the failed-parse bracket probe — the entry screen
+     * once carried NO bracket judgment, so the PARSE-FALSE half of
+     * the glued-tail class ('[::1]8080/' — the engine refuses the
+     * all-digit glued tail outright) answered the generic scheme/host
+     * sentence while its parsing twins answered the glued-bracket
+     * sentence through the raw screen, inverting the success path's
+     * bracket-first precedence. The probe rides the split owner's
+     * strrpos last-']' anchor: 'a]:b]:70000/' PASSES it (']' then
+     * ':') and keeps its port range verdict, unchanged.
+     */
+    public function testTheParseFalseGluedBracketTailWearsTheBracketSentence(): void
+    {
+        foreach (array(
+            'all-digit glued tail (parse-false)' => 'http://[::1]8080/',
+            'five-digit glued tail (parse-false)' => 'http://[::1]80800/',
+            'letter twin (parses — the raw screen)' => 'http://[::1]x/',
+        ) as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A glued bracket tail (%s) must be rejected.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('bracketed host must be followed by a colon port', $e->getMessage(), "One class, one sentence — the parse-false glued tails answer the bracket sentence too ({$label}) — red at HEAD the all-digit form answered the generic scheme/host sentence.");
+            }
+        }
+
+        // The strrpos anchor stays load-bearing: the bare-']' spelling's
+        // LAST ']' is followed by ':', so the probe passes and the port
+        // range verdict below keeps its precedence — unchanged.
+        try {
+            Url::parse_validated('http://a]:b]:70000/');
+            $this->fail('The bare-bracket spelling still refuses.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('out of range', $e->getMessage(), 'a]:b]:70000/ keeps its port range verdict — the anchor rode the last \']\', never the first.');
+        }
+
+        // The coloned and bare bracket authorities keep their verdicts.
+        $this->assertSame('[::1]:8080', Url::parse_validated('http://[::1]:8080/')['authority'], 'A legal coloned bracket authority stays green.');
+        try {
+            Url::parse_validated('http://[::1]:70000/');
+            $this->fail();
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('out of range', $e->getMessage(), 'The bracketed out-of-range port keeps its range verdict.');
+        }
+    }
+
     public function testALoneBracketInAnAuthorityIsRejected(): void
     {
         $hostile_urls = array(

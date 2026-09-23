@@ -96,6 +96,22 @@ final class Url {
 	private const MUST_NOT_CARRY_BACKSLASH_MESSAGE = 'The URL must not carry a backslash — WHATWG consumers treat "\" as a path-segment separator for http/https URLs ("https://host/device\page" reaches /device/page there while this parse keeps the byte) and as an authority terminator ("https://evil.example\@host/" sends a browser to evil.example while this parse and every redacted form name host), and this parse keeps the byte verbatim, so the two must agree: write the URL with "/" separators, never "\".';
 
 	/**
+	 * The ONE glued-bracket sentence, shared by the raw screen on the
+	 * success path and the failed-parse entry screen (glm28-10).
+	 *
+	 * A bracket-bearing authority gluing anything but a ':' to its
+	 * closing ']' answers this verdict whichever side of the parse
+	 * boundary the spelling dies on: the entry screen once carried NO
+	 * bracket probe, so '[::1]8080/' (parse-false) answered the
+	 * generic scheme/host sentence while its '[::1]x/' twin PARSES
+	 * (parse_url misreading host '[:', port 1) and answers this
+	 * sentence through the raw screen — inverting the success path's
+	 * bracket-first precedence at the entry (the bracket class outranks
+	 * the port class, never the reverse).
+	 */
+	private const BRACKET_MUST_BE_FOLLOWED_BY_COLON_PORT_MESSAGE = 'A bracketed host must be followed by a colon port ("[::1]:8080") or the end of the authority — anything glued to the closing bracket ("[::1]8080", "[::1]x") is a malformed authority parse_url() misreads, and the URL string and the rebuilt authority must agree.';
+
+	/**
 	 * Parses and validates an absolute http(s) URL.
 	 *
 	 * The whole URL must be VALID UTF-8 first (review round t31-r4-13):
@@ -334,6 +350,36 @@ final class Url {
 					if ( false !== strpos( $url, '\\' ) ) {
 						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
 						throw new InvalidArgumentException( self::MUST_NOT_CARRY_BACKSLASH_MESSAGE );
+					}
+
+					/*
+					 * glm28-10: the failed-parse BRACKET probe — the
+					 * success path's bracket-first precedence mirrored
+					 * at the entry. The screen once carried no bracket
+					 * judgment at all, so '[::1]8080/' (parse-false —
+					 * the engine refuses the glued tail outright)
+					 * answered the generic scheme/host sentence while
+					 * its '[::1]x/' twin PARSES (host '[:', port 1)
+					 * and answers the glued-bracket sentence through
+					 * the raw screen — the exact inversion of the
+					 * bracket-first order the success path spells.
+					 * The probe is the raw screen's own glued-tail
+					 * check riding the split owner's bracket_end (the
+					 * STRRPOS last-']' anchor load-bearing:
+					 * 'a]:b]:70000' passes the probe — its last ']'
+					 * is followed by ':' — and keeps its port range
+					 * verdict below, unchanged), read as the allow
+					 * form (1 !==, abort-refusing per glm36-8). The
+					 * malformed-PAIR class keeps the entry's generic
+					 * refusal on failed parses — only the glued-tail
+					 * class was split across the parse boundary (the
+					 * raw screen's own pair check owns the parseable
+					 * half), and this probe owns exactly the split
+					 * class, never more.
+					 */
+					if ( false !== $entry_split['bracket_end'] && 1 !== preg_match( '/\A\](?::|\z)/', substr( $entry_split['host_port'], (int) $entry_split['bracket_end'] ) ) ) {
+						// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+						throw new InvalidArgumentException( self::BRACKET_MUST_BE_FOLLOWED_BY_COLON_PORT_MESSAGE );
 					}
 
 					if ( '' !== $entry_port ) {
@@ -605,7 +651,8 @@ final class Url {
 		 * shape no client means to send.
 		 */
 		if ( false !== $bracket_end && 1 !== preg_match( '/\A\](?::|\z)/', substr( $host_port, (int) $bracket_end ) ) ) {
-			throw new InvalidArgumentException( 'A bracketed host must be followed by a colon port ("[::1]:8080") or the end of the authority — anything glued to the closing bracket ("[::1]8080", "[::1]x") is a malformed authority parse_url() misreads, and the URL string and the rebuilt authority must agree.' );
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+			throw new InvalidArgumentException( self::BRACKET_MUST_BE_FOLLOWED_BY_COLON_PORT_MESSAGE );
 		}
 		$raw_port_int = null;
 		if ( false !== $colon ) {
