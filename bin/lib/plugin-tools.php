@@ -2508,10 +2508,23 @@ function wp_connectors_header_violations(array $headers, $slug)
  */
 function wp_connectors_anchored_include_escapes_plugin($file, $include, array $literals, $pluginDir)
 {
-    if (stripos($include, '__DIR__') === false) {
+    /*
+     * t31-glm33-2 [R33-2, security:medium, driven fail-open — round
+     * 32's stripos consulted the RAW statement bytes, where quoted
+     * literals are intact]: the magic-constant's TEXT inside a
+     * quoted literal counts as an anchor for every casing, so
+     * 'require "__dir__/sub/x.php";' — at runtime a literal
+     * directory name resolved against include_path/cwd, never the
+     * plugin dir — laundered the unanchored flag (the exact-case
+     * spelling rode the same pre-existing heuristic; the fold
+     * widened it to every casing). The consult judges the
+     * LITERAL-BLANKED view: string data never anchors anything.
+     */
+    $anchor_view = wp_connectors_blank_quoted_strings($include);
+    if (stripos($anchor_view, '__DIR__') === false) {
         return false;
     }
-    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $include)) {
+    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view)) {
         // Already flagged by the upward-dirname rule; do not double-report.
         return false;
     }
@@ -2568,10 +2581,13 @@ function wp_connectors_anchored_include_escapes_plugin($file, $include, array $l
  */
 function wp_connectors_include_expression_reasons($file, $expression, $pluginDir)
 {
-    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $expression)) {
+    // t31-glm33-2: anchor consults judge the literal-blanked view (string
+    // data never anchors — see wp_connectors_anchored_include_escapes_plugin).
+    $anchor_view = wp_connectors_blank_quoted_strings($expression);
+    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view)) {
         return array( 'escapes upward through dirname()' );
     }
-    if (stripos($expression, '__DIR__') === false && strpos($expression, 'ABSPATH') === false) {
+    if (stripos($anchor_view, '__DIR__') === false && strpos($anchor_view, 'ABSPATH') === false) {
         return array( 'is not anchored to __DIR__ or ABSPATH' );
     }
     $quoted_literals = wp_connectors_quoted_literals($expression);
@@ -3452,7 +3468,9 @@ function wp_connectors_is_psr4_autoloader_shape($file, $statement, array $segmen
     if (rtrim((string) $pluginDir, '/') . '/src/autoload.php' !== $file) {
         return false;
     }
-    if (stripos($statement, '__DIR__') === false) {
+    // t31-glm33-2: the anchor consult judges the literal-blanked view
+    // (string data never anchors — see the escapes-plugin owner).
+    if (stripos(wp_connectors_blank_quoted_strings($statement), '__DIR__') === false) {
         return false;
     }
     foreach (wp_connectors_quoted_literals($statement) as $literal_pair) {
@@ -3500,11 +3518,14 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
     if ($segments === array()) {
         return array();
     }
-    if (stripos($statement, '__DIR__') === false && strpos($statement, 'ABSPATH') === false) {
+    // t31-glm33-2: anchor consults judge the literal-blanked view (string
+    // data never anchors — see wp_connectors_anchored_include_escapes_plugin).
+    $anchor_view = wp_connectors_blank_quoted_strings($statement);
+    if (stripos($anchor_view, '__DIR__') === false && strpos($anchor_view, 'ABSPATH') === false) {
         // Unanchored statements are flagged by the literal analysis already.
         return array();
     }
-    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $statement)) {
+    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view)) {
         // Already flagged by the upward-dirname rule; do not double-report.
         return array();
     }
@@ -4248,8 +4269,9 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                          * statement, appending the identical violation N
                          * times for an N-literal include.
                          */
-                        $anchored = stripos($include[0], '__DIR__') !== false || strpos($include[0], 'ABSPATH') !== false;
-                        $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $include[0]);
+                        $anchor_view = wp_connectors_blank_quoted_strings($include[0]);
+                        $anchored = stripos($anchor_view, '__DIR__') !== false || strpos($anchor_view, 'ABSPATH') !== false;
+                        $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view);
                         if (! $anchored || $escapesUp) {
                             $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
                         }

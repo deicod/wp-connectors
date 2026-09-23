@@ -195,6 +195,53 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
         );
     }
 
+    public function testALiteralDirAnchorDoesNotAnchor(): void
+    {
+        /*
+         * R33-2 (security:medium, driven fail-open — round 32's
+         * stripos consulted the raw statement bytes, where quoted
+         * literals are intact): the magic constant's TEXT inside
+         * a quoted literal counted as an anchor for every casing,
+         * so 'require "__dir__/sub/x.php";' — at runtime a
+         * literal directory name resolved against
+         * include_path/cwd, never the plugin dir — laundered the
+         * unanchored flag (the exact-case '__DIR__' spelling rode
+         * the same pre-existing heuristic; the fold widened it).
+         * The anchor consults judge the LITERAL-BLANKED view now:
+         * string data never anchors anything, and the code-token
+         * anchors stay clean in every casing beside them.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php require "__dir__/sub/x.php";'
+        );
+        $this->assertNotEmpty(wp_connectors_self_containment_violations($this->root), 'A quoted literal is a directory NAME at runtime, never an anchor — the unanchored flag fires (red at HEAD: laundered clean).');
+
+        $root2 = $this->root . '-canonical';
+        mkdir($root2, 0755, true);
+        file_put_contents(
+            $root2 . '/fixture.php',
+            '<?php require "__DIR__/sub/x.php";'
+        );
+        $this->assertNotEmpty(wp_connectors_self_containment_violations($root2), 'The exact-case literal spelling flags identically — the pre-existing heuristic hole the fold widened, closed with its root.');
+        foreach ((glob($root2 . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($root2);
+
+        $root3 = $this->root . '-code';
+        mkdir($root3, 0755, true);
+        file_put_contents(
+            $root3 . '/fixture.php',
+            '<?PHP REQUIRE __dir__ . "/sub/x.php";'
+        );
+        $this->assertSame(array(), wp_connectors_self_containment_violations($root3), 'The code-token anchor stays clean in every casing — the blanked view keeps what the runtime keeps.');
+        foreach ((glob($root3 . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($root3);
+    }
+
     public function testACaseVariantDoWhileTailWriteStaysVisible(): void
     {
         /*
