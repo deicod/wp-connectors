@@ -1861,7 +1861,21 @@ function wp_nonce_field($action = -1, $name = '_wpnonce', $referer = true, $echo
 
 function wp_nonce_url($url, $action = -1, $name = '_wpnonce')
 {
-    return $url . (strpos($url, '?') === false ? '?' : '&') . $name . '=' . wp_create_nonce($action);
+    /*
+     * glm28-3: core's own shape (functions.php, pinned 7.1.1) — the
+     * hand-glued '?'/'&' separator put the nonce INSIDE the fragment
+     * on a fragment-bearing URL ('...?page=z#frag' answered
+     * '...#frag&_wpnonce=x', laundering the nonce into the client-
+     * side anchor), where core DELEGATES to add_query_arg() — the
+     * fragment-correct owner this file already carries (glm15-11) —
+     * and hands the whole result through esc_html() (core's own
+     * wrap; the return is an href-shaped string). The '&amp;'
+     * un-escape of the input rides verbatim (a caller holding a
+     * pre-escaped URL is core's documented input contract).
+     */
+    $url = str_replace('&amp;', '&', (string) $url);
+
+    return esc_html(add_query_arg($name, wp_create_nonce($action), $url));
 }
 
 /*

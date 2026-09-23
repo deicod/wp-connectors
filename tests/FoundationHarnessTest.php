@@ -2684,6 +2684,24 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertNotSame($first, wp_create_nonce('test_action'));
     }
 
+    /**
+     * glm28-3: wp_nonce_url() delegates to add_query_arg() (core's
+     * own shape, functions.php pinned) — the hand-glued separator
+     * once landed the nonce INSIDE the fragment on a fragment-bearing
+     * URL (driven red at HEAD: '...?page=z#frag&_wpnonce=x').
+     */
+    public function testNonceUrlLandsTheNonceBeforeTheFragment()
+    {
+        $this->asAdministrator();
+        $nonce = wp_create_nonce('glm28_act');
+
+        $fragmented = wp_nonce_url('https://example.test/options-general.php?page=z#section', 'glm28_act');
+        $this->assertSame('https://example.test/options-general.php?page=z&amp;_wpnonce=' . $nonce . '#section', $fragmented, 'The nonce lands BEFORE the fragment and the fragment survives verbatim (red at HEAD: inside) — esc_html()\'s &amp; is core\'s own href wrap.');
+
+        $this->assertSame('https://example.test/p?_wpnonce=' . $nonce, wp_nonce_url('https://example.test/p', 'glm28_act'), 'A query-less URL gains the ? form.');
+        $this->assertSame('https://example.test/p?a=1&amp;b=2&amp;_wpnonce=' . $nonce, wp_nonce_url('https://example.test/p?a=1&amp;b=2', 'glm28_act', '_wpnonce'), 'A pre-escaped &amp; input is un-escaped at the head and re-escaped once at the wrap — core\'s documented input contract, the standing params kept.');
+    }
+
     public function testCapabilityGateDistinguishesUsers()
     {
         $this->asAnonymous();
