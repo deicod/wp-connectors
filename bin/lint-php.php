@@ -282,12 +282,27 @@ if (wp_connectors_cli_entry(__FILE__)) {
                 }
                 foreach ($files as $index => $path) {
                     $verdict = @file_get_contents(sprintf('%s/%d.lint', $scratch, $index));
-                    if (false === $verdict || 1 !== preg_match('/^exit=([0-9]+)$/m', $verdict, $code)) {
+                    /*
+                     * t31-glm37-1 [R37-5, the lint gate's own seat — the same
+                     * forgery class as the inspector's, one owner's spelling]:
+                     * the verdict read anchors to the LAST '^exit=N' line, the
+                     * runner's echo appending after php -l's output — a walked
+                     * file whose NAME carries an embedded '\nexit=0\n' (a legal
+                     * filename byte) otherwise forges a green verdict over
+                     * parse-broken source (driven: 'lint-php: 182 file(s)
+                     * checked, 0 failure(s)' exit 0 over a planted
+                     * parse-broken newline-named file, the byte-identical
+                     * plain-named twin answering 1 failure exit 1).
+                     */
+                    $code = array();
+                    $verdict_lines = false === $verdict ? 0 : preg_match_all('/^exit=([0-9]+)$/m', $verdict, $code);
+                    if (false === $verdict || false === $verdict_lines || 0 === $verdict_lines) {
                         ++$failures;
                         fwrite(STDERR, "lint-php: FAIL {$path}: no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine).\n");
 
                         continue;
                     }
+                    $code = array( 1 => $code[1][ $verdict_lines - 1 ] );
                     if ('0' !== $code[1]) {
                         ++$failures;
                         fwrite(STDERR, rtrim((string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict)) . "\n");

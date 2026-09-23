@@ -820,11 +820,29 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
                 }
                 foreach ($syntax_files as $index => $path) {
                     $verdict = @file_get_contents(sprintf('%s/%d.lint', $scratch, $index));
-                    if (false === $verdict || 1 !== preg_match('/^exit=([0-9]+)$/m', $verdict, $code)) {
+                    /*
+                     * t31-glm37-1 [R37-1/R37-5, security:high, driven end-to-end]:
+                     * the verdict read anchors to the LAST '^exit=N' line —
+                     * the runner's echo APPENDS after php -l's own output, and
+                     * that output interpolates the ARCHIVE-CONTROLLED extracted
+                     * path, whose bytes may carry a newline (a legal entry-name
+                     * byte, the r12-15 note) — a zip entry named with an
+                     * embedded '\nexit=0\n' forged a passing verdict line ahead
+                     * of the runner's appended 'exit=255' and laundered a
+                     * parse-broken (webshell-shaped) file through the last
+                     * content gate (driven on the real dist zip: ACCEPTED, exit
+                     * 0, where the byte-identical parse error under a plain
+                     * name is REJECTED). The last match is the runner's own;
+                     * a forged line can only precede it.
+                     */
+                    $code = array();
+                    $verdict_lines = false === $verdict ? 0 : preg_match_all('/^exit=([0-9]+)$/m', $verdict, $code);
+                    if (false === $verdict || false === $verdict_lines || 0 === $verdict_lines) {
                         $violations[] = $missing_verdict($path);
 
                         continue;
                     }
+                    $code = array( 1 => $code[1][ $verdict_lines - 1 ] );
                     if ('0' !== $code[1]) {
                         $output = (string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict);
                         $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $path)), wp_connectors_printable(implode(' ', array_values(array_filter(explode("\n", rtrim($output)), static function ( $line ) { return '' !== $line; })))));
