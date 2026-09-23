@@ -2506,21 +2506,64 @@ function wp_connectors_header_violations(array $headers, $slug)
  * @param string $pluginDir Absolute plugin directory.
  * @return bool True when the include is __DIR__-anchored, static, and escapes.
  */
-function wp_connectors_anchored_include_escapes_plugin($file, $include, array $literals, $pluginDir)
+/**
+ * The anchor-consult view of an include statement or expression: the
+ * TOKENIZER's masked bytes, computed lazily.
+ *
+ * String data never anchors anything — '__DIR__' inside quotes is a
+ * directory name at runtime, never the magic constant — so every
+ * anchor consult (the anchored-escape walk, the expression reasons,
+ * the runtime segments, the PSR-4 shape, the include loop's
+ * anchored/escapesUp pair) judges this view, never the raw bytes.
+ *
+ * @param string $statement Include statement or plain expression.
+ * @return string The statement with every string region's contents
+ *                blanked (same length).
+ */
+function wp_connectors_anchor_view($statement)
 {
     /*
-     * t31-glm33-2 [R33-2, security:medium, driven fail-open — round
-     * 32's stripos consulted the RAW statement bytes, where quoted
-     * literals are intact]: the magic-constant's TEXT inside a
-     * quoted literal counts as an anchor for every casing, so
-     * 'require "__dir__/sub/x.php";' — at runtime a literal
-     * directory name resolved against include_path/cwd, never the
-     * plugin dir — laundered the unanchored flag (the exact-case
-     * spelling rode the same pre-existing heuristic; the fold
-     * widened it to every casing). The consult judges the
-     * LITERAL-BLANKED view: string data never anchors anything.
+     * t31-glm34-2 [R34-2+R34-6 — round 33's blanker was
+     * HEREDOC-BLIND and the consults paid full grammar passes they
+     * never needed]: the quote-grammar blanker left nowdoc/heredoc
+     * body text intact — a nowdoc's '__DIR__' TEXT anchored (a
+     * twin-parity break against the quoted spelling, driven) and an
+     * apostrophe inside a heredoc body mis-paired the quote grammar
+     * far enough to blank real code tokens (driven at the consult
+     * level). The view is the TOKENIZER's now
+     * (wp_connectors_mask_string_contents — the ONE owner of which
+     * bytes are string data, glm16-1; statements start at code
+     * keywords, so the slice tokenizes from code and heredoc/nowdoc
+     * bodies inside it mask correctly, apostrophes included). THE
+     * RAW-FIRST SHORT-CIRCUIT: blanks only remove bytes, so a raw
+     * statement mentioning no anchor text anywhere cannot gain one
+     * by masking — the common unanchored case returns its own bytes
+     * after one stripos/strpos/preg triple instead of a masking
+     * pass (the review measured +26% wall on hostile 100-include
+     * files from the repeated grammar passes; verdict-identical by
+     * construction). The dirname probe rides the same short-circuit
+     * premise: raw-no-match implies masked-no-match.
      */
-    $anchor_view = wp_connectors_blank_quoted_strings($include);
+    if (stripos($statement, '__DIR__') === false
+        && strpos($statement, 'ABSPATH') === false
+        && 0 === preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $statement)) {
+        return $statement;
+    }
+
+    /*
+     * The open-tag prefix puts the tokenizer in PHP mode — a bare
+     * statement slice tokenizes as inline HTML and would mask its own
+     * code tokens whole (the view feeds only contains/match probes,
+     * never offset math, so the six prefix bytes shift nothing).
+     */
+    return (string) substr(wp_connectors_mask_string_contents('<?php ' . $statement), 6);
+}
+
+function wp_connectors_anchored_include_escapes_plugin($file, $include, array $literals, $pluginDir)
+{
+    // t31-glm33-2: anchor consults judge the masked view (string data
+    // never anchors) — see wp_connectors_anchor_view(), the ONE owner.
+    $anchor_view = wp_connectors_anchor_view($include);
     if (stripos($anchor_view, '__DIR__') === false) {
         return false;
     }
@@ -2581,9 +2624,9 @@ function wp_connectors_anchored_include_escapes_plugin($file, $include, array $l
  */
 function wp_connectors_include_expression_reasons($file, $expression, $pluginDir)
 {
-    // t31-glm33-2: anchor consults judge the literal-blanked view (string
-    // data never anchors — see wp_connectors_anchored_include_escapes_plugin).
-    $anchor_view = wp_connectors_blank_quoted_strings($expression);
+    // t31-glm33-2: anchor consults judge the masked view (string data
+    // never anchors) — see wp_connectors_anchor_view(), the ONE owner.
+    $anchor_view = wp_connectors_anchor_view($expression);
     if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view)) {
         return array( 'escapes upward through dirname()' );
     }
@@ -3521,9 +3564,9 @@ function wp_connectors_is_psr4_autoloader_shape($file, $statement, array $segmen
     if (rtrim((string) $pluginDir, '/') . '/src/autoload.php' !== $file) {
         return false;
     }
-    // t31-glm33-2: the anchor consult judges the literal-blanked view
-    // (string data never anchors — see the escapes-plugin owner).
-    if (stripos(wp_connectors_blank_quoted_strings($statement), '__DIR__') === false) {
+    // t31-glm33-2: the anchor consult judges the masked view
+    // (string data never anchors) — wp_connectors_anchor_view(), the ONE owner.
+    if (stripos(wp_connectors_anchor_view($statement), '__DIR__') === false) {
         return false;
     }
     foreach (wp_connectors_quoted_literals($statement) as $literal_pair) {
@@ -3571,9 +3614,9 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
     if ($segments === array()) {
         return array();
     }
-    // t31-glm33-2: anchor consults judge the literal-blanked view (string
-    // data never anchors — see wp_connectors_anchored_include_escapes_plugin).
-    $anchor_view = wp_connectors_blank_quoted_strings($statement);
+    // t31-glm33-2: anchor consults judge the masked view (string data
+    // never anchors) — see wp_connectors_anchor_view(), the ONE owner.
+    $anchor_view = wp_connectors_anchor_view($statement);
     if (stripos($anchor_view, '__DIR__') === false && strpos($anchor_view, 'ABSPATH') === false) {
         // Unanchored statements are flagged by the literal analysis already.
         return array();
@@ -4322,9 +4365,20 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                          * statement, appending the identical violation N
                          * times for an N-literal include.
                          */
-                        $anchor_view = wp_connectors_blank_quoted_strings($include[0]);
+                        $anchor_view = wp_connectors_anchor_view($include[0]);
                         $anchored = stripos($anchor_view, '__DIR__') !== false || strpos($anchor_view, 'ABSPATH') !== false;
-                        $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view);
+                        /*
+                         * t31-glm34-2 (the review's R34-12): the escapesUp
+                         * consult spells the explicit house form — an abort
+                         * answers 'cannot prove it does not escape', the
+                         * fail-closed flag (the bounded pattern cannot
+                         * realistically abort, glm28-1's posture; the
+                         * spelling is the doctrine, never a (bool) cast).
+                         */
+                        $escapesUp = preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view);
+                        if (false === $escapesUp) {
+                            $escapesUp = 1;
+                        }
                         if (! $anchored || $escapesUp) {
                             $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
                         }

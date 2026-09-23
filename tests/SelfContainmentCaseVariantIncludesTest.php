@@ -229,6 +229,26 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
         );
         $this->assertSame(array(), wp_connectors_self_containment_violations($root3), 'The code-token anchor stays clean in every casing — the blanked view keeps what the runtime keeps.');
         $this->extra_roots[] = $root3;
+
+        /*
+         * R34-2's heredoc half: round 33's quote-grammar blanker was
+         * HEREDOC-BLIND — a nowdoc body's '__DIR__' TEXT survived
+         * blanking and anchored (the shape laundering clean at HEAD
+         * where the quoted twin flags), and an apostrophe inside a
+         * heredoc body mis-paired the quote grammar far enough to
+         * blank real code tokens. The view is the TOKENIZER's now
+         * (wp_connectors_anchor_view()): the nowdoc spelling flags
+         * exactly like its quoted twin — string data never anchors,
+         * whatever its enclosure.
+         */
+        $root4 = $this->root . '-nowdoc';
+        mkdir($root4, 0755, true);
+        file_put_contents(
+            $root4 . '/fixture.php',
+            "<?php require <<<'EOT'\n__DIR__ . \"/sub/x.php\"\nEOT;"
+        );
+        $this->assertNotEmpty(wp_connectors_self_containment_violations($root4), 'A nowdoc body\'s __DIR__ text is a directory NAME at runtime — the unanchored flag fires exactly like the quoted twin (red at HEAD: laundered clean).');
+        $this->extra_roots[] = $root4;
     }
 
     public function testACaseVariantDoWhileTailWriteStaysVisible(): void
