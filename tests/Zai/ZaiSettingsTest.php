@@ -424,7 +424,15 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
         }
         $this->assertNotNull($caught, 'An authorized save with an invalid nonce is stopped by CORE enforcement — the wp_die stub\'s RuntimeException through wp_nonce_ays().');
         $this->assertStringContainsString('The link you followed has expired.', $caught->getMessage(), 'The die carries core\'s own generic nonce-failure message.');
-        $this->assertArrayNotHasKey('zai_connector_unauthorized', array_column(WpHarness::$settings_errors, 'code'), 'The plugin guard emitted nothing of its own — the nonce is core\'s to enforce.');
+        /*
+         * t31-glm29-4 (the reviewer's self-noted glm28-2 leg): the pin
+         * once read assertArrayNotHasKey over the array_column VALUES
+         * list — vacuous over its 0, 1, 2 … integer keys. The
+         * assertNotContains idiom (ZaiRequestMappingTest's array_column
+         * pin) asserts what it means: the nonce failure surface never
+         * reaches the response.
+         */
+        $this->assertNotContains('zai_connector_unauthorized', array_column(WpHarness::$settings_errors, 'code'), 'The plugin guard emitted nothing of its own — the nonce is core\'s to enforce.');
     }
 
     public function testPlanSwitchInvalidatesStateButKeepsTheStoredKey()
