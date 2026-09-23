@@ -4154,7 +4154,41 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
             if (preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $code) && stripos($code, 'composer') !== false) {
                 $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
             }
-            if (preg_match('#(?:\.\./)+shared/|\bshared/#', $code)) {
+            /*
+             * t31-glm31-1 [R31-C1, security:medium, driven fail-open]:
+             * the '../' arm's unbounded repetition exhausts
+             * pcre.recursion_limit at DEFAULT limits on a long '../'
+             * run, and this seat's truthiness consumed the FALSE as
+             * "no reference" — call-wide, so the '\bshared/' arm
+             * died with it: every shared/ reference in the file
+             * silently invisible (driven: a lint-clean '<?php $x =
+             * "<600KB of ../>"; $y = "shared/foo.php";' answered 0
+             * violations where the 3KB twin flags — inspect-artifact
+             * rides this seat over hostile extracted trees with no
+             * size cap and its php -l rejection runs after the scan,
+             * R30-C1's exact threat model at the sibling seat above).
+             * FALSE is the LOUD refusal naming the file now
+             * (preg_last_error_msg()'s diagnostic, the glm36-8
+             * abort-is-a-refusal doctrine at the sibling glm30-1
+             * never swept). The repetition itself stays: derived on
+             * this host, every linear respelling is worse than the
+             * abort — possessive '(?:\.\./)++' trades the recursion
+             * abort for an O(n-squared) restart storm (measured
+             * minutes-plus on the 600KB run before it was killed)
+             * and a '{1,64}' bound still answers the quadratic class
+             * (3.5s on the same run) — so the refusal is the
+             * host-independent half (R30-C1's own precedent), never
+             * a spelling change.
+             */
+            $sharedReference = preg_match('#(?:\.\./)+shared/|\bshared/#', $code);
+            if (false === $sharedReference) {
+                $violations[] = sprintf(
+                    '%s: %s could not be scanned for shared/ references — the self-containment scan aborted (PCRE: %s)',
+                    $slug,
+                    $relative,
+                    preg_last_error_msg()
+                );
+            } elseif ($sharedReference) {
                 $violations[] = sprintf('%s: %s references shared/ (generated copies only, never source includes).', $slug, $relative);
             }
         }

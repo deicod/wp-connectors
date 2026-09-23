@@ -93,11 +93,14 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
          * payload never starts a match attempt and keeps its clean
          * verdict under the same floor; the control at the restored
          * limit flags normally — the abort above was the pinned
-         * limit, never the payload.
+         * limit, never the payload. The fixture keeps no '.' or 's'
+         * bytes so the shared/-reference sibling (t31-glm31-1, its
+         * own floor pin in its own file) never starts a match
+         * attempt under this pin's floor — exactly one refusal here.
          */
         file_put_contents(
             $this->root . '/fixture.php',
-            '<?php require dirname(__DIR__, 2) . "/outside.php" ?>'
+            '<?php require dirname(__DIR__, 2) ?>'
         );
 
         $host_limit = (string) ini_get('pcre.backtrack_limit');
@@ -138,7 +141,7 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         mkdir($control, 0755, true);
         file_put_contents(
             $control . '/fixture.php',
-            '<?php require dirname(__DIR__, 2) . "/outside.php" ?>'
+            '<?php require dirname(__DIR__, 2) ?>'
         );
         $this->assertNotEmpty(wp_connectors_self_containment_violations($control), 'The control flags at the host default — the abort above was the pinned limit, never the payload.');
         foreach ((glob($control . '/*') ?: array()) as $entry) {
