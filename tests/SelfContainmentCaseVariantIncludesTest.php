@@ -195,6 +195,57 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
         );
     }
 
+    public function testACaseVariantDoWhileTailWriteStaysVisible(): void
+    {
+        /*
+         * R33-1 (security:medium, driven fail-open — round 32's
+         * fold incomplete at its own target seat): the span
+         * dispatch classified the matched keyword by its last byte
+         * case-sensitively, so the uppercase DO misrouted into
+         * the while/for/foreach paren walk and its phantom bounds
+         * excluded the trailing WHILE-condition write — the
+         * glm18-17 tail-laundering channel reopened on the case
+         * axis. The dispatch reads the folded tail byte now: the
+         * braceless-do EOF approximation owns the whole
+         * statement, tail included, exactly like the lowercase
+         * twin.
+         */
+        $this->assertCaseVariantLaunderingFlagsLikeItsTwin(
+            'DO',
+            '<?php $f = __DIR__ . "/safe.php"; DO if (true) { require $f; } WHILE ($f = "/etc/passwd");',
+            'resolves to a path that is not anchored'
+        );
+    }
+
+    public function testACaseVariantInterfaceFunctionDeclarationScansClean(): void
+    {
+        /*
+         * R33-1's fail-closed direction: a misrouted FUNCTION
+         * match planted a phantom visibility span — an
+         * interface's 'FUNCTION nb();' false-flagged where its
+         * 'function' twin scans clean (a bodyless declaration
+         * bounds nothing). Both spellings bound nothing now.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php interface I { FUNCTION nb(); } $map = array(__DIR__ . "/safe.php"); foreach ($map as $f) { require $f; } $map[] = 1;'
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A case-variant bodyless interface declaration bounds nothing — clean, exactly like its function twin (red at HEAD: the phantom no-resolvable-assignment flag).');
+
+        $twin_root = $this->root . '-twin';
+        mkdir($twin_root, 0755, true);
+        file_put_contents(
+            $twin_root . '/fixture.php',
+            '<?php interface I { function nb(); } $map = array(__DIR__ . "/safe.php"); foreach ($map as $f) { require $f; } $map[] = 1;'
+        );
+        $this->assertSame(array(), wp_connectors_self_containment_violations($twin_root), 'The function twin stays clean beside it.');
+        foreach ((glob($twin_root . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($twin_root);
+    }
+
     public function testACaseVariantDirAnchorScansClean(): void
     {
         /*

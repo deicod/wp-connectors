@@ -2873,8 +2873,26 @@ function wp_connectors_write_visibility_spans($masked, $offset)
     foreach ($loops[0] as $loop) {
         $construct = $loop[0];
         $last = $loop[1] + strlen($construct) - 1; // Position of '(' or '{', or the keyword's last letter.
+        /*
+         * t31-glm33-1 [R33-1, security:medium, driven both directions —
+         * round 32's own fold incomplete at its target seat]: the
+         * arm dispatch once classified the match by its LAST BYTE
+         * case-sensitively, so a case-variant FUNCTION/DO keyword
+         * misrouted into the while/for/foreach paren walk — the
+         * uppercase DO's phantom bounds excluded a trailing
+         * WHILE-condition write (the glm18-17 tail-laundering
+         * channel reopened on the case axis: 'DO if (true) {
+         * require $f; } WHILE ($f = "/etc/passwd");' answered 0
+         * violations where the lowercase twin flags) and a
+         * misrouted FUNCTION match planted a phantom visibility
+         * span (an interface's 'FUNCTION nb();' false-flagging
+         * where 'function' scans clean). The dispatch reads the
+         * FOLDED tail byte — 'function' ends 'n', the bare 'do'
+         * keyword 'o', the '(' and '{' spellings their own bytes.
+         */
+        $tail = strtolower(substr($construct, -1));
 
-        if ('n' === $construct[ strlen($construct) - 1 ]) {
+        if ('n' === $tail) {
             /*
              * A function/method/closure declaration (glm18-19, verifier
              * round): recursion and repeated callback invocation are
@@ -2911,7 +2929,7 @@ function wp_connectors_write_visibility_spans($masked, $offset)
             continue;
         }
 
-        if ('o' === $construct[ strlen($construct) - 1 ]) {
+        if ('o' === $tail) {
             // A braceless `do statement; while (...);`: the single-statement
             // body and the tail cannot be bounded textually — EOF.
             if ($offset >= $loop[1]) {
