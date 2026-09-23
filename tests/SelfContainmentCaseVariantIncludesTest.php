@@ -16,7 +16,15 @@
  * same widening the import scanner and the argument derivations
  * already ride): the case fold lives on the keyword tokens alone,
  * and every spelling reaches the same terminator-matched statement
- * the lowercase ones always did. These fixtures pin the driven
+ * the lowercase ones always did. Round 32 (t31-glm32-2) swept the
+ * same class through the LOOP-PROOF machinery the widened owner
+ * feeds — the write-visibility span pattern, the array-writes
+ * helper's arms, the assignment collector's region refusals, the
+ * foreach-header collector and its as-split — where every keyword
+ * once spelled byte-exact lowercase, so case-variant loop
+ * carriers and 'AS &' bindings laundered foreign includes through
+ * benign same-file writes (driven: 0 violations where the
+ * all-lowercase twins flag). These fixtures pin the driven
  * fail-opens closed and the lowercase spellings byte-identical.
  *
  * @package wp-connectors
@@ -104,5 +112,86 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             @unlink($entry);
         }
         @rmdir($twin_root);
+    }
+
+    /**
+     * Drives one case-variant laundering shape beside its lowercase twin.
+     *
+     * @param string $spelling The case-variant keyword the shape rides.
+     * @param string $code     The case-variant payload.
+     * @param string $needle   The violation fragment the twin is known to answer.
+     */
+    private function assertCaseVariantLaunderingFlagsLikeItsTwin(string $spelling, string $code, string $needle): void
+    {
+        file_put_contents($this->root . '/fixture.php', $code);
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, sprintf('A %s-shaped carrier is live PHP — the loop-proof machinery must not spell the keyword case-sensitively (red at HEAD: 0 violations).', $spelling));
+        $this->assertStringContainsString($needle, $report, 'The violation names the laundering the case-variant carrier performed.');
+
+        $twin_root = $this->root . '-twin';
+        mkdir($twin_root, 0755, true);
+        file_put_contents($twin_root . '/fixture.php', strtolower($spelling) === $spelling ? $code : str_replace($spelling, strtolower($spelling), $code));
+        $twin_violations = wp_connectors_self_containment_violations($twin_root);
+
+        $this->assertSame(
+            str_replace(basename($this->root), basename($twin_root), $report),
+            implode("\n", $twin_violations),
+            'The case variant and its all-lowercase twin answer byte-identical reports modulo the fixture root the slug names — the fold touched the keyword tokens, never the proof machinery.'
+        );
+        foreach ((glob($twin_root . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($twin_root);
+    }
+
+    public function testACaseVariantForeachHeaderBindingIsCollected(): void
+    {
+        /*
+         * R32-2 (security:medium, driven fail-open): the
+         * foreach-header collector spelled 'foreach' byte-exact
+         * lowercase, so a lint-clean 'FOREACH (... as $f)' loop's
+         * value binding was never collected and the loop-shaped
+         * include laundered through the benign same-file write.
+         */
+        $this->assertCaseVariantLaunderingFlagsLikeItsTwin(
+            'FOREACH',
+            '<?php $f = __DIR__ . "/safe.php"; FOREACH ($evil as $f) { require $f; }',
+            'variable $f depends on $evil with no resolvable same-file assignment'
+        );
+    }
+
+    public function testACaseVariantLoopCarrierOpensTheWriteVisibilitySpan(): void
+    {
+        /*
+         * R32-3 (security:medium, driven fail-open): the
+         * write-visibility span pattern spelled while/for/foreach/do
+         * byte-exact lowercase, so an uppercase carrier never opened a
+         * span and the post-include foreign write read 'not visible in
+         * any span' — the map-literal proof stood on the benign
+         * literal alone.
+         */
+        $this->assertCaseVariantLaunderingFlagsLikeItsTwin(
+            'FOREACH',
+            '<?php $map = array(__DIR__ . "/safe.php"); FOREACH ($rows as $r) { foreach ($map as $f) { require $f; } $map = array(__DIR__ . "/../../outside.php"); }',
+            'resolves outside the plugin dir'
+        );
+    }
+
+    public function testACaseVariantAsByReferenceBindingRefusesTheProof(): void
+    {
+        /*
+         * R32-4 (security:medium, driven fail-open): the by-ref
+         * refusal arms spelled 'as' byte-exact lowercase, so a
+         * lint-clean 'AS &$map' value binding re-bound the map per
+         * iteration and the by-ref laundering refusal never fired —
+         * the glm18-18/glm36-8 channel reopened on the case axis.
+         */
+        $this->assertCaseVariantLaunderingFlagsLikeItsTwin(
+            'AS',
+            '<?php $map = array(__DIR__ . "/safe.php"); foreach ($rows AS &$map) {} foreach ($map as $f) { require $f; }',
+            'variable $f has no resolvable same-file assignment'
+        );
     }
 }

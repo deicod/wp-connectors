@@ -2835,7 +2835,32 @@ function wp_connectors_write_visibility_spans($masked, $offset)
     $spans = array(array(0, max(0, $offset - 1)));
     $length = strlen($masked);
 
-    if (! preg_match_all('/\b(?:while|for|foreach)\s*\(|\bdo\s*\{|\bdo\b(?!\s*\{)|\bfunction\b/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
+    /*
+     * t31-glm32-2 [R32-2/3/4, security:medium, driven fail-opens —
+     * the R31-C2 class swept to the loop-proof machinery this seat
+     * owns, the ocr46-9 -> glm31-2 lineage's next generation]: PHP
+     * lexes every keyword here case-insensitively (FOREACH, WHILE,
+     * FOR, DO, FUNCTION, AS — and ENDFOREACH at the header
+     * collector), but each pattern spelled them byte-exact
+     * lowercase, so a case-variant loop carrier never opened a
+     * write-visibility span (a post-include foreign write read
+     * 'not visible in any span', the map-literal proof standing on
+     * the benign literal alone) and a case-variant 'AS &' value
+     * binding slipped the by-ref refusals — the glm18-7/8
+     * write-visibility contract reopened on the case axis (driven:
+     * 'FOREACH ($rows as $r) { foreach ($map as $f) { require $f; }
+     * $map = array(__DIR__ . "/../../outside.php"); }' answered 0
+     * violations where the all-lowercase twin flags). The keywords
+     * match through SCOPED (?i:…) groups at EVERY seat of this
+     * machinery, one census: the write-visibility pattern here,
+     * the array-writes helper's foreach-value-bracket and by-ref
+     * arms, the assignment collector's region-loop twins, the
+     * foreach-header collector and its endforeach temper, and the
+     * header as-split — beside the seats that already rode the
+     * fold (the signature consult's '\bfunction\b/i' one screen
+     * down, the list() arm's /i, the do-while tail's stripos).
+     */
+    if (! preg_match_all('/\b(?i:while|for|foreach)\s*\(|\b(?i:do)\s*\{|\b(?i:do)\b(?!\s*\{)|\b(?i:function)\b/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
         return $spans;
     }
 
@@ -3066,7 +3091,7 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * trip it. The list() twin in the same position was already
      * refused above.
      */
-    if (0 !== preg_match('/foreach\s*\([^;]*\bas\b[^;()]*\[[^;()]*' . $quoted . '\b/', $before)) {
+    if (0 !== preg_match('/(?i:foreach)\s*\([^;]*\b(?i:as)\b[^;()]*\[[^;()]*' . $quoted . '\b/', $before)) {
         return false;
     }
 
@@ -3096,7 +3121,7 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * reproduced laundering, pre-existing; the plain '= &' shape never
      * matched it).
      */
-    if (0 !== preg_match('/(?:=\s*&|\bas\s*&)\s*' . $quoted . '\b/', $before)) {
+    if (0 !== preg_match('/(?:=\s*&|\b(?i:as)\s*&)\s*' . $quoted . '\b/', $before)) {
         return false;
     }
 
@@ -3254,11 +3279,11 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
     $refused = preg_quote($variable, '/');
     foreach ($spans as $span) {
         $region = (string) substr($masked, $span[0], $span[1] - $span[0] + 1);
-        if (0 !== preg_match('/(?:=\s*&|\bas\s*&)\s*' . $refused . '\b/', $region)
+        if (0 !== preg_match('/(?:=\s*&|\b(?i:as)\s*&)\s*' . $refused . '\b/', $region)
             || 0 !== preg_match('/\$\$|\$\{/', $region)
             || 0 !== preg_match('/\blist\s*\([^;]*' . $refused . '\b/i', $region)
             || 0 !== preg_match('/\[[^;]*' . $refused . '\b[^;]*\]\s*=(?![=>])/', $region)
-            || 0 !== preg_match('/foreach\s*\([^;]*\bas\b[^;()]*\[[^;()]*' . $refused . '\b/', $region)) {
+            || 0 !== preg_match('/(?i:foreach)\s*\([^;]*\b(?i:as)\b[^;()]*\[[^;()]*' . $refused . '\b/', $region)) {
             return array();
         }
     }
@@ -3314,14 +3339,14 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      * token now (the tempered dot never crosses it), and an
      * alternative-syntax header matches its own ':' close.
      */
-    if (preg_match_all('/foreach\s*\(((?:(?!endforeach\b).)+?)\)\s*(?:\{|:)/s', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/(?i:foreach)\s*\(((?:(?!(?i:endforeach)\b).)+?)\)\s*(?:\{|:)/s', $masked, $foreaches, PREG_OFFSET_CAPTURE)) {
         foreach ($foreaches[1] as $foreach_match) {
             if (! $visible($foreach_match[1])) {
                 // The binding is outside every region the include reads.
                 continue;
             }
             $foreach = array((string) substr($code, $foreach_match[1], strlen($foreach_match[0])), $foreach_match[1]);
-            if (! preg_match('/^(.+?)\s+as\s+(.+)$/s', $foreach[0], $parts)) {
+            if (! preg_match('/^(.+?)\s+(?i:as)\s+(.+)$/s', $foreach[0], $parts)) {
                 continue;
             }
             $value_variable = trim($parts[2]);
