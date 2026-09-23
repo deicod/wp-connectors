@@ -5726,11 +5726,27 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * open-tag prefix and the leading separator beside whitespace,
      * the masked re-confirmation unchanged (the confirmation reads
      * the KEYWORD's own bytes wherever the anchor ends).
+     *
+     * t31-glm39-4 [R39-4, driven false refusals — round 37's anchor
+     * still over-narrowed]: four more php -l-clean spellings
+     * master's unanchored probe accepted refused at all three gates
+     * — the canonical WordPress GUARDED IDIOM "if ( ! defined('X')
+     * ) define(...)" (driven: check-conventions exit 1 end-to-end
+     * on the canonical spelling), a define after another statement
+     * on the SAME LINE ('$ok = true; define(...);'), the
+     * case-insensitive open tag '<?PHP define(...)', and the
+     * composable '<?php \define(...)'. The anchored shape is the
+     * problem: an anchor admits only LINE-INITIAL defines. The
+     * probe returns to an UNANCHORED find over the comment-stripped
+     * view — the two-view judge (the masked re-confirmation) being
+     * the laundering guard that makes anchoring unnecessary: a
+     * comment or heredoc define never survives the second view, so
+     * the anchor bought nothing the two views do not already own.
      */
     $code = wp_connectors_strip_comments($source);
     $masked = wp_connectors_mask_string_contents($source);
     $constantMatch = array();
-    if (preg_match_all('/^(?:<\?(?:php|=)?[ \t]*|[ \t]*\\\\?)(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/m', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/(?:<\?(?:php|=)?[ \t]*|[ \t]*|^|;|\})\\\\?(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
         foreach ($candidates[0] as $index => $candidate) {
             // The keyword's own offset inside the candidate (past the open tag,
             // separator, or whitespace anchor), both views length-preserved.

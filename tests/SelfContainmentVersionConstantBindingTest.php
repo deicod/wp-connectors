@@ -46,7 +46,7 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         $constant = strtoupper(strtr(basename($this->root), '-.', '__')) . '_VERSION';
         file_put_contents(
             $this->root . '/x.php',
-            "<?php\n/**\n * Plugin Name: Test Plugin\n * Version: 1.2.3\n */\n" . sprintf($body, $constant) . "\n"
+            "<?php\n/**\n * Plugin Name: Test Plugin\n * Version: 1.2.3\n */\n" . vsprintf($body, array_fill(0, substr_count($body, '%s'), $constant)) . "\n"
         );
 
         return wp_connectors_version_constant_violations($this->root, array('version' => '1.2.3'), array($this->root . '/x.php'));
@@ -68,6 +68,45 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         @mkdir($this->root, 0755, true);
         $heredoc = $this->drive('heredoc', "\$note = <<<EOT\ndefine('%s', '1.2.3');\nEOT;");
         $this->assertStringContainsString('must define constant', implode("\n", $heredoc), 'A define inside heredoc DATA binds nothing — string data never defines.');
+    }
+
+    public function testTheGuardedIdiomAndSameLineSpellingsBind(): void
+    {
+        /*
+         * R39-4 (driven false refusals — round 37's anchor STILL
+         * over-narrowed after round 38's widening): four more
+         * php -l-clean spellings master accepted refused at all
+         * three gates — the canonical WordPress GUARDED IDIOM
+         * "if ( ! defined('X') ) define(...)" (check-conventions
+         * exit 1 end-to-end on the canonical spelling, driven), a
+         * define after another statement on the SAME LINE, the
+         * case-insensitive open tag '<?PHP', and the composable
+         * '<?php \define(...)'. The anchored shape was the problem:
+         * the probe returns to an UNANCHORED find over the
+         * comment-stripped view, the TWO-VIEW judge (the masked
+         * re-confirmation) being the laundering guard that makes
+         * anchoring unnecessary — a comment or heredoc define never
+         * survives the second view.
+         */
+        $this->assertSame(array(), $this->drive('guarded-braced', "if ( ! defined( '%s' ) ) { define( '%s', '1.2.3' ); }"), 'The canonical WordPress guarded idiom binds (red at HEAD: the false refusal).');
+        $this->root .= '-unbraced';
+        @mkdir($this->root, 0755, true);
+        $this->assertSame(array(), $this->drive('guarded-unbraced', "if ( ! defined( '%s' ) ) define( '%s', '1.2.3' );"), 'The unbraced guarded idiom binds.');
+        $this->root .= '-sameline';
+        @mkdir($this->root, 0755, true);
+        $this->assertSame(array(), $this->drive('same-line', "\$ok = true; define('%s', '1.2.3');"), 'A define after another statement on the same line binds.');
+
+        $base = sys_get_temp_dir() . '/wp-connectors-version-r39tag-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        $base = $base . '/myplug';
+        foreach (array('upper-tag' => '<?PHP', 'fq-tag' => '<?php \\') as $name => $tag) {
+            file_put_contents(
+                $base . '/myplug.php',
+                $tag . "define( \"MYPLUG_VERSION\", \"1.2.3\" );\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\n"
+            );
+            $this->assertSame(array(), wp_connectors_version_constant_violations($base, array('version' => '1.2.3'), array($base . '/myplug.php')), sprintf('The %s spelling binds.', $name));
+        }
+        WpHarness::releaseScratch(dirname($base));
     }
 
     public function testTheOpenTagLineAndFullyQualifiedSpellingsBind(): void
