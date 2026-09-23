@@ -6,6 +6,64 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 38)
+
+Twenty-fourth claude-glm pass (/code-review max over the FULL
+branch diff, ledger-read first): still not zero — 15 confirmed
+candidates, several more dropped by the verifiers as refuted or
+ledger-covered. DRIVER ADJUDICATION under the scope rule: R38-1/4
+(round 37's own sweep one view short at its own seat), R38-2 (the
+driven producer for the allowlist residual), R38-3/5 (two span-walk
+fail-opens), R38-6 (round 37's anchor over-narrowing) accepted; the
+six harness divergences, the Url sentence drift, and the cut
+cleanups recorded as inheritance. Five commits t31-glm38-1..5, the
+full offline check green after EVERY commit. Suite 1942 → 1947
+tests, 48337 → 48357 assertions, 3 skipped unchanged.
+
+- **The autoloader gate rides the views provider over the
+  stripped+masked composition (t31-glm38-1, security:medium,
+  driven — round 37's own sweep incomplete; bin/lib/plugin-tools.php,
+  tests/SelfContainmentAutoloaderPrefixBindingTest.php)** — the
+  R37-2 prefix probe composed the masker over RAW source, so a
+  comment naming the expected prefix satisfied the code-byte arm
+  and a quoted literal inside a comment fed the equality arm; the
+  register probes judged string data case-sensitively, a
+  `$note = "spl_autoload_register";` satisfying both arms while a
+  legal `Spl_AutoLoad_Register(...)` was refused. One read, one
+  lex pair, every probe over the provider's composition.
+
+- **The markup html/htm/xhtml trio joins the scan allowlist
+  (t31-glm38-2, security:medium, driven end-to-end;
+  bin/lib/secret-scanner.php, tests/SecureFixturesTest.php)** —
+  the walk's allowlist omitted the trio while the same library's
+  marker grammar serves exactly that family: a live credential in
+  admin.html shipped ACCEPTED exit 0 in the built zip where the
+  byte-identical admin.svg was REJECTED. The marker family and the
+  read set agree for the first time.
+
+- **The by-ref closure capture and the unclosable function header
+  (t31-glm38-3, security:medium, driven; bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — a closure
+  capturing the proof variable by reference may run after any
+  write: the php -l clean `$f = inside; $go = function () use
+  (&$f) { require $f; }; $f = outside; $go();` answered 0
+  violations while execution requires the outside path (the span
+  now extends to the whole file on a by-ref capture header, the
+  by-value twin keeping its clean verdict); and the function arm's
+  no-`{`-ahead spellings over-approximate to EOF — the R37-4 class
+  one arm over, the true bodyless declarations bounding nothing.
+
+- **The version anchor admits the open-tag line and the
+  fully-qualified call (t31-glm38-4, driven false refusals,
+  branch-introduced; bin/lib/plugin-tools.php,
+  tests/SelfContainmentVersionConstantBindingTest.php)** —
+  `<?php define("MYPLUG_VERSION", "1.2.3");` as the first
+  statement answered "must define constant" at HEAD (no violation
+  at the pre-round-37 baseline), check-conventions exiting 1 on a
+  well-formed plugin; `\define(...)` refused likewise. The anchor
+  admits the open-tag prefix and the leading separator; the
+  comment/heredoc laundering spellings keep their verdicts.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 37)
 
 Twenty-third claude-glm pass (/code-review max over the FULL branch
