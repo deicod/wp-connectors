@@ -1358,6 +1358,33 @@ final class WpHarness
     }
 
     /**
+     * The ONE stop-set owner for copyTree()'s resolution walks
+     * (glm27-10): the ancestor walk and the landing walk spelled the
+     * same climb-twice — the stop set has EVOLVED at these seats
+     * already (the file/link stop conditions at t31-ocr10-10, the
+     * universal-container sentinel vocabulary at t31-ocr69-1), so the
+     * next evolution would land at one spelling and silently leave
+     * the twin behind, the exact drift class the one-owner doctrine
+     * exists to close. The walk climbs dirname() until some component
+     * of the named chain EXISTS — a directory, a link, or a regular
+     * FILE (a file in the chain is a malformed-target refusal the
+     * CALLERS own, each with its own vocabulary) — or the
+     * universal-container sentinel bottoms out ('' or '/', the
+     * refused answers the callers judge).
+     *
+     * @param string $path The spelling whose chain is climbed.
+     * @return string The deepest existing component, or the sentinel the climb bottomed out at.
+     */
+    private static function walkToExistingComponent(string $path): string
+    {
+        while ('' !== $path && '/' !== $path && ! is_dir($path) && ! is_link($path) && ! is_file($path)) {
+            $path = dirname($path);
+        }
+
+        return $path;
+    }
+
+    /**
      * The lexical '.'/'..' collapse over the resolved anchor plus the
      * not-yet-existing remainder — the ocr8-3 walk's second half, pure
      * string work (the real loop derives its anchor from realpath(),
@@ -2014,10 +2041,9 @@ final class WpHarness
          */
         $resolution_seen = array( $to_walk => true );
         while (true) {
-            $ancestor = rtrim($to_walk, '/');
-            while ('' !== $ancestor && '/' !== $ancestor && ! is_dir($ancestor) && ! is_link($ancestor) && ! is_file($ancestor)) {
-                $ancestor = dirname($ancestor);
-            }
+            // glm27-10: the climb rides the ONE stop-set owner (twin
+            // below).
+            $ancestor = self::walkToExistingComponent(rtrim($to_walk, '/'));
             /*
              * The walk's '/' SENTINEL is a refusal shape, not an answer
              * (OCR round 16, t31-ocr16-5): the loop stops at '/' without
@@ -2192,10 +2218,9 @@ final class WpHarness
          * keeps a lexical spelling; it judges that arm's landing by
          * the same rule, and stays as the resolved chain's belt.)
          */
-        $landing = $target_real;
-        while ('' !== $landing && '/' !== $landing && ! is_dir($landing) && ! is_link($landing) && ! is_file($landing)) {
-            $landing = dirname($landing);
-        }
+        // glm27-10: the climb rides the ONE stop-set owner (the twin
+        // above).
+        $landing = self::walkToExistingComponent($target_real);
         if ('/' === $landing) {
             throw new RuntimeException('WpHarness::copyTree() refuses a target whose RESOLVED chain has no existing component — the collapsed landing would create the first component directly beneath the filesystem root, the root sentinel\'s rule judged on the resolution rather than the spelling: from ' . $from . ' into ' . $to . ' (the collapsed resolution: ' . $target_real . ')');
         }
