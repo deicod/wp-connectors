@@ -6,6 +6,59 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 35)
+
+Twenty-first claude-glm pass (/code-review max, ledger-read
+first, every candidate re-driven at HEAD and the pre-round-34
+baseline): still not zero — 15 candidates (one refuted by the
+review itself), the yield still on round 34's own commits. DRIVER
+ADJUDICATION under the scope rule: R35-1 through R35-8, R35-11/
+12/14/15 accepted (the last folding); R35-9 (the whole-literal
+foreach source) and R35-10 (the diagnostics needle's
+host-startup exposure) recorded as inheritance. Seven commits
+t31-glm35-1..7, the full offline check green after EVERY commit —
+and, after the order-dependent OOMs were closed, verified stable
+across eight consecutive runs. Suite 1932 → 1933 tests,
+48293 → 48297 assertions, 3 skipped unchanged.
+
+- **The statement-junk foreach source is not a binding
+  (t31-glm35-1, security:medium, driven fail-open — round 34's
+  symptom patch root-fixed; bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — the
+  empty-source guard covered only `foreach ( as`; the parse-error
+  `foreach (; as $f)` minted `$f = ;;` and proved a
+  mixed-anchored include clean. The guard reads the MASKED source
+  side for the `;` (string bytes blank there): a masked
+  terminator is code junk no valid header expression carries;
+  a whole-literal source masks to spaces and its mint stays the
+  recorded pre-existing shape.
+
+- **The anchor view's corrections and the memory close
+  (t31-glm35-2/3/6; bin/lib/plugin-tools.php)** — the
+  short-circuit's dirname premise made construction-true (the raw
+  `dirname` token pre-probe — masking blanks string bytes to
+  spaces the regex bridges), the shrunken-view guard (a masker
+  abort degrades to the raw statement, never a misaligned view),
+  the `@return` contract restated and the orphaned docblock
+  re-attached; the include loop now slices the file's own masked
+  view (the +36% benign-anchored re-tokenization inverted to
+  baseline), and above 1MB the view degrades to the
+  quote-grammar blanker — the statement seats' megabyte-expression
+  tokenization having OOMed the 128M runner order-dependently,
+  the round-30 pad halved to 4MB off the same knife-edge.
+
+- **The round's own pins (t31-glm35-4/5, the three
+  SelfContainment test files)** — the three registrations round
+  34's sweep missed moved to their mkdirs (the count corrected:
+  thirteen at that landing, fourteen at HEAD); the nowdoc pin
+  made discriminating (one violation, the `not anchored` reason,
+  the heredoc-blind double flag asserted absent) with its false
+  "laundered clean" provenance corrected — round 34's own red
+  drive had run a fixture without its open tag; the timeout
+  prefix probing for the binary (stock macOS previously exit
+  127); the wall bound recalibrated 1.5s (discrimination range
+  versus contention, both recorded).
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 34)
 
 Twentieth claude-glm pass (/code-review max, ledger-read first,
@@ -49,12 +102,20 @@ after EVERY commit, no push. Suite 1931 → 1932 tests, 48286 →
   short-circuit (blanks only remove bytes, so a raw statement
   with no anchor text pays one probe triple, not a masking pass —
   the +26% hostile-file measurement answered); the escapesUp
-  consult spells the explicit fail-closed abort form.
+  consult spells the explicit fail-closed abort form. (CORRECTED
+  round 35 on three legs: the nowdoc "laundered clean" provenance
+  was a broken red drive (the fixture lacked its open tag); the
+  short-circuit's dirname premise needed the raw-token pre-probe;
+  the per-include re-tokenization cost +36% and OOMed on
+  megabyte expressions — the loop seat slicing the file's own
+  view and the statement seats size-guarded, t31-glm35-2/3/6.)
 
 - **The round's own pins completed (t31-glm34-3/4/5, the three
   SelfContainment test files)** — the twelve scratch-roster
   registrations moved to immediately after their mkdirs (round
-  33's "tearDown owns every exit" claim was false as landed); the
+  33's "tearDown owns every exit" claim was false as landed;
+  CORRECTED round 35: the sweep missed three sites and the count
+  was thirteen — closed at t31-glm35-4); the
   floor child's full regime restored (the candidate-free plain
   leg under the same recursion floor, the exact one-line count in
   child form, coreutils `timeout(1)` on POSIX hosts and the
