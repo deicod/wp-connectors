@@ -5561,7 +5561,40 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * and the two labels cannot drift apart again.
      */
     $constantName = wp_connectors_identifier_from_slug($slug, '_') . '_VERSION';
-    if (! preg_match('/define\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/', $source, $constantMatch)) {
+    /*
+     * t31-glm37-3 [R37-3, security:medium, driven fail-open — the
+     * probe once judged the RAW main-file source]: the unanchored
+     * define-match over raw bytes let a spelling inside a COMMENT
+     * ('// define(\X_VERSION, '1.2.3');') or a heredoc body both
+     * satisfy the 'must define constant' arm and supply the
+     * header-matching value (driven: 0 violations over a plugin
+     * whose bare constant reference fatals at runtime, the control
+     * with no define anywhere flagging) — inspection green on a
+     * plugin that dies at load. The probe judges the COMMENT-STRIPPED
+     * view (comments gone) with the define ANCHORED at a statement
+     * start, and every candidate offset RE-CONFIRMED on the MASKED
+     * view — heredoc/nowdoc bodies blank there, so a define whose
+     * bytes live in string DATA never survives the second judge (the
+     * args themselves are strings by nature; the CALL's keyword and
+     * paren are code bytes, kept). The R33-6 inheritance rides the
+     * claimed seat: the case-insensitive keyword the recorded
+     * 'DEFINE(' false-refusal waited on, PHP lexing function names
+     * case-insensitively.
+     */
+    $code = wp_connectors_strip_comments($source);
+    $masked = wp_connectors_mask_string_contents($source);
+    $constantMatch = array();
+    if (preg_match_all('/^[ \t]*(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/m', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+        foreach ($candidates[0] as $index => $candidate) {
+            // Both views are length-preserving: the masked view at the same
+            // offset must still carry the call's keyword — heredoc DATA blanks.
+            if (0 === substr_compare($masked, 'define', $candidate[1] + strspn($candidate[0], " \t"), 6, true)) {
+                $constantMatch = array(1 => $candidates[1][ $index ][0]);
+                break;
+            }
+        }
+    }
+    if ($constantMatch === array()) {
         $violations[] = sprintf('%s: main file must define constant %s.', $slug, $constantName);
     } elseif (isset($headers['version']) && $constantMatch[1] !== $headers['version']) {
         $violations[] = sprintf('%s: %s (%s) does not match header Version (%s).', $slug, $constantName, $constantMatch[1], $headers['version']);
