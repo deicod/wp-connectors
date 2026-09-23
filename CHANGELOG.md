@@ -6,6 +6,69 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 40)
+
+Twenty-sixth claude-glm pass (/code-review max over the FULL
+branch diff, ledger-read first): still not zero — 13 confirmed,
+the top four the round-39/38 commits' own defects. DRIVER
+ADJUDICATION under the scope rule: R40-1 (the include
+collector's own EOF arm), R40-3 (the dead-prefix glued-define
+laundering), R40-2/5 (the operand probe's two gaps), R40-4/6
+(the build grammar's two legal spellings), R40-12/13 (glm39-7's
+leftovers) accepted; the two harness divergences and the
+measured efficiency trio recorded as inheritance (the trio with
+its numbers, deferred as the next round's cheap claims). Six
+commits t31-glm40-1..6, the full offline check green after
+EVERY commit. Suite 1951 → 1953 tests, 48378 → 48389
+assertions, 3 skipped unchanged.
+
+- **The include collector's terminator alternation admits the
+  end of input (t31-glm40-1, security:medium, driven;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — R39-2's EOF
+  arm swept the assignment seats and missed the owner: an
+  unterminated `require __DIR__ . "/../../outside.php"` at EOF
+  was invisible to every self-containment gate. An unterminated
+  include is still an include.
+
+- **The define keyword's left boundary rides the label byte
+  class (t31-glm40-2, security:medium, driven;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentVersionConstantBindingTest.php)** — the
+  R39-4 unanchoring carried a dead-by-construction prefix and no
+  left boundary, so `my_define('MYPLUG_VERSION', …)` (php -l
+  clean, executing fatals) laundered the gate. The define must
+  START as a name, never continue one; every legal spelling
+  keeps its verdict, `#x5c;define` included.
+
+- **The operand probe widens to the file/exec call family with
+  the two-view confirmation (t31-glm40-3, driven both
+  directions; bin/lib/plugin-tools.php,
+  tests/SelfContainmentAutoloaderPrefixBindingTest.php)** — the
+  probe judged only require/include statements, so
+  `eval(file_get_contents(… "/vendor/pkg/lib.php"))` and the
+  readfile/shell_exec twins turned invisible where master
+  flagged; and its armless keyword false-flagged prose words and
+  `$include` variables. The label-class lookbehind and the
+  masked re-confirmation close both directions.
+
+- **The build grammar's two legal spellings accepted
+  (t31-glm40-4, driven false refusals over legal input;
+  bin/build.php, tests/BuildArtifactsTest.php)** — the PHP 7.2+
+  trailing comma (`use …{Clock,};`, php -l clean) refused with a
+  message claiming a parse error, and the comment trivia
+  (`use …{Clock /* c */, Now};`) refused as "not a NAME". The
+  final empty piece drops at both call sites, a trailing comment
+  strips at the grammar's head, both spellings rewrite clean
+  end-to-end; the interior empty member stays refused.
+
+- **glm39-7's leftovers deleted (t31-glm40-5;
+  bin/check-conventions.php)** — the dead substr copies and
+  copy-named alias pairs at the three mention sites gone (the
+  lengths derived from the matcher's own bytes), and the helper
+  relocated below its consumer, the fence docblock re-attached
+  (getDocComment() false → true).
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 39)
 
 Twenty-fifth claude-glm pass (/code-review max over the FULL
