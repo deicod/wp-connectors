@@ -280,6 +280,37 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->extra_roots[] = $boundary_root;
     }
 
+    public function testAnEmptyForeachSourceIsNotABinding(): void
+    {
+        /*
+         * R34-1 (security:medium, driven fail-open — round 33's
+         * own regression at the seat it claims closed the
+         * fail-open doctrine): the quantifier-free separator find
+         * dropped the old anchored split's non-empty-source
+         * requirement, so the parse-error header 'foreach ( as
+         * $f)' matched at offset 0, collected the synthetic
+         * '$f = ;' over an empty RHS, and PROVED a mixed-anchored
+         * include clean. THE FIXTURE IS DELIBERATELY NOT
+         * LINT-CLEAN (php -l refuses 'foreach ( as'): the seat's
+         * own threat model scans hostile extracted trees before
+         * any lint rejection — the R32-5 precedent, recorded per
+         * the round-31 doctrine rather than laundered around.
+         * The empty source is not a binding: the include flags
+         * through its no-resolvable-assignment reason, exactly as
+         * the pre-round-33 baseline answered.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php foreach ( as $f) { require __DIR__ . "/" . $f; }'
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'An empty foreach source is not a binding — the synthetic assignment over an empty RHS never proves an include clean (red at HEAD: 0 violations).');
+        $this->assertStringContainsString('depends on $f with no resolvable same-file assignment', $report, 'The include flags through its no-resolvable-assignment reason — the empty source collected nothing, the mixed anchor did not resolve.');
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*

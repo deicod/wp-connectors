@@ -3420,7 +3420,6 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
                 // The binding is outside every region the include reads.
                 continue;
             }
-            $foreach = array((string) substr($code, $foreach_match[1], strlen($foreach_match[0])), $foreach_match[1]);
             /*
              * t31-glm33-3 [R33-3, cost + the latent R32-5 class]:
              * the lazy-dot × greedy-\s+ split burned a QUADRATIC
@@ -3437,6 +3436,22 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
              * slice from the CODE view at the same offsets (the
              * views are length-aligned, and only identifier tokens
              * feed the proof, identical in both).
+             *
+             * t31-glm34-1 [R34-1, security:medium, driven fail-open
+             * — round 33's own regression]: the quantifier-free find
+             * dropped the old '^(.+?)' non-empty-source requirement,
+             * so a header whose source side is empty (the parse
+             * error 'foreach ( as $f)' — inspect-artifact scans
+             * hostile trees before its php -l gate, the R32-5
+             * threat model) matched the separator at offset 0,
+             * collected the synthetic '$f = ;' over an empty RHS,
+             * and PROVED a mixed-anchored include clean (driven:
+             * 'foreach ( as $f) { require __DIR__ . "/" . $f; }'
+             * answered 0 violations where the pre-round-33 baseline
+             * flags). The empty source is not a binding: it is
+             * skipped, the include flagging through its own
+             * no-resolvable-assignment reason exactly as the old
+             * anchored split's no-match did.
              */
             $mask_slice = (string) substr($masked, $foreach_match[1], strlen($foreach_match[0]));
             $separator = preg_match('/\s(?i:as)\s/', $mask_slice, $as_match, PREG_OFFSET_CAPTURE);
@@ -3448,11 +3463,14 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
             if (0 === $separator) {
                 continue;
             }
-            $parts = array(
-                1 => (string) substr($foreach[0], 0, $as_match[0][1]),
-                2 => (string) substr($foreach[0], $as_match[0][1] + strlen($as_match[0][0])),
-            );
-            $value_variable = trim($parts[2]);
+            $statement_slice = (string) substr($code, $foreach_match[1], strlen($foreach_match[0]));
+            $source = trim((string) substr($statement_slice, 0, $as_match[0][1]));
+            $value_part = (string) substr($statement_slice, $as_match[0][1] + strlen($as_match[0][0]));
+            if ('' === $source) {
+                // No source expression: not a binding the collector can prove.
+                continue;
+            }
+            $value_variable = trim($value_part);
             $arrow = strpos($value_variable, '=>');
             if (false !== $arrow) {
                 $value_variable = trim((string) substr($value_variable, $arrow + 2));
@@ -3460,7 +3478,6 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
             if ($value_variable !== $variable) {
                 continue;
             }
-            $source = trim($parts[1]);
             if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $source)
                 && ! wp_connectors_array_writes_recognized($masked, $source, $offset)) {
                 /*
