@@ -3413,9 +3413,37 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
                 continue;
             }
             $foreach = array((string) substr($code, $foreach_match[1], strlen($foreach_match[0])), $foreach_match[1]);
-            if (! preg_match('/^(.+?)\s+(?i:as)\s+(.+)$/s', $foreach[0], $parts)) {
+            /*
+             * t31-glm33-3 [R33-3, cost + the latent R32-5 class]:
+             * the lazy-dot × greedy-\s+ split burned a QUADRATIC
+             * search over whitespace-run headers (measured 4.55s
+             * end-to-end on a lint-clean 60,000-space header,
+             * ~7min at 1MB — the R32-1 hostile-tree stall class at
+             * a seat round 32's census claimed swept), and its '!
+             * preg_match → continue' consumed a PCRE FALSE as
+             * no-parse — the R32-5 fail-open one seat down. The
+             * separator is a QUANTIFIER-FREE find on the MASKED
+             * slice — string contents blank to spaces there, so
+             * every whitespace-delimited 'as' is the keyword
+             * itself — linear by construction; source and value
+             * slice from the CODE view at the same offsets (the
+             * views are length-aligned, and only identifier tokens
+             * feed the proof, identical in both).
+             */
+            $mask_slice = (string) substr($masked, $foreach_match[1], strlen($foreach_match[0]));
+            $separator = preg_match('/\s(?i:as)\s/', $mask_slice, $as_match, PREG_OFFSET_CAPTURE);
+            if (false === $separator) {
+                // A PCRE abort refuses the proof (glm36-8) — unconstructible
+                // at a quantifier-free pattern's realistic limits, guarded anyway.
+                return array();
+            }
+            if (0 === $separator) {
                 continue;
             }
+            $parts = array(
+                1 => (string) substr($foreach[0], 0, $as_match[0][1]),
+                2 => (string) substr($foreach[0], $as_match[0][1] + strlen($as_match[0][0])),
+            );
             $value_variable = trim($parts[2]);
             $arrow = strpos($value_variable, '=>');
             if (false !== $arrow) {

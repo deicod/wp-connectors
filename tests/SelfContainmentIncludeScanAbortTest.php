@@ -247,6 +247,50 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         @rmdir($control);
     }
 
+    public function testAWhitespaceRunHeaderScansFast(): void
+    {
+        /*
+         * R33-3 (cost, driven): the foreach-header as-split once
+         * burned a quadratic lazy-dot × greedy-\s+ search over
+         * whitespace-run headers — 4.55s end-to-end on this
+         * lint-clean 60,000-space header (php -l passes; 32.5s at
+         * 160KB, ~7min at 1MB measured at pattern level), the
+         * R32-1 hostile-extracted-tree stall class at a seat
+         * round 32's census claimed swept. The separator is a
+         * quantifier-free find on the masked slice now — linear by
+         * construction; the wall bound below is a generous CLASS
+         * guard in the round-30 cost pin's style (the valley paid
+         * seconds at this size), the DISCRIMINATING pin being the
+         * verdict: the binding collected, the include flagging
+         * exactly like its tight twin. The key-value boundary
+         * shapes ride beside it (a string key's contents blank in
+         * the masked view, the real 'as' still found).
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php $f = __DIR__ . "/safe.php"; foreach (' . str_repeat(' ', 60000) . '$evil as $f) { require $f; }'
+        );
+
+        $started = microtime(true);
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $elapsed = microtime(true) - $started;
+
+        $this->assertStringContainsString('variable $f depends on $evil with no resolvable same-file assignment', implode("\n", $violations), 'The binding through the whitespace-run header is collected — the include flags exactly like its tight twin.');
+        $this->assertLessThan(1.0, $elapsed, sprintf('A whitespace-run header scans in wall-clock the linear pipeline owns (%.3fs here; red at HEAD: 4.55s).', $elapsed));
+
+        $boundary_root = $this->root . '-boundary';
+        mkdir($boundary_root, 0755, true);
+        file_put_contents(
+            $boundary_root . '/fixture.php',
+            '<?php $map = array("a key with words" => __DIR__ . "/safe.php"); foreach ($map as $k => $f) { require $f; }'
+        );
+        $this->assertSame(array(), wp_connectors_self_containment_violations($boundary_root), 'The string-key key-value binding stays clean — the masked view blanks the key\'s contents and the real separator still splits.');
+        foreach ((glob($boundary_root . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($boundary_root);
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*
