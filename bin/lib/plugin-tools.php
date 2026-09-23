@@ -2653,6 +2653,26 @@ function wp_connectors_anchor_view($statement)
         return $statement;
     }
 
+    /*
+     * t31-glm35-6 [R35-8's memory half, driven — the statement
+     * seats' re-tokenization]: the owner's tokenizer pass over a
+     * MEGABYTE expression tips the 128M runner at suite-ambient
+     * memory (the 8MB pad test order-dependently fataling through
+     * include_expression_reasons -> anchor_view ->
+     * mask_string_contents -> token_get_all, the full stack driven)
+     * — round 34's quote-grammar view carried no tokenizer and the
+     * 8MB pad never fatalled. Above 1MB the view degrades to the
+     * QUOTE-GRAMMAR blanker (linear, low-memory): the documented
+     * ceiling is heredoc-blindness beyond the cap — a >1MB
+     * heredoc/nowdoc body's anchor text reads as anchored there,
+     * the pre-glm34-2 posture for hostile sizes only (the loop
+     * seat never reaches this arm at all since glm35-3 — it slices
+     * the file's own masked view, tokenized once at driver scale).
+     */
+    if (strlen($statement) > 1048576) {
+        return wp_connectors_blank_quoted_strings($statement);
+    }
+
     $view = (string) substr(wp_connectors_mask_string_contents('<?php ' . $statement), 6);
     if (strlen($view) !== strlen($statement)) {
         return $statement;

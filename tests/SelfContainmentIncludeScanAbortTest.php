@@ -379,8 +379,17 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
          * loop answers 1.25ms and master's auto-possessified greedy
          * spelling 0.022ms — the respelling's win is the constant
          * factor and the abort it removes, and at function level the
-         * 8MB span this fixture rides scans all-in in ~1.05s either
-         * way (the tokenizer and masker own that wall). So the wall
+         * megabyte span this fixture rides scans all-in in ~1.05s
+         * either way (the tokenizer and masker own that wall).
+         * t31-glm35-6: the pad is 4MB now (was 8MB) — still 8x past
+         * the old lazy body's ~490KB abort threshold, the
+         * discriminating shape unchanged, while the DRIVER's own
+         * file-level tokenize of the fixture sat knife-edge at the
+         * 128M runner under random-order ambient memory (the
+         * ledgered glm28-16 class, this round's added tests tipping
+         * it — driven: order-dependent 8,000,040-byte
+         * token_get_all fatals through file_code_views, the
+         * statement seats' own fatals closed one commit up). So the wall
          * bound below is a generous CLASS guard in the spawn-bound
          * tests' style, never a millisecond discriminator — the
          * DISCRIMINATING pin on this fixture is the report's shape:
@@ -394,14 +403,14 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
          */
         file_put_contents(
             $this->root . '/fixture.php',
-            '<?php require __DIR__ . "/inc.php' . str_repeat('A', 8000000) . '";' . "\n"
+            '<?php require __DIR__ . "/inc.php' . str_repeat('A', 4000000) . '";' . "\n"
         );
 
         $started = microtime(true);
         $report = implode("\n", wp_connectors_self_containment_violations($this->root));
         $elapsed = microtime(true) - $started;
 
-        $this->assertStringNotContainsString('could not be scanned for includes', $report, 'An 8MB terminator-free span is scanned, never refused — the respelling left no limit to exhaust at this size (red at HEAD: the seat aborted and every include went invisible).');
+        $this->assertStringNotContainsString('could not be scanned for includes', $report, 'A megabyte terminator-free span is scanned, never refused — the respelling left no limit to exhaust at this size (red at HEAD: the seat aborted and every include went invisible).');
         $this->assertLessThan(3.0, $elapsed, sprintf('The megabyte pad scans in wall-clock the linear pipeline owns (%.2fs here) — the bound guards the quadratic class at pad scale, not millisecond discrimination.', $elapsed));
     }
 }
