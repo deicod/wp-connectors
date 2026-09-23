@@ -230,18 +230,23 @@ final class Url {
 		 * The authority derivation rides BEFORE the entry refusal
 		 * (glm15-7): the entry's port probes judge the FIRST
 		 * authority's own port region, and the success path below
-		 * reuses the same derivation — ONE spelling, never a twin. The
-		 * scheme separator is probed before it is used (OCR round 4,
-		 * t31-ocr4-4): every sibling position probe in this file is
-		 * false !== first — this one coerced, and (int) false is 0, so
-		 * a schemeless spelling would have judged the authority math
-		 * from the string's first byte instead of refusing. The arm is
-		 * unreachable by construction on the success path (the scheme
-		 * check below passed, and parse_url() yields a scheme only for
-		 * the 'scheme://' spelling), but the file's own doctrine
-		 * (t31-ocr1-2) refuses to lean on build-dependent invariants
-		 * the surrounding code does not re-establish — so the
-		 * invariant is named here, not assumed.
+		 * reuses the same derivation. glm27-12: the 'never a twin'
+		 * clause had REGROWN into one — the entry screen and the
+		 * success path each spelled the probe arithmetic by hand —
+		 * and both screens now ride the ONE owner
+		 * (split_authority_host_port() below), the re-open rule's
+		 * remedy. The scheme separator is probed before it is used
+		 * (OCR round 4, t31-ocr4-4): every sibling position probe in
+		 * this file is false !== first — this one coerced, and
+		 * (int) false is 0, so a schemeless spelling would have
+		 * judged the authority math from the string's first byte
+		 * instead of refusing. The arm is unreachable by construction
+		 * on the success path (the scheme check below passed, and
+		 * parse_url() yields a scheme only for the 'scheme://'
+		 * spelling), but the file's own doctrine (t31-ocr1-2) refuses
+		 * to lean on build-dependent invariants the surrounding code
+		 * does not re-establish — so the invariant is named here, not
+		 * assumed.
 		 */
 		$scheme_separator = strpos( $url, '://' );
 		if ( false === $scheme_separator ) {
@@ -293,12 +298,11 @@ final class Url {
 			 * never feeds the verdict.
 			 */
 			if ( false === $parts ) {
-				$entry_at        = strrpos( $authority, '@' );
-				$entry_host_port = false === $entry_at ? $authority : (string) substr( $authority, $entry_at + 1 );
-				$entry_bracket   = strrpos( $entry_host_port, ']' );
-				$entry_colon     = strpos( $entry_host_port, ':', false === $entry_bracket ? 0 : (int) $entry_bracket + 1 );
-				$entry_port      = false === $entry_colon ? '' : (string) substr( $entry_host_port, $entry_colon + 1 );
-				$entry_host      = false === $entry_colon ? $entry_host_port : (string) substr( $entry_host_port, 0, $entry_colon );
+				// glm27-12: the probes ride the ONE split owner — the
+				// same derivation the success path's raw screens ride.
+				$entry_split = self::split_authority_host_port( $authority );
+				$entry_port  = $entry_split['port'];
+				$entry_host  = $entry_split['host'];
 
 				/*
 				 * glm16-10, widened glm17-11: EVERY entry screen arms
@@ -475,9 +479,18 @@ final class Url {
 			throw new InvalidArgumentException( self::MUST_NOT_CARRY_BACKSLASH_MESSAGE );
 		}
 
-		$at          = strrpos( $authority, '@' );
-		$host_port   = false === $at ? $authority : (string) substr( $authority, $at + 1 );
-		$bracket_end = strrpos( $host_port, ']' );
+		/*
+		 * glm27-12: the split rides its ONE owner — this seat and the
+		 * entry screen's probes had regrown the twin glm15-7 deleted
+		 * (the re-open rule fired); host_port, bracket_end, and colon
+		 * are the owner's answers, the colon derived once at the split
+		 * instead of twice around the bracket screens (a pure function
+		 * — the early derivation is byte-identical).
+		 */
+		$split       = self::split_authority_host_port( $authority );
+		$host_port   = $split['host_port'];
+		$bracket_end = $split['bracket_end'];
+		$colon       = $split['colon'];
 
 		/*
 		 * The PAIR leg of the bracket screen (review round t31-r12-2,
@@ -573,7 +586,6 @@ final class Url {
 		if ( false !== $bracket_end && 1 !== preg_match( '/\A\](?::|\z)/', substr( $host_port, (int) $bracket_end ) ) ) {
 			throw new InvalidArgumentException( 'A bracketed host must be followed by a colon port ("[::1]:8080") or the end of the authority — anything glued to the closing bracket ("[::1]8080", "[::1]x") is a malformed authority parse_url() misreads, and the URL string and the rebuilt authority must agree.' );
 		}
-		$colon        = strpos( $host_port, ':', false === $bracket_end ? 0 : (int) $bracket_end + 1 );
 		$raw_port_int = null;
 		if ( false !== $colon ) {
 			$raw_port = (string) substr( $host_port, $colon + 1 );
@@ -885,6 +897,44 @@ final class Url {
 		if ( 1 !== preg_match( '//u', $authority ) ) {
 			throw new InvalidArgumentException( 'The URL authority must stay valid UTF-8 after parsing — a host the parse or the case fold mangled refuses loudly instead of flowing into log lines whose json_encode then fails outright (the line is dropped, not degraded).' );
 		}
+	}
+
+	/**
+	 * The ONE authority split (glm27-12): the first authority's
+	 * host[:port] region derived exactly once — userinfo stripped
+	 * after the LAST '@' (the WHATWG/curl split), the port colon the
+	 * FIRST ':' after any IPv6 ']' — for BOTH consumers: the entry
+	 * screen's failed-parse probes and the success path's raw port
+	 * and bracket screens. glm15-7 recorded 'the twin deleted' for
+	 * this derivation; the twin had REGROWN (each screen spelling the
+	 * probe arithmetic by hand), firing that ledger entry's own
+	 * re-open rule — this owner is the rule's remedy, the two screens
+	 * unable to drift about where the host ends and the port begins.
+	 *
+	 * The returned 'host' is the COLON-SPLIT host (the entry probes'
+	 * own need); the success path's rebuilt $raw_host keeps its
+	 * bracket-aware splice at its seat (t31-ocr25-1's rebuild, a
+	 * different judgment: the whole IP literal including its brackets)
+	 * derived from these pieces.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $authority The first authority (between '://' and the first '/?#'').
+	 * @return array{host_port: string, bracket_end: int|false, colon: int|false, port: string, host: string} The split pieces.
+	 */
+	private static function split_authority_host_port( string $authority ): array {
+		$at          = strrpos( $authority, '@' );
+		$host_port   = false === $at ? $authority : (string) substr( $authority, $at + 1 );
+		$bracket_end = strrpos( $host_port, ']' );
+		$colon       = strpos( $host_port, ':', false === $bracket_end ? 0 : (int) $bracket_end + 1 );
+
+		return array(
+			'host_port'   => $host_port,
+			'bracket_end' => $bracket_end,
+			'colon'       => $colon,
+			'port'        => false === $colon ? '' : (string) substr( $host_port, $colon + 1 ),
+			'host'        => false === $colon ? $host_port : (string) substr( $host_port, 0, $colon ),
+		);
 	}
 
 	/**
