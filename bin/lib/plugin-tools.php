@@ -2506,59 +2506,6 @@ function wp_connectors_header_violations(array $headers, $slug)
  * @param string $pluginDir Absolute plugin directory.
  * @return bool True when the include is __DIR__-anchored, static, and escapes.
  */
-/**
- * The anchor-consult view of an include statement or expression: the
- * TOKENIZER's masked bytes, computed lazily.
- *
- * String data never anchors anything — '__DIR__' inside quotes is a
- * directory name at runtime, never the magic constant — so every
- * anchor consult (the anchored-escape walk, the expression reasons,
- * the runtime segments, the PSR-4 shape, the include loop's
- * anchored/escapesUp pair) judges this view, never the raw bytes.
- *
- * @param string $statement Include statement or plain expression.
- * @return string The statement with every string region's contents
- *                blanked (same length).
- */
-function wp_connectors_anchor_view($statement)
-{
-    /*
-     * t31-glm34-2 [R34-2+R34-6 — round 33's blanker was
-     * HEREDOC-BLIND and the consults paid full grammar passes they
-     * never needed]: the quote-grammar blanker left nowdoc/heredoc
-     * body text intact — a nowdoc's '__DIR__' TEXT anchored (a
-     * twin-parity break against the quoted spelling, driven) and an
-     * apostrophe inside a heredoc body mis-paired the quote grammar
-     * far enough to blank real code tokens (driven at the consult
-     * level). The view is the TOKENIZER's now
-     * (wp_connectors_mask_string_contents — the ONE owner of which
-     * bytes are string data, glm16-1; statements start at code
-     * keywords, so the slice tokenizes from code and heredoc/nowdoc
-     * bodies inside it mask correctly, apostrophes included). THE
-     * RAW-FIRST SHORT-CIRCUIT: blanks only remove bytes, so a raw
-     * statement mentioning no anchor text anywhere cannot gain one
-     * by masking — the common unanchored case returns its own bytes
-     * after one stripos/strpos/preg triple instead of a masking
-     * pass (the review measured +26% wall on hostile 100-include
-     * files from the repeated grammar passes; verdict-identical by
-     * construction). The dirname probe rides the same short-circuit
-     * premise: raw-no-match implies masked-no-match.
-     */
-    if (stripos($statement, '__DIR__') === false
-        && strpos($statement, 'ABSPATH') === false
-        && 0 === preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $statement)) {
-        return $statement;
-    }
-
-    /*
-     * The open-tag prefix puts the tokenizer in PHP mode — a bare
-     * statement slice tokenizes as inline HTML and would mask its own
-     * code tokens whole (the view feeds only contains/match probes,
-     * never offset math, so the six prefix bytes shift nothing).
-     */
-    return (string) substr(wp_connectors_mask_string_contents('<?php ' . $statement), 6);
-}
-
 function wp_connectors_anchored_include_escapes_plugin($file, $include, array $literals, $pluginDir)
 {
     // t31-glm33-2: anchor consults judge the masked view (string data
@@ -2647,6 +2594,71 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
     }
 
     return array();
+}
+
+/**
+ * The anchor-consult view of an include statement or expression: the
+ * TOKENIZER's masked bytes behind a raw-first short-circuit, computed
+ * lazily — ANCHOR-PROBE-EQUIVALENT to the fully masked bytes, never an
+ * unconditional blanking (the short-circuit path returns the raw
+ * statement itself whenever no anchor probe can care).
+ *
+ * String data never anchors anything — '__DIR__' inside quotes is a
+ * directory name at runtime, never the magic constant — so every
+ * anchor consult (the anchored-escape walk, the expression reasons,
+ * the runtime segments, the PSR-4 shape, the include loop's
+ * anchored/escapesUp pair) judges this view, never the raw bytes.
+ *
+ * @param string $statement Include statement or plain expression.
+ * @return string Bytes whose anchor-probe verdicts match the fully
+ *                masked statement's (the raw statement on the
+ *                short-circuit path — blanks cannot create anchor
+ *                text, so the probes agree there by construction).
+ */
+function wp_connectors_anchor_view($statement)
+{
+    /*
+     * t31-glm34-2 [R34-2+R34-6 — round 33's blanker was
+     * HEREDOC-BLIND and the consults paid full grammar passes they
+     * never needed]: the view is the TOKENIZER's
+     * (wp_connectors_mask_string_contents — the ONE owner of which
+     * bytes are string data, glm16-1; statements start at code
+     * keywords, so the open-tag-prefixed slice tokenizes from PHP
+     * mode and heredoc/nowdoc bodies inside it mask correctly).
+     * THE RAW-FIRST SHORT-CIRCUIT: the common unanchored case
+     * returns its own bytes after one probe triple instead of a
+     * masking pass.
+     *
+     * t31-glm35-2 [R35-6 — the short-circuit's dirname premise
+     * corrected]: masking blanks string bytes to SPACES and the
+     * dirname regex's \s* bridges them, so raw-no-match does NOT
+     * imply masked-no-match for the gap-spanning regex (driven:
+     * 'dirname"x"(__FILE__)' short-circuited while the masked view
+     * matched) — the premise holds only for the anchor TOKENS,
+     * which blanking cannot create. The short-circuit now requires
+     * the raw 'dirname' TOKEN absent as well (blanking cannot
+     * create it either): every probe's construction-level
+     * equivalence restored.
+     *
+     * t31-glm35-2 [R35-5]: the masker's blanker DROPS region bytes
+     * on a PCRE abort — the (string) cast turning the abort's NULL
+     * into '' — so a shrunken view falls back to the RAW statement,
+     * the degraded arm (floor-limits-only today, the standing
+     * masker-view residual's exposure unchanged): never a silently
+     * misaligned view consumed at the consults.
+     */
+    if (stripos($statement, '__DIR__') === false
+        && strpos($statement, 'ABSPATH') === false
+        && stripos($statement, 'dirname') === false) {
+        return $statement;
+    }
+
+    $view = (string) substr(wp_connectors_mask_string_contents('<?php ' . $statement), 6);
+    if (strlen($view) !== strlen($statement)) {
+        return $statement;
+    }
+
+    return $view;
 }
 
 /**
