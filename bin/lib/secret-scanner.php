@@ -931,7 +931,31 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                     }
                 } else {
                     if (null === $prose_marker) {
-                        $prose_marker = 1 === preg_match($allowMarker, $prose_view);
+                        /*
+                         * t31-glm39-1 [R39-1, security:medium, driven
+                         * fail-open — the marker honored inside STRING
+                         * DATA at the sample-straddling boundary]: a
+                         * quote pair STRADDLING an embedded '<?php …
+                         * ?>' sample never pairs in the per-slice
+                         * prose view (the region compositor blanks
+                         * the sample bytes between them), so a
+                         * '// secrets:allow' marker sitting between
+                         * those quotes matched the prose arm and
+                         * exempted a live credential on the same line
+                         * (driven: guide.md's line "guide 'note <?php
+                         * $x=1; ?> ok // secrets:allow done'
+                         * ghp_<token>" answered 0 findings where the
+                         * identical line without the embedded sample
+                         * flags). The marker consults the
+                         * QUOTE-BLANKED prose view — the escape-aware
+                         * grammar pairs the quotes across the masked
+                         * sample bytes, a marker inside a string pair
+                         * blanking to spaces — glm19-2's own doctrine
+                         * (a marker-shaped text in string data is
+                         * DATA, never an exemption) at the one
+                         * boundary the per-slice view left open.
+                         */
+                        $prose_marker = 1 === preg_match($allowMarker, wp_connectors_blank_quoted_strings($prose_view));
                     }
                     if ($prose_marker) {
                         continue;

@@ -201,6 +201,57 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString($githubToken, $report, 'Findings never echo the secret itself.');
     }
 
+    public function testAMarkerInsideAQuotePairStraddlingASampleNeverExempts(): void
+    {
+        /*
+         * R39-1 (security:medium, driven fail-open — the marker
+         * honored inside STRING DATA at the sample-straddling
+         * boundary): a quote pair straddling an embedded '<?php …
+         * ?>' sample never pairs in the per-slice prose view (the
+         * region compositor blanks the sample bytes between them),
+         * so a '// secrets:allow' marker sitting between those
+         * quotes matched the prose arm and exempted a live
+         * credential on the same line. The marker consults the
+         * QUOTE-BLANKED prose view — glm19-2's doctrine (a
+         * marker-shaped text in string data is data, never an
+         * exemption) at the one boundary the per-slice view left
+         * open. Five legs: the laundered shape flags now; the
+         * no-marker and no-marker-in-quotes controls flag; the
+         * REAL prose marker still exempts; the marker AFTER a
+         * properly-quoted string (outside the pair) still exempts.
+         */
+        $token = 'ghp_' . bin2hex(random_bytes(18));
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-marker');
+        try {
+            $this->assertTrue(mkdir($tempDir, 0755, true), "staging: {$tempDir} must create.");
+            $legs = array(
+                'straddled' => 1, // red at HEAD: 0 — the laundered shape.
+                'no-marker' => 1,
+                'no-marker-quotes' => 1,
+                'real-marker' => 0,
+                'marker-after-quotes' => 0,
+            );
+            $lines = array(
+                "straddled" => "guide 'note <?php \$x=1; ?> ok // secrets:allow done' {$token}\n",
+                'no-marker' => "guide note ok done {$token}\n",
+                'no-marker-quotes' => "guide 'note <?php \$x=1; ?> ok done' {$token}\n",
+                'real-marker' => "guide note ok // secrets:allow done {$token}\n",
+                'marker-after-quotes' => "guide 'a quoted note' // secrets:allow {$token}\n",
+            );
+            foreach ($legs as $leg => $expected) {
+                $this->assertNotFalse(file_put_contents($tempDir . '/guide.md', $lines[ $leg ]), "staging: {$tempDir}/guide.md ({$leg}) must write.");
+                $findings = wp_connectors_scan_paths(array( $tempDir ));
+                $this->assertCount(
+                    $expected,
+                    $findings,
+                    "The {$leg} leg answers exactly {$expected} finding(s) — the marker inside a quote pair straddling a sample never exempts while real prose markers still do."
+                );
+            }
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+    }
+
     /**
      * glm14-2: a failed read is a finding, never a laundered empty scan.
      */
