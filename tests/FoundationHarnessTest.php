@@ -2727,6 +2727,26 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('https://example.test/p?a=1&amp;b=2&amp;_wpnonce=' . $nonce, wp_nonce_url('https://example.test/p?a=1&amp;b=2', 'glm28_act', '_wpnonce'), 'A pre-escaped &amp; input is un-escaped at the head and re-escaped once at the wrap — core\'s documented input contract, the standing params kept.');
     }
 
+    /**
+     * glm28-5: esc_url() preserves wp_allowed_protocols() members —
+     * the http(s)-only probe once answered '' over mailto:/tel:/ftp:
+     * (a connector's support link green-testing an empty href),
+     * where core keeps every allowed-protocol scheme and answers ''
+     * only for the disallowed.
+     */
+    public function testEscUrlPreservesAllowedProtocolsStrippingOnlyTheDisallowed()
+    {
+        $this->assertSame('mailto:support@example.test', esc_url('mailto:support@example.test'), 'A mailto href survives (red at HEAD: \'\').');
+        $this->assertSame('tel:+1-555-0100', esc_url('tel:+1-555-0100'), 'A tel href survives verbatim through the sanitize arm.');
+        $this->assertSame('ftp://files.example.test/pub/readme.txt', esc_url('ftp://files.example.test/pub/readme.txt'), 'An ftp URL rides the same arm as http(s).');
+
+        // http/https unchanged, and a disallowed protocol still strips.
+        $this->assertSame('https://example.test/a?b=1', esc_url('https://example.test/a?b=1'));
+        $this->assertSame('http://example.test/', esc_url('http://example.test/'));
+        $this->assertSame('', esc_url('javascript:alert(1)'), 'A disallowed scheme keeps the \'\' refusal — the screen strips, never preserves.');
+        $this->assertSame('', esc_url('/relative/path'), 'A scheme-less spelling keeps the seat\'s documented \'\' (core\'s relative arms ride the request context this stub does not model).');
+    }
+
     public function testCapabilityGateDistinguishesUsers()
     {
         $this->asAnonymous();

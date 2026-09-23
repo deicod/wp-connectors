@@ -1897,7 +1897,23 @@ function esc_attr($text)
 function esc_url($url)
 {
     $url = (string) $url;
-    if (preg_match('/^https?:\/\//i', $url) !== 1) {
+    /*
+     * glm28-5: wp_allowed_protocols() members SURVIVE (core's
+     * shape, kses.php/formatting.php pinned — esc_url() preserves
+     * every allowed-protocol scheme and answers '' only for the
+     * disallowed): the http(s)-only probe once returned '' for
+     * mailto:/tel:/ftp:, green-testing an empty href over a
+     * connector's support link. The set is the minimal honest one
+     * for this stub's consumers (http/https plus the three the
+     * finding drove); core's own list is wider (news, irc, sms, …
+     * — wp_allowed_protocols()), the recorded divergence beside
+     * the seat's standing FILTER_SANITIZE_URL arm in place of
+     * core's kses walk. A scheme-less spelling keeps the '' the
+     * seat always answered (core's relative-URL arms ride the
+     * request context this stub does not model).
+     */
+    $scheme = strtolower((string) strstr($url, ':', true));
+    if (! in_array($scheme, array( 'http', 'https', 'ftp', 'mailto', 'tel' ), true)) {
         return '';
     }
 
