@@ -3005,7 +3005,11 @@ function wp_connectors_write_visibility_spans($masked, $offset)
             continue;
         }
 
-        if ('{' === $masked[ $last ]) {
+        // t31-glm34-5: the '{' arm reads the same folded $tail the arms
+        // above dispatch on — one spelling of the decision, never a
+        // second case-sensitive byte read beside it ('{' is case-free, so
+        // the verdict is identical; the consistency is the point).
+        if ('{' === $tail) {
             // A braced `do { ... } while (cond);`.
             $body_close = wp_connectors_matching_brace_end($masked, $last);
 

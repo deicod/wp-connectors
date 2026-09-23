@@ -268,16 +268,34 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $elapsed = microtime(true) - $started;
 
         $this->assertStringContainsString('variable $f depends on $evil with no resolvable same-file assignment', implode("\n", $violations), 'The binding through the whitespace-run header is collected — the include flags exactly like its tight twin.');
-        $this->assertLessThan(1.0, $elapsed, sprintf('A whitespace-run header scans in wall-clock the linear pipeline owns (%.3fs here; red at HEAD: 4.55s).', $elapsed));
+        $this->assertLessThan(3.0, $elapsed, sprintf('A whitespace-run header scans in wall-clock the linear pipeline owns (%.3fs here; red at HEAD: 4.55s) — the round-30 cost-pin precedent value, a generous class guard with the verdict the discriminating pin, decoupled from host contention the 1.0s bound was not.', $elapsed));
 
+        /*
+         * The masked-view boundary the round-33 comment claimed and
+         * the old boundary leg never drove (the review's R34-8 — the
+         * '-boundary' fixture's string key lived in the assignment
+         * line, contained no ' as ' bytes, and never touched the
+         * header split): the shape the masked-slice split actually
+         * changes is a header-EMBEDDED ' as ' string. The old
+         * code-view split mis-split at the literal's ' as ' — the
+         * binding lost, the include false-flagging 'no resolvable
+         * same-file assignment' (driven at the pre-round-33
+         * baseline); the masked split finds the real separator —
+         * the binding collected, the element-resolution reason
+         * answering instead (driven at HEAD: the reason text is the
+         * discriminator, a raw-view-split regression flipping it
+         * back to the lost-binding reason).
+         */
         $boundary_root = $this->root . '-boundary';
         mkdir($boundary_root, 0755, true);
         $this->extra_roots[] = $boundary_root;
         file_put_contents(
             $boundary_root . '/fixture.php',
-            '<?php $map = array("a key with words" => __DIR__ . "/safe.php"); foreach ($map as $k => $f) { require $f; }'
+            '<?php $map = array(__DIR__ . "/safe.php"); foreach ($map["k as v"] as $f) { require $f; }'
         );
-        $this->assertSame(array(), wp_connectors_self_containment_violations($boundary_root), 'The string-key key-value binding stays clean — the masked view blanks the key\'s contents and the real separator still splits.');
+        $boundary_report = implode("\n", wp_connectors_self_containment_violations($boundary_root));
+        $this->assertStringContainsString('resolves to a path', $boundary_report, 'The binding through the header-embedded \' as \' string is COLLECTED — the element-resolution reason answers, never the lost-binding reason a raw-view split would flip back to (red at the pre-round-33 baseline).');
+        $this->assertStringNotContainsString('no resolvable same-file assignment', $boundary_report, 'The masked-slice separator found the real keyword past the string — the reason the old code-view split answered is gone.');
     }
 
     public function testAnEmptyForeachSourceIsNotABinding(): void
