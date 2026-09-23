@@ -984,6 +984,47 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
      * construction now, never by engine accident (the t31-ocr1-2
      * doctrine over build-dependent parse_url() answers).
      */
+    /**
+     * glm28-9: the failed-parse port probe carries NO digit-led
+     * requirement — ANY port-region content wears the port sentence.
+     * The guard once demanded a digit-led region before any port arm
+     * armed, so ':-80/' (parse-false — the engine refuses a signed
+     * port) fell through to the generic scheme/host sentence while
+     * its ':+80/' and ': 80/' twins PARSE and answer the digits
+     * sentence through the raw screen: one malformed class, two
+     * verdicts, the glm21-5 'one class one sentence' shape one
+     * member over.
+     */
+    public function testANonDigitLedPortRegionOnAFailedParseWearsThePortSentence(): void
+    {
+        foreach (array(
+            'signed minus (parse-false)' => 'http://host:-80/',
+            'signed plus twin (parses — the raw screen)' => 'http://host:+80/',
+            'space-led twin (parses — the raw screen)' => 'http://host: 80/',
+        ) as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('A malformed port region (%s) must be refused.', $label));
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('port must be digits', $e->getMessage(), "One malformed class, one verdict sentence — the parse-false non-digit-led spellings answer the digits sentence too ({$label}) — red at HEAD the minus form answered the generic scheme/host sentence.");
+            }
+        }
+
+        // The digit-led arms keep their precedence verbatim.
+        foreach (array(
+            'http://host:65536/' => 'out of range — an authority port',
+            'http://host:000000/' => 'out of range.',
+            'http://host:0443x/' => 'port must be digits',
+        ) as $url => $fragment) {
+            try {
+                Url::parse_validated($url);
+                $this->fail("{$url} must be refused.");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString($fragment, $e->getMessage(), "{$url} keeps its own verdict — the widening touched no digit-led arm.");
+            }
+        }
+    }
+
     public function testAMultiAtAuthorityNamesTheLastAtHostOnEveryPath(): void
     {
         $shapes = array(

@@ -336,7 +336,28 @@ final class Url {
 						throw new InvalidArgumentException( self::MUST_NOT_CARRY_BACKSLASH_MESSAGE );
 					}
 
-					if ( '' !== $entry_port && 1 === preg_match( '/\A([0-9]+)/', $entry_port, $entry_digits ) ) {
+					if ( '' !== $entry_port ) {
+						/*
+						 * glm28-9: the digit-led requirement drops —
+						 * ANY port-region content wears the port
+						 * sentence on a failed parse. The guard once
+						 * demanded a digit-led region before any port
+						 * arm armed, so ':-80/' (parse-false — the
+						 * engine refuses a signed port) fell through
+						 * to the generic scheme/host sentence while
+						 * its ':+80/' and ': 80/' twins PARSE and
+						 * answer the digits sentence through the raw
+						 * screen — one malformed class, two verdicts,
+						 * the glm21-5 'one class one sentence' shape
+						 * one member over. (An abort answers the
+						 * digits arm too — `1 !== preg_match` counts
+						 * the false return, the glm36-8
+						 * abort-as-reject rule holding fail-closed.)
+						 */
+						if ( 1 !== preg_match( '/\A([0-9]+)/', $entry_port, $entry_digits ) ) {
+							// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- the const is this file's own compile-time sentence, never provider data.
+							throw new InvalidArgumentException( self::PORT_MUST_BE_DIGITS_MESSAGE );
+						}
 						$entry_tail = (string) substr( $entry_port, strlen( $entry_digits[1] ) );
 
 						/*
