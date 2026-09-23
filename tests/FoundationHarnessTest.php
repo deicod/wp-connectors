@@ -44,6 +44,24 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      * its string twin, and an object member FATALED under
      * strict_types (driven red at HEAD: coerced/fatal).
      */
+    /**
+     * glm27-5: wp_parse_args() parses the STRING form — core's
+     * wp_parse_str() query-string shape (functions.php, pinned
+     * 7.1.1), so the array|string surface get_sites() itself
+     * advertises answers one verdict either way. The stub DISCARDED
+     * the string into array() — get_sites('fields=ids&number=2')
+     * never saw its keys (driven red at HEAD: the parsed arguments
+     * reached no part of the query).
+     */
+    public function testParseArgsParsesTheStringForm()
+    {
+        $this->assertSame(array( 'a' => '1', 'b' => 'two' ), wp_parse_args('a=1&b=two'), 'The string form parses into its query-string shape (red at HEAD: array() — the string discarded).');
+        $this->assertSame(array( 'a' => '1', 'c' => 'd' ), wp_parse_args('c=d&a=1', array( 'a' => 'x', 'c' => 'y' )), 'The parsed keys merge OVER the defaults, core\'s own order.');
+
+        WpHarness::$sites = array( 2, 3 );
+        $this->assertSame(array( 1, 2 ), get_sites('fields=ids&number=2'), 'The advertised array|string surface answers one verdict either way — the string form drives the query (red at HEAD: the objects returned, the parsed keys never reaching the query).');
+    }
+
     public function testUnslashAndSlashRideCoresMapDeepLeafSemantics()
     {
         $input = array(

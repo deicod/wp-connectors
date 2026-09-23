@@ -1973,14 +1973,35 @@ function wp_slash($value)
 
 function wp_parse_args($args, $defaults = array())
 {
+    /*
+     * glm27-5: core's own three-branch head (functions.php, pinned
+     * 7.1.1) — an OBJECT reads its vars, an ARRAY passes by value, a
+     * STRING parses through wp_parse_str()'s query-string shape
+     * (parse_str over the raw input, the 'wp_parse_str' filter
+     * applied to the parsed result, core's own spelling). The stub
+     * DISCARDED the string form into array() — get_sites('fields=
+     * ids&number=2') mis-parsed against the advertised array|string
+     * surface (driven: the parsed keys never reached the query).
+     */
     if (is_object($args)) {
-        $args = get_object_vars($args);
-    }
-    if (! is_array($args)) {
-        $args = array();
+        $parsed_args = get_object_vars($args);
+    } elseif (is_array($args)) {
+        $parsed_args = $args;
+    } else {
+        parse_str((string) $args, $parsed_args);
+        $parsed_args = apply_filters('wp_parse_str', $parsed_args);
     }
 
-    return array_merge($defaults, $args);
+    /*
+     * Core's merge guard — non-empty defaults alone merge (the
+     * numeric keys a parsed string can carry survive an empty-
+     * defaults call verbatim, never array_merge()'s reindexing).
+     */
+    if (is_array($defaults) && $defaults) {
+        return array_merge($defaults, $parsed_args);
+    }
+
+    return $parsed_args;
 }
 
 function trailingslashit($value)
