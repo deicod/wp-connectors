@@ -114,15 +114,17 @@ function wp_connectors_strip_comments($source)
  * ?>-bounded spans and __halt_compiler() tails, both T_INLINE_HTML —
  * bytes the engine never parses as code, string data to every consumer
  * that must not honor comment-lookalike text) — is a space, except that
- * a NEWLINE inside the region stays a newline (glm17-1: the blanking is
- * LINE-PRESERVING — blanking interior newlines too left the masked view
- * with FEWER lines than the source, so every line-indexed consumer
- * misaligned past the first multi-line region and a code marker on a
- * DIFFERENT line exempted a live key; explode("\n", $masked) answers
- * one line per source line now, and no consumer of this view reads a
- * newline as a code byte). Real code keeps its bytes and its offsets,
- * so matches found on the masked copy slice the true statement text
- * out of the original.
+ * a LINE TERMINATOR inside the region stays verbatim, \r and \n both
+ * (glm17-1: the blanking is LINE-PRESERVING — blanking interior
+ * newlines too left the masked view with FEWER lines than the source,
+ * so every line-indexed consumer misaligned past the first multi-line
+ * region and a code marker on a DIFFERENT line exempted a live key;
+ * the terminator class is the tokenizer's exact three, completed at
+ * the CR boundary by t31-glm29-1, so the three-terminator split
+ * answers one line per source line, and no consumer of this view
+ * reads a newline as a code byte). Real code keeps its bytes and its
+ * offsets, so matches found on the masked copy slice the true
+ * statement text out of the original.
  *
  * @param string $code PHP source (comment-stripping optional).
  * @return string Same-length, same-line-count copy with string
@@ -138,8 +140,15 @@ function wp_connectors_mask_string_contents($code)
     // glm17-1: the ONE region-blank spelling — every byte but the line
     // terminator becomes a space (never an inline str_repeat twin per
     // site; the copies would drift back to newline-blanking).
+    // t31-glm29-1: the preserved class is the TOKENIZER'S exact three
+    // terminators (\r\n, \r, \n — the class the secret scanner's line
+    // split and the text lens's line-of derivation both spell), never
+    // \n alone: a \r inside a string region once blanked to a space,
+    // so a CR-terminated payload's masked view kept FEWER line breaks
+    // than its source and the line-indexed consumers shifted past it —
+    // the exact glm17-1 misalignment class, one terminator short.
     $blank = static function (string $region): string {
-        return (string) preg_replace('/[^\n]/', ' ', $region);
+        return (string) preg_replace('/[^\r\n]/', ' ', $region);
     };
 
     foreach (token_get_all($code) as $token) {

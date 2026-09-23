@@ -311,6 +311,55 @@ function wp_connectors_payload_has_sample_open($contents)
 }
 
 /**
+ * Splits a payload into lines over the TOKENIZER'S exact three
+ * terminators — \r\n, \r, \n — never "\n" alone (t31-glm29-1).
+ *
+ * explode("\n") collapses a CR-only payload to ONE line, so a
+ * line-local `secrets:allow` marker exempted a live secret sitting on
+ * a DIFFERENT CR-line (driven: the artifact accepted at exit 0 where
+ * the byte-identical LF twin was rejected). The class is the one the
+ * text lens spells exactly (plugin-tools.php's line-of derivation;
+ * never PCRE's broader \R — \v/\f/\x85 never end a line here), and the
+ * walk is a HAND byte loop over the payload, never a preg_split
+ * alternation: a PCRE split carries an abort surface the glm28-1
+ * floor pin would fire on candidate-free payloads too, and the loop
+ * answers each line's true byte start directly (the two-byte \r\n
+ * member defeats the strlen+1 advance arithmetic).
+ *
+ * @param string $text Payload bytes.
+ * @return list<array{string, int}> [line text, byte offset] pairs — one
+ *         entry per line, offsets into $text, the final entry the tail
+ *         after the last terminator (empty when the payload ends on
+ *         one — explode()'s own trailing-member shape).
+ */
+function wp_connectors_line_split($text)
+{
+    $lines = array();
+    $length = strlen($text);
+    $start = 0;
+    for ($i = 0; $i < $length; ++$i) {
+        $char = $text[ $i ];
+        if ("\n" === $char) {
+            $lines[] = array( (string) substr($text, $start, $i - $start), $start );
+            $start = $i + 1;
+        } elseif ("\r" === $char) {
+            $lines[] = array( (string) substr($text, $start, $i - $start), $start );
+            if ("\n" === ($text[ $i + 1 ] ?? '')) {
+                // The two-byte member: CRLF is ONE terminator, never
+                // two — consume the LF half with it.
+                ++$i;
+                $start = $i + 1;
+            } else {
+                $start = $i + 1;
+            }
+        }
+    }
+    $lines[] = array( (string) substr($text, $start), $start );
+
+    return $lines;
+}
+
+/**
  * The PHP sample REGIONS of a text-family payload (glm18-1/glm18-11).
  *
  * The open spellings are the engine's INI-independent ones — '<?=' and
@@ -716,7 +765,7 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * blanks through EOF whatever the trailing byte.
      *
      * glm17-1: the mask is LINE-PRESERVING (interior newlines stay
-     * newlines through the blanking), so the explode below answers one
+     * newlines through the blanking), so the split below answers one
      * view line per source line and $views[$index] is the SAME line's
      * code view — the mask once swallowed interior newlines into
      * spaces, leaving fewer view lines than $lines, so every line past
@@ -750,11 +799,34 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
         }
         $masked_view = wp_connectors_mask_string_contents($contents);
         if (null === $regions) {
-            $views = explode("\n", $masked_view);
+            // t31-glm29-1: the view split spells the SAME three
+            // terminators as the source split below — index-aligned
+            // with it through the mask's terminator-preserving blank.
+            $views = array_column(wp_connectors_line_split($masked_view), 0);
         }
     }
-    $lines = explode("\n", $contents);
-    $line_start = 0;
+    /*
+     * t31-glm29-1 [R29-1, security:high, driven fail-open]: the split
+     * owns the TOKENIZER'S exact three terminators — \r\n, \r, \n, the
+     * class the text lens already spells exactly (plugin-tools.php's
+     * line-of derivation; never PCRE's broader \R) — never "\n" alone.
+     * explode("\n") collapsed a CR-only payload to ONE line, so the
+     * line-local `secrets:allow` marker exempted a live secret sitting
+     * on a DIFFERENT CR-line (driven: the CR marker+key payload
+     * answered zero findings and the artifact was ACCEPTED at exit 0
+     * where the byte-identical LF twin was rejected) — the glm19-2
+     * per-arm doctrine (the line-skip never crosses a boundary in
+     * either direction) violated at the CR-line boundary, the
+     * exact-three-terminators doctrine (t31-ocr35-6) never swept from
+     * the detector's diagnostics to this split. The walk is a HAND
+     * byte loop, never a preg_split alternation: a PCRE split carries
+     * an abort surface the glm28-1 floor pin would fire on
+     * candidate-free payloads too (the clean-control leg's own
+     * premise), and the loop answers each line's true byte start
+     * directly — the retired strlen+1 advance assumed a one-byte
+     * terminator, and the class spells a two-byte \r\n.
+     */
+    $lines = wp_connectors_line_split($contents);
     // glm19-11: the by-ref region cursor — each line's compositor walk
     // starts where the last line stopped (O(lines + regions) over the
     // whole payload, never the per-line re-walk from index 0).
@@ -768,7 +840,12 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * below, gated behind the first candidate since the same fix).
      */
     $patterns = wp_connectors_secret_patterns();
-    foreach ($lines as $index => $line) {
+    foreach ($lines as $index => $line_entry) {
+        $line = $line_entry[0];
+        // t31-glm29-1: the line's byte start comes from the split's own
+        // offsets — the terminator class spells one- AND two-byte
+        // members, so the manual strlen+1 advance no longer holds.
+        $line_start = $line_entry[1];
         /*
          * Markers count only in REAL comments: the judge reads the
          * masked view of the code bytes, so a marker that is itself
@@ -799,9 +876,6 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
             $code_view = '';
             $spans = array();
         }
-        // glm18-11: the region view walks byte offsets — advance past
-        // the line (+ its newline) before any `continue` below.
-        $line_start += strlen($line) + 1;
         /*
          * glm21-13: the marker probes ride BEHIND the first candidate
          * — most lines of most payloads match no pattern at all, and

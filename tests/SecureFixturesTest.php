@@ -1281,6 +1281,79 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         );
     }
 
+    public function testCrOnlyLineEndingsDoNotLaunderTheMarkerAcrossLines()
+    {
+        /*
+         * t31-glm29-1 [R29-1, security:high, driven fail-open]: the
+         * line split rode "\n" alone, so a CR-only payload collapsed to
+         * ONE line and the line-local `secrets:allow` marker exempted a
+         * live secret sitting on a DIFFERENT CR-line — the artifact
+         * accepted at exit 0 where the byte-identical LF twin was
+         * rejected (the glm19-2 per-arm doctrine violated at the
+         * CR-line boundary). The split owns the tokenizer's exact three
+         * terminators now (\r\n, \r, \n — the class the text lens
+         * spells, never PCRE's broader \R), the marker's line-locality
+         * computed over the same split: the CR twin flags exactly like
+         * the LF twin, CRLF behavior byte-identical, and a marker on
+         * the SAME CR-line as the key still exempts — the grammar
+         * tightened its locality, never its vocabulary.
+         */
+        $key = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+
+        $lf_findings = wp_connectors_scan_string("// secrets:allow\n\$key = \"{$key}\";\n", 'lf.env');
+        $crlf_findings = wp_connectors_scan_string("// secrets:allow\r\n\$key = \"{$key}\";\r\n", 'crlf.env');
+        $cr_findings = wp_connectors_scan_string("// secrets:allow\r\$key = \"{$key}\";\r", 'cr.env');
+
+        $this->assertNotEmpty($lf_findings, 'The LF twin flags — the control.');
+        $this->assertNotEmpty($crlf_findings, 'The CRLF twin flags exactly as before the fix (byte-identical behavior).');
+        $this->assertNotEmpty($cr_findings, 'The CR marker+key payload flags like its LF twin (red at HEAD: zero findings — one line, the marker exempting across the CR boundary).');
+        $this->assertStringContainsString('zai-key', implode("\n", $cr_findings), 'The finding is the live key on its own marker-free CR-line.');
+        $this->assertStringContainsString('cr.env:2', implode("\n", $cr_findings), 'The finding names the CR-line the key sits on — the engine\'s own line count.');
+
+        // A marked CR-line still exempts: the fix tightens locality at
+        // the terminator, never the marker grammar itself.
+        $this->assertSame(array(), wp_connectors_scan_string("{$key} // secrets:allow\r", 'sameline.env'), 'A marker on the SAME CR-line as the key exempts.');
+        $this->assertSame(array(), wp_connectors_scan_string("{$key} // secrets:allow\r\n", 'sameline-crlf.env'), 'A marker on the SAME CRLF-line as the key exempts.');
+
+        /*
+         * The masked-view arm rides the same split: a CR-terminated PHP
+         * payload's marker-in-comment exempts only its own CR-line —
+         * the mask's terminator-preserving blank keeps $views
+         * index-aligned with the source split (red at HEAD: the whole
+         * payload one line, the code marker exempting the key line
+         * across the CR boundary).
+         */
+        $php_findings = wp_connectors_scan_string("<?php\r// secrets:allow\r\$k = '{$key}';\r", 'cr.php');
+        $this->assertNotEmpty($php_findings, 'The code arm honors the marker only on its own CR-line (red at HEAD: exempted).');
+        $this->assertStringContainsString('cr.php:3', implode("\n", $php_findings), 'The code arm names the key\'s own CR-line.');
+    }
+
+    public function testTheArtifactScanRejectsACrLaunderedKey()
+    {
+        /*
+         * The artifact-level shape of t31-glm29-1: a shipped file whose
+         * CR-only line endings launder a live key past a marker sitting
+         * on a different CR-line was ACCEPTED (exit 0 over the walk,
+         * the byte-identical LF twin rejected) — the artifact scan now
+         * answers the finding through the same three-terminator split.
+         */
+        $key = bin2hex(random_bytes(16)) . '.' . bin2hex(random_bytes(8));
+        $tempDir = $this->scanScratchRoot('wp-connectors-cr-scan');
+        try {
+            $this->assertTrue(mkdir($tempDir . '/sub', 0755, true), "staging: {$tempDir}/sub must create — a staging failure fails as staging, never as the scan verdict.");
+            $this->assertNotFalse(file_put_contents($tempDir . '/sub/notes.txt', "// secrets:allow\r\$key = \"{$key}\";\r"), "staging: {$tempDir}/sub/notes.txt must write — a staging failure fails as staging, never as the scan verdict.");
+
+            $findings = wp_connectors_scan_paths(array( $tempDir ), false);
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+
+        $report = implode("\n", $findings);
+        $this->assertNotEmpty($findings, 'The artifact with the CR-laundered key is REJECTED (red at HEAD: accepted at exit 0).');
+        $this->assertStringContainsString('zai-key', $report, 'The finding is the live key, never its bytes.');
+        $this->assertStringNotContainsString($key, $report, 'Findings never echo the secret itself.');
+    }
+
     public function testMarkerInsideStringContentsDoesNotExemptTheLine()
     {
         // Regression: the marker regex matched comment syntax INSIDE quoted
