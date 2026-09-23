@@ -1,0 +1,184 @@
+<?php
+/**
+ * Self-containment include-scan abort fixtures (the R30-C1 class:
+ * t31-glm30-1's include owner).
+ *
+ * Round 29 gave the include owner the ';|?>' terminator alternation
+ * with a LAZY body — correct at the semantics (the match ends at
+ * whichever terminator comes first) but burning a per-byte step
+ * across every terminator-free span: quadratic, and past
+ * pcre.backtrack_limit on a ~490KB span preg_match_all() returned
+ * FALSE, which the seat's truthiness consumed as "no includes" —
+ * every include in the file silently INVISIBLE (driven: the
+ * lint-clean laundering payload alone flags, while preceded by one
+ * benign ~700KB 'require $x . "AAA…";' statement it answered 0
+ * violations; inspect-artifact rides this seat over hostile
+ * extracted trees with no size cap, and its php -l rejection runs
+ * after the scan — glm36-8's abort-is-a-refusal doctrine at the one
+ * seat that round never swept). The body is the possessive unrolled
+ * loop now (linear, byte-identical match sets — pinned by the
+ * round-29 file's terminator fixtures), and an abort an engine still
+ * answers is the LOUD refusal naming the file, never a clean pass.
+ * These fixtures pin the fail-open closed, the refusal loud, and the
+ * megabyte-span scan fast and abort-free.
+ *
+ * @package wp-connectors
+ */
+
+declare(strict_types=1);
+
+require_once __DIR__ . '/../bin/check-conventions.php';
+
+use PHPUnit\Framework\TestCase;
+
+final class SelfContainmentIncludeScanAbortTest extends TestCase
+{
+    /**
+     * @var string Per-test fixture root.
+     */
+    private $root;
+
+    protected function setUp(): void
+    {
+        $this->root = sys_get_temp_dir() . '/wp-connectors-include-abort-' . uniqid('', true);
+        mkdir($this->root, 0755, true);
+    }
+
+    protected function tearDown(): void
+    {
+        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
+            if (is_file($entry)) {
+                @unlink($entry);
+            }
+        }
+        @rmdir($this->root);
+    }
+
+    public function testASizeLaunderingPadCannotHideTheIncludes(): void
+    {
+        /*
+         * The driven fail-open (R30-C1, security): the laundering
+         * payload flags on its own, but one lint-clean ~700KB benign
+         * 'require $x . "AAA…";' statement ahead of it exhausted the
+         * lazy body's backtrack limit — preg_match_all() answered
+         * FALSE, the seat's truthiness read "no includes", and the
+         * whole file went invisible (red at HEAD: 0 violations). The
+         * pad buys nothing now: the includes match through it, and
+         * the report carries the seat's VIOLATIONS — never its
+         * refusal, the scan having run rather than aborted.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php $x = __DIR__ . "/a.php"; require $x . "' . str_repeat('A', 700000) . '";' . "\n"
+            . "<?php \$map = array( __DIR__ . '/safe.php' );\nforeach (\$map as \$f) { require \$f ?><?php \$map = \$_GET[\"page\"] ?><?php }\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'The laundering include is visible through the pad — a size-triggered abort never reads as "no includes" (red at HEAD: 0 violations).');
+        $this->assertStringContainsString('require $f', $report, 'The violation names the laundering include the pad sat ahead of.');
+        $this->assertStringNotContainsString('could not be scanned for includes', $report, 'The pad alone never fires the refusal — the seat scanned the span, it did not abort on its size.');
+    }
+
+    public function testAnAbortOverTheIncludeScanRefusesLoudlyNamingTheFile(): void
+    {
+        /*
+         * The refusal half (glm36-8, the pinned-limit idiom the
+         * suite's abort pins ride — SecureFixturesTest's glm28-1):
+         * at the floor limit 1 ANY match attempt aborts, the one
+         * deterministic injection this engine offers, the limit
+         * restored on every exit path. The refusal names the file
+         * and carries the engine's diagnostic; a candidate-free
+         * payload never starts a match attempt and keeps its clean
+         * verdict under the same floor; the control at the restored
+         * limit flags normally — the abort above was the pinned
+         * limit, never the payload.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php require dirname(__DIR__, 2) . "/outside.php" ?>'
+        );
+
+        $host_limit = (string) ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', '1');
+        try {
+            $violations = wp_connectors_self_containment_violations($this->root);
+
+            $this->assertCount(1, $violations, 'The aborting include scan answers exactly the one refusal line — never a clean pass over a file whose includes went unscanned.');
+            $this->assertStringContainsString('fixture.php could not be scanned for includes', $violations[0], 'The refusal names the file whose scan aborted.');
+            $this->assertStringContainsString('the self-containment scan aborted (PCRE:', $violations[0], 'The refusal rides the seat\'s own loud vocabulary with the engine\'s diagnostic.');
+        } finally {
+            ini_set('pcre.backtrack_limit', $host_limit);
+        }
+
+        $plain_root = $this->root . '-plain';
+        mkdir($plain_root, 0755, true);
+        file_put_contents(
+            $plain_root . '/plain.php',
+            "<?php \$plain = 1;\n"
+        );
+        ini_set('pcre.backtrack_limit', '1');
+        try {
+            // A file no include candidate lives in never starts a
+            // match attempt, so the floor limit never fires.
+            $this->assertSame(array(), wp_connectors_self_containment_violations($plain_root), 'A candidate-free payload keeps its clean verdict under the pinned floor — the refusal is the abort, never the size.');
+        } finally {
+            ini_set('pcre.backtrack_limit', $host_limit);
+        }
+        foreach ((glob($plain_root . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($plain_root);
+
+        // The control at the restored limit, on its own root (the
+        // views cache keys the path it already answered): the same
+        // include flags through the scan it just aborted on.
+        $control = $this->root . '-control';
+        mkdir($control, 0755, true);
+        file_put_contents(
+            $control . '/fixture.php',
+            '<?php require dirname(__DIR__, 2) . "/outside.php" ?>'
+        );
+        $this->assertNotEmpty(wp_connectors_self_containment_violations($control), 'The control flags at the host default — the abort above was the pinned limit, never the payload.');
+        foreach ((glob($control . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($control);
+    }
+
+    public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
+    {
+        /*
+         * The cost half, honestly measured on the dev host: at the
+         * pattern level over terminator-free bytes the lazy body
+         * answered 18.5ms at 490KB where the possessive unrolled
+         * loop answers 1.25ms and master's auto-possessified greedy
+         * spelling 0.022ms — the respelling's win is the constant
+         * factor and the abort it removes, and at function level the
+         * 8MB span this fixture rides scans all-in in ~1.05s either
+         * way (the tokenizer and masker own that wall). So the wall
+         * bound below is a generous CLASS guard in the spawn-bound
+         * tests' style, never a millisecond discriminator — the
+         * DISCRIMINATING pin on this fixture is the report's shape:
+         * at HEAD the seat ABORTED on the 8MB span (every include
+         * invisible, zero violations); now the span is scanned with
+         * no refusal. (The file's own verdict rides other seats'
+         * out-of-scope behavior — round 30's residuals carry the
+         * literal grammar's fail-closed flag on megabyte literals —
+         * so this test pins the seat's scannability and cost class,
+         * never that file's verdict.)
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php require __DIR__ . "/inc.php' . str_repeat('A', 8000000) . '";' . "\n"
+        );
+
+        $started = microtime(true);
+        $report = implode("\n", wp_connectors_self_containment_violations($this->root));
+        $elapsed = microtime(true) - $started;
+
+        $this->assertStringNotContainsString('could not be scanned for includes', $report, 'An 8MB terminator-free span is scanned, never refused — the respelling left no limit to exhaust at this size (red at HEAD: the seat aborted and every include went invisible).');
+        $this->assertLessThan(3.0, $elapsed, sprintf('The megabyte pad scans in wall-clock the linear pipeline owns (%.2fs here) — the bound guards the quadratic class at pad scale, not millisecond discrimination.', $elapsed));
+    }
+}

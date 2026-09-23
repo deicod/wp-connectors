@@ -4053,15 +4053,53 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * "/outside.php" ?>' — php -l clean — answered 0
              * violations where the ';' twin flags), and where a later
              * ';' existed the greedy [^;]* GLUED across the close tag
-             * into unrelated code after it. The match is LAZY now and
-             * ends at whichever terminator comes FIRST — a '?>' ends
-             * the statement per PHP's implied-semicolon rule, so the
+             * into unrelated code after it. The match ends at
+             * whichever terminator comes FIRST — a '?>' ends the
+             * statement per PHP's implied-semicolon rule, so the
              * glue cannot cross it. The masked view keeps the seat
              * honest: a '?>' inside a quoted string or comment is
              * blanked/stripped before this pattern ever sees it, so
              * the alternation only ever matches a real close tag.
+             *
+             * t31-glm30-1 [R30-C1, security, driven fail-open + the
+             * same seat's cost — round 29's own regression]: the LAZY
+             * body this seat shipped glm29-2 with burned a per-byte
+             * step across every terminator-free span — quadratic, 4x
+             * per doubling — and past pcre.backtrack_limit on a
+             * ~490KB span preg_match_all() returned FALSE, which the
+             * seat's truthiness consumed as "no includes": EVERY
+             * include in the file silently invisible (driven: the
+             * lint-clean laundering payload alone flags, while
+             * preceded by one benign ~700KB 'require $x . "AAA…";'
+             * statement it answered 0 violations — glm36-8's
+             * abort-is-a-refusal doctrine at the one seat that round
+             * never swept; inspect-artifact rides this seat over
+             * hostile extracted trees with no size cap, and its
+             * php -l rejection runs after the scan). The body is the
+             * POSSESSIVE unrolled loop now: '[^;?]*+' runs to the
+             * next ';' or '?', and each '\?(?!>)' iteration eats one
+             * '?' that is not a close tag (a ternary or
+             * null-coalescing '?' is statement body; a '? >' pair is
+             * PHP's own close-tag lexing) — the match still ends at
+             * whichever terminator comes FIRST (the lazy and
+             * possessive match sets driven byte-identical over the
+             * round-29 shapes, the ternary and '??' spellings
+             * included) while the engine never backtracks: linear on
+             * the 490KB/700KB drives where the lazy body was
+             * quadratic, and no limit left to exhaust there. An
+             * abort an engine still answers is the LOUD refusal
+             * below — FALSE names the file, never a clean pass.
              */
-            if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*?(?:;|\?>)/', $masked, $includes, PREG_OFFSET_CAPTURE)) {
+            $includes = array();
+            $scanned = preg_match_all('/\b(?:require|include)(?:_once)?\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>)/', $masked, $includes, PREG_OFFSET_CAPTURE);
+            if (false === $scanned) {
+                $violations[] = sprintf(
+                    '%s: %s could not be scanned for includes — the self-containment scan aborted (PCRE: %s)',
+                    $slug,
+                    $relative,
+                    preg_last_error_msg()
+                );
+            } elseif ($scanned) {
                 foreach ($includes[0] as $include_match) {
                     $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
                     $quoted_literals = wp_connectors_quoted_literals($include[0]);

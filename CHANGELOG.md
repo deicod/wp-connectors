@@ -6,6 +6,53 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 30)
+
+Sixteenth claude-glm pass: the SECOND round under the scope rule —
+34 raw findings → 1 in-scope, round 29's own seat regression (the
+lazy-`;|?>` body's size-triggered fail-open at the include owner,
+the cost half the same seat's body). DRIVER ADJUDICATION: R30-C1
+ACCEPTED IN BOTH HALVES — ONE COMMIT (the abort-to-refusal and the
+cost spelling ride the same body). One commit t31-glm30-1, the full
+offline check green after the commit, no push. The round's shape:
+the seat round 29 itself opened closed fail-safe and linear; the
+out-of-scope residuals recorded for Task 3.3 inheritance (1
+harness-parity, 2 driven fail-closed false-positives, 2 measured
+efficiency, 7 cleanups, 2 ledger-covered re-flags dropped). Suite
+1913 → 1916 tests, 48228 → 48238 assertions, 3 skipped unchanged.
+
+- **The include owner's lazy body closed fail-safe and linear
+  (t31-glm30-1, security:medium, driven fail-open + cost;
+  bin/lib/plugin-tools.php, tests/SelfContainmentIncludeScanAbortTest.php)**
+  — glm29-2's lazy `[^;]*?(?:;|\?>)` burned a per-byte step across
+  terminator-free spans, and past pcre.backtrack_limit on a ~490KB
+  span preg_match_all() returned FALSE, which the seat's truthiness
+  consumed as "no includes": every include in the file silently
+  invisible (driven end-to-end: the lint-clean laundering payload
+  flags alone, 0 violations when preceded by one benign ~700KB
+  `require $x . "AAA…";` statement — the masker blanks the literal
+  to same-length spaces; inspect-artifact rides this seat over
+  hostile extracted trees with no size cap, and its php -l rejection
+  runs after the scan). Both halves one commit: FALSE is the LOUD
+  refusal naming the file (preg_last_error()'s diagnostic, the
+  glm36-8 abort-is-a-refusal doctrine at the one seat that round
+  never swept), and the body is the possessive unrolled loop
+  `[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>)` — `[^;?]*+` runs to the
+  next `;` or `?`, each `\?(?!>)` iteration eats one `?` that is
+  not a close tag (a ternary/null-coalescing `?` is statement
+  body; a `?`-then-`>` pair is PHP's own close-tag lexing), so the
+  match still ends at whichever terminator comes FIRST (the lazy
+  and possessive match sets driven byte-identical over the round-29
+  shapes, the ternary and `??` spellings included) while the engine
+  never backtracks: linear, no limit left to exhaust on the
+  490KB/700KB drives (measured at pattern level 18.5ms → 1.25ms at
+  490KB over terminator-free bytes). The refusal pinned at the
+  pinned-limit idiom (a live include answers exactly the one
+  refusal at floor limit 1, candidate-free payloads keep their
+  clean verdict there, the control flags at the restored limit);
+  the 8MB pad scanned-never-aborted with the wall bound a generous
+  class guard; all round-29 terminator pins green unchanged.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 29)
 
 Fifteenth claude-glm pass: the FIRST round under the scope rule
