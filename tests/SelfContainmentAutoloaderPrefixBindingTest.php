@@ -109,6 +109,50 @@ final class SelfContainmentAutoloaderPrefixBindingTest extends TestCase
         $this->assertStringNotContainsString('must not reference composer or vendor', implode("\n", $prose), 'The prose-note twin stays clean — the masked probe\'s immunity intact.');
     }
 
+    public function testEveryOperandChannelFlagsAndProseWordsDoNot(): void
+    {
+        /*
+         * R40-2+R40-5 (driven both directions — round 39's operand
+         * probe's own two gaps): (1) the probe judged only
+         * require/include statements, so a vendor reference riding
+         * ANY OTHER operand channel — eval+file_get_contents,
+         * readfile, shell_exec, all php -l clean — turned invisible
+         * where master flagged; the channel set widens to the
+         * file/exec call family. (2) The keyword arm had no LEFT
+         * boundary and ran over string-bearing code, so the WORDS
+         * 'require'/'include' in benign prose strings and
+         * '$include' variable names (the R37-6 class regrown at a
+         * third pattern) FALSE-FLAGGED. The keyword arm carries the
+         * label-class lookbehind and every candidate's keyword is
+         * re-confirmed on the MASKED view (prose blanks there).
+         */
+        $canonical = "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) { \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php'; require_once \$path; });\n";
+        $flag_shapes = array(
+            'require vendor' => "require_once __DIR__ . '/vendor/pkg/lib.php';",
+            'eval+fgc vendor' => 'eval( file_get_contents( __DIR__ . "/vendor/pkg/lib.php" ) );',
+            'readfile vendor' => 'readfile( __DIR__ . "/vendor/x.php" );',
+            'shell_exec vendor' => 'shell_exec( "cat vendor/build.sh" );',
+        );
+        foreach ($flag_shapes as $name => $leg) {
+            $violations = $this->autoloadWith($canonical . $leg . "\n");
+            $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $violations), "The {$name} operand channel flags — an operand path is never prose.");
+            $this->base .= '-n' . md5($name);
+            @mkdir($this->base . '/zai/src', 0755, true);
+        }
+
+        $clean_shapes = array(
+            'prose require words' => "\$why = 'self-contained: must not require composer or any vendor tree';",
+            'dollar-include variable' => '$include = "vendor/nothing.php";',
+            'plain valid' => '',
+        );
+        foreach ($clean_shapes as $name => $leg) {
+            $violations = $this->autoloadWith($canonical . $leg . "\n");
+            $this->assertStringNotContainsString('must not reference composer or vendor', implode("\n", $violations), "The {$name} shape stays clean — prose words and variables never arm the operand probe (red at HEAD for the prose/variable shapes: the false flag).");
+            $this->base .= '-n' . md5($name);
+            @mkdir($this->base . '/zai/src', 0755, true);
+        }
+    }
+
     public function testACommentNamingThePrefixAndStringDataNamingTheRegisterProbeBindNothing(): void
     {
         /*

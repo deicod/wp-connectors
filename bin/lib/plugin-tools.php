@@ -4768,12 +4768,40 @@ function wp_connectors_autoloader_violations($pluginDir)
          * per-file seats catch only 'vendor/autoload' and
          * require+'composer' spellings). The prose immunity stands
          * (the masked probe above); the OPERAND probe judges the raw
-         * text of every require/include statement — an include path
-         * is never prose, whatever its quoting.
+         * text of file/exec CALL statements — an operand path is
+         * never prose, whatever its quoting.
+         *
+         * t31-glm40-3 [R40-2+R40-5, driven both directions — the
+         * probe's own two gaps]: (1) round 39's probe judged only
+         * require/include statements, so a vendor reference riding
+         * ANY OTHER operand channel — 'eval( file_get_contents(
+         * __DIR__ . "/vendor/pkg/lib.php" ) );' and the
+         * readfile/shell_exec twins, all php -l clean — turned
+         * invisible at HEAD where master flagged; the channel set
+         * widens to the file/exec call family. (2) The probe's
+         * keyword arm had no LEFT boundary and ran over
+         * string-bearing code, so the WORDS 'require'/'include'
+         * inside benign prose strings — '$why = "self-contained:
+         * must not require composer or any vendor tree";' — and
+         * '$require'/'$include' variable names (the R37-6
+         * \b-after-'$' class regrown at a third pattern) FALSE-FLAGGED
+         * the gate. The keyword arm now carries the LABEL byte class
+         * lookbehind (a call must START as a name, never continue one
+         * — the '$require' arm dead) and every candidate's keyword is
+         * RE-CONFIRMED on the MASKED view (the two-view judge: prose
+         * words blank there, real calls keep their code bytes).
          */
-        if (preg_match_all('/(?i:require|include)(?i:_once)?\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>|$)/', $code, $include_statements)) {
-            foreach ($include_statements[0] as $statement) {
-                if (false !== stripos($statement, 'composer') || false !== stripos($statement, 'vendor')) {
+        $operand_hits = preg_match_all('/(?<![\\$\w])(?:(?i:require|include)(?i:_once)?|(?i:eval|file_get_contents|readfile|shell_exec))\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>|$)/', $code, $operand_statements, PREG_OFFSET_CAPTURE);
+        if (false !== $operand_hits && $operand_hits > 0) {
+            foreach ($operand_statements[0] as $operand) {
+                if (false === stripos($operand[0], 'vendor') && false === stripos($operand[0], 'composer')) {
+                    continue;
+                }
+                // The keyword is the match's leading word; prose words blank in the
+                // masked view, a real call's keyword keeps its code bytes there.
+                $keyword = (string) preg_match('/^\S+/', $operand[0], $word) ? $word[0] : '';
+                $keyword_at = $operand[1];
+                if ('' !== $keyword && 0 === substr_compare($masked, $keyword, $keyword_at, strlen($keyword), true)) {
                     $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
                     break;
                 }
