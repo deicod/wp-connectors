@@ -182,22 +182,29 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
             . ' print("candidate=" . count($candidate) . "\\n" . implode("\\n", $candidate)'
             . ' . "\\nplain=" . count($plain) . "\\n" . implode("\\n", $plain));';
         /*
-         * t31-glm35-5 (the review's R35-4): the timeout prefix probes
-         * for the BINARY, not the platform — stock macOS is a POSIX
-         * host without coreutils timeout(1), where the round-34
-         * prefix made sh answer 'command not found' exit 127 and the
-         * test RED as a failure on a previously-green host class the
-         * harness doctrine names. The prefix rides only where the
-         * binary exists; without it the child runs unbounded exactly
-         * as it did before round 34 (the SecureFixtures owner's own
-         * accepted posture for the same corner).
+         * t31-glm36-3 (the review's R36-5, correcting round 35's own
+         * R35-4 record): the prior fallback DEGRADED to the unbounded
+         * child on a POSIX host without coreutils timeout(1), citing
+         * 'the SecureFixtures owner's own accepted posture' — a
+         * FALSE provenance: SecureFixturesTest's spawnScannerChild
+         * docblock states the OPPOSITE ('a host without the tool
+         * answers its own loud 127, never a silent unbounded wait'),
+         * the glm20-6 doctrine existing precisely to prevent the
+         * silent hang the fallback reintroduced (a stalled floor
+         * child hanging phpunit inside exec() with no verdict and no
+         * failure). The absent-binary corner now SKIPS LOUDLY,
+         * naming the missing tool and the doctrine — a visible skip
+         * on the timeout-less host class (stock macOS), never an
+         * unbounded wait and never the round-34 exit-127 failure.
          */
-        $timeout_prefix = '';
         if (WpHarness::isPosixHost()) {
             exec('command -v timeout', $probe_output, $probe_exit);
-            if (0 === $probe_exit) {
-                $timeout_prefix = 'timeout 30 ';
+            if (0 !== $probe_exit) {
+                $this->markTestSkipped('The shared/-reference recursion floor requires coreutils timeout(1) to bound its spawned child (the glm20-6 doctrine: never a silent unbounded wait) — the binary is absent on this POSIX host.');
             }
+            $timeout_prefix = 'timeout 30 ';
+        } else {
+            $timeout_prefix = '';
         }
         $command = sprintf(
             '%s%s -d pcre.jit=0 -d pcre.recursion_limit=1 -r %s 2>&1',
