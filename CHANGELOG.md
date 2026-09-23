@@ -6,6 +6,91 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 32)
+
+Eighteenth claude-glm pass (/code-review max, ledger-read first):
+the convergence round that still wasn't zero — 15 candidates, the
+review itself refuting two. DRIVER ADJUDICATION under the scope
+rule: R32-1, R32-2/3/4 (one class), R32-5, R32-8 ACCEPTED plus
+the round's own pin corrections; the whole-pattern `/i` merge of
+the scoped keyword groups DECLINED on ledger grounds (ocr46-9's
+scoped idiom governs; the reviewer's own note that the obvious
+merge is not equivalent makes the two-group split load-bearing);
+the remainder out-of-scope, recorded in the ledger's inheritance
+list. Five commits t31-glm32-1..5, the full offline check green
+after EVERY commit, no push. Suite 1921 → 1927 tests, 48255 →
+48274 assertions (the docs-close runs settling one above the last
+fix-commit check — the ledgered ±1 blip class), 3 skipped
+unchanged.
+
+- **The shared/-reference seat's flat spelling — round 31's own
+  derivation corrected (t31-glm32-1, cost + driven
+  false-refusal; bin/lib/plugin-tools.php,
+  tests/SelfContainmentSharedReferenceScanAbortTest.php)** — the
+  kept `(?:\.\./)+` repetition burns the quadratic restart storm
+  below its recursion threshold (benign `../`-dense files: 18ms
+  at 3KB, 1.8s at 30KB, 27s at 90KB, 4.4 minutes at 180KB — all
+  clean verdicts, the exact stall a hostile extracted tree plants
+  under the seat's no-size-cap scan-before-lint threat model) and
+  past the threshold answers a FALSE
+  `could not be scanned for shared/ references` refusal over
+  bytes that scan in milliseconds. The flat `\.\./shared/` arm
+  was never among the respellings round 31 measured: verdict-
+  identical (the last repetition of any run sits immediately
+  before `shared/` — structural argument plus a 20,000-shape
+  fuzz), linear at every size, strictly more precise at size (the
+  600KB-with-shared/ drive answers its real violation in
+  milliseconds), still abortable at both floor levers so the
+  refusal door and pin survive. The driven test now pins its own
+  `pcre.recursion_limit`; the floor pin disables JIT around the
+  floor (PCRE2's JIT ignores the depth limit — PCRE2 10.44's own
+  docs; PHP's ext/pcre pairs the lever with `pcre.jit=0`).
+
+- **The loop-proof machinery's keywords match case-insensitively
+  (t31-glm32-2, security:medium, three driven fail-opens of the
+  R31-C2 class; bin/lib/plugin-tools.php,
+  tests/SelfContainmentCaseVariantIncludesTest.php)** — the
+  write-visibility span pattern, the array-writes arms, the
+  assignment collector's region twins, the foreach-header
+  collector with its `endforeach` temper, and the header as-split
+  all spelled their keywords byte-exact lowercase: a lint-clean
+  `FOREACH ($evil as $f)` loop's binding was never collected, an
+  uppercase carrier never opened a write-visibility span, and
+  `AS &$map` slipped every by-ref refusal — each laundering a
+  foreign include through a benign same-file write (0 violations
+  where the all-lowercase twins flag). Scoped `(?i:…)` groups at
+  every seat, one census; each variant and its twin answer
+  byte-identical reports.
+
+- **The foreach-header collector's abort refuses the proof
+  (t31-glm32-3, security:medium, driven fail-open;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — the
+  collector's truthiness read a size-triggered `preg_match_all`
+  FALSE as "no foreach bindings" call-wide, a single benign
+  same-file write satisfying every loop-shaped include proof over
+  the vanished bindings (driven with a 2.5MB `;` poison at
+  default limits; the in-suite fixture rides the pinned backtrack
+  floor, the 2.5MB spelling OOMing the runner at the tokenizer).
+  FALSE returns no provable assignment now (the in-chain glm36-8
+  idiom the signature consult already rides); both the
+  refused-proof and normally-collected reasons pinned on
+  identical bytes.
+
+- **The anchor consults fold like the engine (t31-glm32-4,
+  driven false-anchored flags — R31-C2's parity completed;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentCaseVariantIncludesTest.php)** — PHP folds
+  `__DIR__`/`__FILE__`/`dirname()` case-insensitively (driven),
+  so the widened keyword arm routed `REQUIRE __dir__ …` into
+  byte-exact consults that flagged the legal variant 'not
+  anchored' where its `__DIR__` twin scanned clean. Every consult
+  folds (stripos, the dirname regexes' `/i`, the segment walk's
+  `strcasecmp`) while `ABSPATH` stays byte-exact by design (a
+  define()'d constant is case-sensitive — driven). The `__dir__`
+  variant scans clean like its twin; `DirName`/`dirname` twins
+  answer byte-identical reports.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 31)
 
 Seventeenth claude-glm pass: the convergence round that wasn't the
@@ -43,7 +128,12 @@ inheritance (5 test-hygiene, 1 driven fail-closed misattribution,
   this host (possessive trades it for an O(n²) restart storm,
   minutes-plus at 600KB; a `{1,64}` bound still answers the
   quadratic class at 3.5s) — the refusal the host-independent
-  half, R30-C1's own precedent. The refusal pinned at the
+  half, R30-C1's own precedent. (CORRECTED round 32, t31-glm32-1:
+  the derivation enumerated only repetition-keeping respellings
+  at the one size where the abort hides the quadratic storm the
+  kept repetition burns below it — the flat
+  `\.\./shared/` spelling, verdict-identical and linear, is the
+  seat's spelling now.) The refusal pinned at the
   pinned-limit idiom on this seat's own lever, the recursion floor
   1 (the frames nest per repetition iteration) where the include
   seat's pin rides the backtrack lever; the include abort pin's
