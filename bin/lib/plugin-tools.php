@@ -1887,8 +1887,19 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * streams. The walk takes the stream directly
      * (wp_connectors_name_references_from_tokens()); the text-lens
      * loop below reuses the same array.
+     *
+     * glm28-13: the pass itself rides the ONE token provider
+     * (wp_connectors_token_stream(), glm27-9) — the bare
+     * token_get_all() here was the one caller off the owner, a
+     * GUARANTEED memo miss for every source the collector's fence,
+     * the rewriter, or the postcondition already tokenized in the
+     * same process (the detector runs three times per shared file in
+     * the build's own postcondition flow, each call re-paying the
+     * tokenize the memo existed to answer). The stream is an array —
+     * this walk's copy detaches on write, the cached stream never
+     * mutated through it.
      */
-    $tokens = token_get_all($source);
+    $tokens = wp_connectors_token_stream($source);
 
     $references = array();
     /*
