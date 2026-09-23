@@ -48,12 +48,7 @@ final class SelfContainmentCloseTagTerminatorsTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_file($entry)) {
-                @unlink($entry);
-            }
-        }
-        @rmdir($this->root);
+        WpHarness::releaseScratch($this->root);
     }
 
     public function testACloseTagTerminatedIncludeFlags(): void
