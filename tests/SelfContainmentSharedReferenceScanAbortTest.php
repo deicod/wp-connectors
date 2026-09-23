@@ -12,13 +12,22 @@
  * inspect-artifact rides this seat over hostile extracted trees with
  * no size cap and its php -l rejection runs after the scan — R30-C1's
  * exact threat model at the sibling seat that round hardened). FALSE
- * is the LOUD refusal naming the file now, and the repetition stays:
- * every linear respelling measured worse than the abort (possessive
- * trades it for an O(n-squared) restart storm, a bounded repeat still
- * answers the quadratic class) — the refusal the host-independent
- * half, R30-C1's own precedent. These fixtures pin the fail-open
- * closed, the refusal loud at the pinned recursion floor, and the
- * small-run twin byte-identical.
+ * is the LOUD refusal naming the file now. Round 32 (t31-glm32-1)
+ * corrected the seat's own spelling: the kept repetition burned the
+ * same O(n-squared) restart storm BELOW its recursion threshold (a
+ * benign 90KB '../' file scanned clean in 27s, 180KB in 4.4 minutes
+ * — a hostile extracted tree stalls the gate for minutes per file
+ * with a clean verdict and no diagnostic) and answered a FALSE
+ * refusal PAST it over bytes that scan in milliseconds; the
+ * round-31 derivation had measured only repetition-keeping
+ * respellings, at the one size where the abort hides the storm. The
+ * FLAT '\.\./shared/' arm is verdict-identical (20,000 fuzz shapes,
+ * zero mismatches, beside the structural argument: the last
+ * repetition of any run sits immediately before 'shared/'), linear
+ * at every size, and still abortable at the floor levers. These
+ * fixtures pin the reference visible through the run at every
+ * size, the benign run clean and fast, the refusal loud at the
+ * pinned floors, and the small-run twin byte-identical.
  *
  * @package wp-connectors
  */
@@ -55,32 +64,52 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
     public function testASizeDotDotRunCannotHideTheSharedReference(): void
     {
         /*
-         * The driven fail-open (R31-C1, security): the lint-clean
-         * 600KB '../' run (php -l verified this round) exhausted the
-         * repetition's recursion frames at default limits,
-         * preg_match() answered FALSE call-wide, and the truthiness
-         * read "no reference" — the shared/ twin beside it went
-         * invisible with the aborting arm (red at HEAD: 0
-         * violations). The abort answers the REFUSAL now, never a
-         * clean pass, and the 3KB twin keeps its one violation
-         * byte-identical — the refusal is the abort, never the
-         * payload's size class below the frames it takes.
+         * The driven fail-open (R31-C1, security) and its round-32
+         * correction (R32-1): the kept repetition made the 600KB
+         * '../' run answer the ABORT's refusal — visible, but only
+         * by luck of the threshold — while below it the same
+         * repetition burns the quadratic restart storm (measured
+         * 27s at 90KB benign, 4.4 minutes at 180KB) and a benign
+         * past-threshold run answers a FALSE refusal. The FLAT arm
+         * is linear at every size: the shared/ reference is VISIBLE
+         * through the 600KB run (its real violation, not the
+         * abort's refusal — strictly more precise than round 31's
+         * shape), the benign twin scans clean in milliseconds, and
+         * the 3KB twin keeps its byte-identical violation. The
+         * recursion limit is PINNED for the duration (the floor
+         * pin's own idiom): a host default far above 200000
+         * iterations must not re-open the storm, one far below
+         * must not abort the twin.
          */
         file_put_contents(
             $this->root . '/large.php',
             '<?php $x = "' . str_repeat('../', 200000) . '"; $y = "shared/foo.php";'
         );
         file_put_contents(
+            $this->root . '/benign.php',
+            '<?php $x = "' . str_repeat('../', 200000) . '";'
+        );
+        file_put_contents(
             $this->root . '/small.php',
             '<?php $x = "' . str_repeat('../', 1000) . '"; $y = "shared/foo.php";'
         );
 
-        $violations = wp_connectors_self_containment_violations($this->root);
+        $host_limit = (string) ini_get('pcre.recursion_limit');
+        ini_set('pcre.recursion_limit', '100000');
+        try {
+            $started = microtime(true);
+            $violations = wp_connectors_self_containment_violations($this->root);
+            $elapsed = microtime(true) - $started;
+        } finally {
+            ini_set('pcre.recursion_limit', $host_limit);
+        }
         $report = implode("\n", $violations);
 
-        $this->assertStringContainsString('large.php could not be scanned for shared/ references', $report, 'A size-triggered abort over the shared/ seat is the loud refusal naming the file — never a silent clean pass (red at HEAD: 0 violations).');
-        $this->assertStringContainsString('the self-containment scan aborted (PCRE:', $report, 'The refusal rides the sibling seats\' own loud vocabulary with the engine\'s diagnostic.');
-        $this->assertStringContainsString('small.php references shared/ (generated copies only, never source includes).', $report, 'The 3KB twin keeps its one violation byte-identical — the fix changed the abort\'s consumption, never the matching verdicts.');
+        $this->assertCount(2, $violations, 'The 600KB and 3KB reference-bearing twins each answer exactly their one violation — the benign 600KB run contributes nothing.');
+        $this->assertStringContainsString('large.php references shared/ (generated copies only, never source includes).', $report, 'The shared/ reference is visible THROUGH the 600KB run — the real violation, never the abort\'s refusal and never invisibility (red at round 31\'s repetition: the refusal; red at round 31\'s HEAD: 0 violations).');
+        $this->assertStringContainsString('small.php references shared/ (generated copies only, never source includes).', $report, 'The 3KB twin keeps its one violation byte-identical.');
+        $this->assertStringNotContainsString('could not be scanned for shared/ references', $report, 'A benign or reference-bearing run at the default limit never answers the refusal — the flat arm left no threshold to cross.');
+        $this->assertLessThan(10.0, $elapsed, sprintf('The 600KB run scans in wall-clock the linear pipeline owns (%.2fs here) — the bound guards the quadratic class the repetition paid in minutes at this size (red at round 31\'s repetition: minutes-to-abort).', $elapsed));
     }
 
     public function testAnAbortOverTheSharedReferenceScanRefusesLoudlyNamingTheFile(): void
@@ -88,15 +117,23 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
         /*
          * The refusal half (glm36-8, the pinned-limit idiom the
          * suite's abort pins ride — glm28-1): at the recursion floor
-         * 1 ANY candidate-bearing match attempt aborts — this seat's
-         * frames nest per '../' repetition iteration, so the
-         * recursion lever fires where the include seat's pin rides
-         * the backtrack lever — the limit restored on every exit
-         * path. The refusal names the file and carries the engine's
-         * diagnostic; a candidate-free payload never starts a match
-         * attempt and keeps its clean verdict under the same floor;
-         * the control at the restored limit flags normally on its
-         * own root.
+         * 1 ANY candidate-bearing match attempt aborts — the flat
+         * arm's alternation still consumes the frames, verified on
+         * this engine, so the recursion lever fires where the
+         * include seat's pin rides the backtrack lever. THE JIT
+         * CLAUSE (round 32): PCRE2's JIT ignores the depth limit
+         * pcre.recursion_limit maps to (PCRE2 10.44's own docs —
+         * "The depth limit is ignored by JIT"; PHP's own
+         * ext/pcre recursion_limit test pins pcre.jit=0 beside the
+         * lever), so on a JIT-enabled host the floor never fires
+         * without this — the pin disables JIT for its duration
+         * (construction-evident on this --without-pcre-jit build,
+         * ini_set a no-op here). The limits are restored on every
+         * exit path. The refusal names the file and carries the
+         * engine's diagnostic; a candidate-free payload never
+         * starts a match attempt and keeps its clean verdict under
+         * the same floor; the control at the restored limit flags
+         * normally on its own root.
          */
         file_put_contents(
             $this->root . '/fixture.php',
@@ -104,6 +141,7 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
         );
 
         $host_limit = (string) ini_get('pcre.recursion_limit');
+        $host_jit = ini_set('pcre.jit', '0');
         ini_set('pcre.recursion_limit', '1');
         try {
             $violations = wp_connectors_self_containment_violations($this->root);
@@ -113,6 +151,11 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
             $this->assertStringContainsString('the self-containment scan aborted (PCRE:', $violations[0], 'The refusal rides the seat\'s own loud vocabulary with the engine\'s diagnostic.');
         } finally {
             ini_set('pcre.recursion_limit', $host_limit);
+            if (false !== $host_jit) {
+                ini_set('pcre.jit', $host_jit);
+            } else {
+                ini_restore('pcre.jit');
+            }
         }
 
         $plain_root = $this->root . '-plain';

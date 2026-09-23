@@ -4198,17 +4198,38 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * FALSE is the LOUD refusal naming the file now
              * (preg_last_error_msg()'s diagnostic, the glm36-8
              * abort-is-a-refusal doctrine at the sibling glm30-1
-             * never swept). The repetition itself stays: derived on
-             * this host, every linear respelling is worse than the
-             * abort — possessive '(?:\.\./)++' trades the recursion
-             * abort for an O(n-squared) restart storm (measured
-             * minutes-plus on the 600KB run before it was killed)
-             * and a '{1,64}' bound still answers the quadratic class
-             * (3.5s on the same run) — so the refusal is the
-             * host-independent half (R30-C1's own precedent), never
-             * a spelling change.
+             * never swept).
+             *
+             * t31-glm32-1 [R32-1, cost + driven false-refusal —
+             * round 31's own derivation CORRECTED, the r26-8
+             * post-mortem class]: the kept repetition was measured
+             * only at 600KB, where the recursion abort fires in
+             * ~15ms and hides the QUADRATIC RESTART STORM the
+             * engine runs below it — a benign '../'-dense file
+             * pays 1.8s at 30KB, 27s at 90KB, 4.4 minutes at
+             * 180KB for a CLEAN verdict (no refusal, no
+             * diagnostic — the exact stall a hostile extracted
+             * tree plants for free, the seat's own no-size-cap
+             * threat model), and past the threshold the same
+             * benign file answers a FALSE 'could not be scanned'
+             * refusal over bytes that scan in milliseconds. The
+             * round-31 derivation's 'every linear respelling
+             * measured worse' enumerated only repetition-KEEPING
+             * spellings (possessive, {1,64}); the FLAT spelling
+             * was never measured. It is now: '\.\./shared/' is
+             * verdict-identical (the last repetition of any run
+             * sits immediately before 'shared/', so the flat arm
+             * matches there — 20,000 fuzz shapes, zero verdict
+             * mismatches, beside the structural argument), LINEAR
+             * at every size (0.16ms at 3KB to 8ms at 180KB where
+             * the repetition paid 4.4 minutes), strictly more
+             * precise at size (the 600KB-with-shared/ drive now
+             * answers its real 'references shared/' violation in
+             * milliseconds where the repetition answered the
+             * abort's refusal), and STILL abortable at the floor
+             * levers so the refusal door and its pin survive.
              */
-            $sharedReference = preg_match('#(?:\.\./)+shared/|\bshared/#', $code);
+            $sharedReference = preg_match('#\.\./shared/|\bshared/#', $code);
             if (false === $sharedReference) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for shared/ references — the self-containment scan aborted (PCRE: %s)',
