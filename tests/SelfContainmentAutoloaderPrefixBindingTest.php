@@ -192,4 +192,34 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
 ");
         $this->assertSame(array(), $caseVariant, 'The legal Spl_AutoLoad_Register spelling registers — PHP lexes function names case-insensitively (red at HEAD: both register violations).');
     }
+
+    public function testEveryFileExecOperandChannelFlagsAcrossAllThreeGaps(): void
+    {
+        /*
+         * R41-1/2/3 (security:medium, driven — round 40's probe's own
+         * three gaps): (1) the channel family one short — exec/system/
+         * passthru/popen/proc_open/fopen invisible; (2) the '/^\S+/'
+         * keyword extraction grabbing the whole zero-whitespace
+         * statement, the masked re-confirmation then failing; (3) the
+         * extent over string-bearing code truncating at an in-string
+         * ';'. The rewrite: the channel set widened, the keyword a
+         * CAPTURE GROUP, the extent over the MASKED view with the
+         * judgment reading the RAW slice at the same offsets — and the
+         * tail grammar riding the ONE constant both seats share.
+         */
+        $canonical = "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) { \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php'; require_once \$path; });\n";
+        $flag_shapes = array(
+            'exec vendor' => "exec( \$base_dir . '/vendor/run.php' );",
+            'zero-ws eval+fgc' => 'eval(file_get_contents(__DIR__."/vendor/pkg/lib.php"));',
+            'semi-in-string shell_exec' => 'shell_exec( "true; cat vendor/build.sh" );',
+            'system vendor' => 'system( "cat vendor/build.sh" );',
+            'proc_open vendor' => 'proc_open( "vendor/tool", $desc, $pipes );',
+        );
+        foreach ($flag_shapes as $name => $leg) {
+            $violations = $this->autoloadWith($canonical . $leg . "\n");
+            $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $violations), "The {$name} operand channel flags (red at HEAD: 0 violations where master flags).");
+            $this->base .= '-n' . md5($name);
+            @mkdir($this->base . '/zai/src', 0755, true);
+        }
+    }
 }

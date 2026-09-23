@@ -55,6 +55,18 @@ declare(strict_types=1);
 const WP_CONNECTORS_LABEL_HEAD_BYTES = 'A-Za-z_\x80-\xff';
 const WP_CONNECTORS_LABEL_BYTES = 'A-Za-z0-9_\x80-\xff';
 
+/*
+ * t31-glm41-1 [R41-14, one-owner hoist]: the statement-tail grammar —
+ * possessive body ending at whichever terminator (';', '?>', or the end
+ * of input per glm40-1's EOF arm) comes FIRST — was hand-spelled
+ * byte-identically at the include scan and the autoloader operand probe;
+ * glm40-1's own docblock records the last EOF sweep missing a seat, and
+ * all three operand-probe gaps this round closed lived in the second
+ * copy. ONE constant, both seats — the next tail correction cannot
+ * miss a copy again.
+ */
+const WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR = '[^;?]*+(?:\\?(?!>)[^;?]*+)*+(?:;|\\?>|$)';
+
 /**
  * Strips docblock and line comments so checks only see functional code.
  *
@@ -4527,7 +4539,8 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * terminated twin flags. The alternation admits the end of
              * input: an unterminated include is still an include.
              */
-            $scanned = preg_match_all('/\b(?i:require|include)(?i:_once)?\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>|$)/', $masked, $includes, PREG_OFFSET_CAPTURE);
+            // t31-glm41-1: the tail rides the ONE constant (see WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR).
+            $scanned = preg_match_all('/\b(?i:require|include)(?i:_once)?\b' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $includes, PREG_OFFSET_CAPTURE);
             if (false === $scanned) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for includes — the self-containment scan aborted (PCRE: %s)',
@@ -4791,17 +4804,36 @@ function wp_connectors_autoloader_violations($pluginDir)
          * RE-CONFIRMED on the MASKED view (the two-view judge: prose
          * words blank there, real calls keep their code bytes).
          */
-        $operand_hits = preg_match_all('/(?<![\\$\w])(?:(?i:require|include)(?i:_once)?|(?i:eval|file_get_contents|readfile|shell_exec))\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>|$)/', $code, $operand_statements, PREG_OFFSET_CAPTURE);
+        /*
+         * t31-glm41-2 [R41-1+R41-2+R41-3, security:medium, driven — the
+         * probe's own three gaps, all in one rewrite]: (1) the channel
+         * family was one family short — exec/system/passthru/popen/
+         * proc_open/fopen/file_put_contents operands invisible (driven:
+         * 'exec( $base_dir . '/vendor/run.php' );' passing every gate
+         * green where master flags). (2) the keyword extraction
+         * '/^\S+/' grabbed the WHOLE statement on a zero-whitespace
+         * spelling (driven: 'eval(file_get_contents(__DIR__."/vendor/
+         * pkg/lib.php"));' laundering where its spaced twin flags) —
+         * the keyword is a CAPTURE GROUP now, never derived from the
+         * text. (3) the extent ran over string-bearing $code so a ';'
+         * inside the operand's literal truncated the candidate (driven:
+         * 'shell_exec( "true; cat vendor/build.sh" );' laundering) —
+         * the extent rides the MASKED view (in-string ';' blank) while
+         * the vendor/composer judgment reads the RAW slice at the same
+         * length-preserved offsets, the two-view judge's own shape.
+         */
+        $operand_hits = preg_match_all('/(?<![\\$\w])((?i:require|include)(?i:_once)?|(?i:eval|file_get_contents|readfile|shell_exec|exec|system|passthru|popen|proc_open|fopen|file_put_contents))\b' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $operand_statements, PREG_OFFSET_CAPTURE);
         if (false !== $operand_hits && $operand_hits > 0) {
-            foreach ($operand_statements[0] as $operand) {
-                if (false === stripos($operand[0], 'vendor') && false === stripos($operand[0], 'composer')) {
+            foreach ($operand_statements[0] as $index => $operand) {
+                $statement_text = (string) substr($code, $operand[1], strlen($operand[0]));
+                if (false === stripos($statement_text, 'vendor') && false === stripos($statement_text, 'composer')) {
                     continue;
                 }
-                // The keyword is the match's leading word; prose words blank in the
-                // masked view, a real call's keyword keeps its code bytes there.
-                $keyword = (string) preg_match('/^\S+/', $operand[0], $word) ? $word[0] : '';
-                $keyword_at = $operand[1];
-                if ('' !== $keyword && 0 === substr_compare($masked, $keyword, $keyword_at, strlen($keyword), true)) {
+                // The keyword is the captured call name; prose words blank in the
+                // masked view this pattern runs over, a real call's keyword keeps
+                // its code bytes there by construction.
+                $keyword = $operand_statements[1][ $index ][0];
+                if (0 === substr_compare($masked, $keyword, $operand_statements[1][ $index ][1], strlen($keyword), true)) {
                     $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
                     break;
                 }
