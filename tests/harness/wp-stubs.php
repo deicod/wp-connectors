@@ -202,8 +202,18 @@ function apply_filters($tag, $value, ...$args)
     WpHarness::$current_action_stack[] = $tag;
     try {
         foreach (wp_connectors_harness_hook_entries($tag) as $entry) {
+            /*
+             * glm28-7: the arity rides VERBATIM (core's call shape —
+             * WP_Hook::apply_filters, class-wp-hook.php pinned 7.1.1:
+             * array_slice over (int) $accepted_args, no floor): the
+             * max(1, ...) clamp passed ONE arg to a 0-arity callback —
+             * an ArgumentCountError in production for a registration
+             * core serves with zero. The glm14 deferral this closes
+             * named exactly this clamp (latent then: no in-repo ', 0)'
+             * registration; the first driven evidence now on record).
+             */
             $call_args = array_merge(array( $value ), $args);
-            $call_args = array_slice($call_args, 0, max(1, $entry['accepted_args']));
+            $call_args = array_slice($call_args, 0, $entry['accepted_args']);
             $value = call_user_func_array($entry['callback'], $call_args);
         }
     } finally {

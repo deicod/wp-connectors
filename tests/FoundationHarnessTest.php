@@ -157,6 +157,37 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('42', sanitize_key(42));
     }
 
+    /**
+     * glm28-7: apply_filters passes the registration's arity through
+     * VERBATIM (core's call shape — WP_Hook::apply_filters, pinned):
+     * the max(1, ...) clamp passed one arg to a 0-arity callback —
+     * an ArgumentCountError in production for a registration core
+     * serves with zero. The glm14 deferral this closes named exactly
+     * the clamp (latent then; first driven evidence now).
+     */
+    public function testAZeroArityFilterCallbackReceivesZeroArgs()
+    {
+        $received = null;
+        add_filter('glm28_zero', static function (...$args) use (&$received) {
+            $received = $args;
+
+            return 'filtered';
+        }, 10, 0);
+
+        $this->assertSame('filtered', apply_filters('glm28_zero', 'value', 'extra'), 'The filter runs and its return rides the value.');
+        $this->assertSame(array(), $received, 'A 0-arity registration receives ZERO args (red at HEAD: one — the ArgumentCountError the clamp mints in production).');
+
+        // Existing registrations unchanged: the default 1-arg shape and a
+        // declared 2-arg shape keep their arities verbatim.
+        add_filter('glm28_two', static function ($value, $extra = null) use (&$received) {
+            $received = array( $value, $extra );
+
+            return $value;
+        }, 10, 2);
+        $this->assertSame('v', apply_filters('glm28_two', 'v', 'e'));
+        $this->assertSame(array( 'v', 'e' ), $received, 'A 2-arity registration receives exactly two.');
+    }
+
     public function testUpdateOptionOnAMissingRowDelegatesToAddOptionHooks()
     {
         update_option('wpct_probe_opt', 'first');
