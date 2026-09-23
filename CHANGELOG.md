@@ -6,6 +6,76 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 39)
+
+Twenty-fifth claude-glm pass (/code-review max over the FULL
+branch diff, ledger-read first): still not zero — 13 confirmed,
+1 plausible, 4 refuted by the verifiers on ledger/doctrine
+grounds. DRIVER ADJUDICATION under the scope rule: R39-1 (the
+scanner marker in string data at the straddling boundary),
+R39-2 (the collectors' EOF arm), R39-3 (round 38's masked probe
+one leg too far), R39-4 (round 37's anchor still over-narrowed
+— the anchor deleted), R39-7/13 (the snapshot write side, the
+last hand-rolled tearDowns), R39-12 (the mention check's
+per-import copies) accepted; the four harness divergences and
+the structural cleanups recorded as inheritance. Seven commits
+t31-glm39-1..7, the full offline check green after EVERY
+commit. Suite 1947 → 1951 tests, 48357 → 48378 assertions,
+3 skipped unchanged.
+
+- **A marker inside a quote pair straddling a sample never
+  exempts (t31-glm39-1, security:medium, driven;
+  bin/lib/secret-scanner.php, tests/SecureFixturesTest.php)**
+  — a quote pair straddling an embedded `<?php … ?>` sample
+  never pairs in the per-slice prose view, so a
+  `// secrets:allow` marker between those quotes exempted a
+  live credential on the same line (0 findings where the
+  identical line without the sample flags). The prose-marker
+  consult matches the quote-blanked view — glm19-2's
+  string-data doctrine at the one boundary left open; the real
+  prose marker still exempts.
+
+- **An unterminated write at EOF is still collected
+  (t31-glm39-2, security:medium, driven; bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — both
+  assignment collectors' terminator alternation had no
+  end-of-input arm, a write terminated by neither `;` nor `?>`
+  at the end of the file invisible even though the span walk
+  over-approximates the unclosed `{` to EOF. The alternation
+  admits the end of input at both seats.
+
+- **The operand probe beside the masked probe
+  (t31-glm39-3, security:medium, driven; bin/lib/plugin-tools.php,
+  tests/SelfContainmentAutoloaderPrefixBindingTest.php)** — round
+  38's masked composer/vendor view blanks string contents, so a
+  runtime operand in a quoted literal (`require_once __DIR__ .
+  "/vendor/pkg/lib.php";` in a valid autoloader) turned
+  invisible where master flagged. The masked probe keeps the
+  prose immunity; the operand probe judges the raw text of
+  every require/include statement — an include path is never
+  prose.
+
+- **The version anchor deleted, the two-view judge the whole
+  guard (t31-glm39-4, driven false refusals; bin/lib/plugin-tools.php,
+  tests/SelfContainmentVersionConstantBindingTest.php)** — the
+  canonical WordPress guarded idiom
+  `if ( ! defined('X') ) define(...)` refused at all three
+  gates (check-conventions exit 1 end-to-end), beside the
+  same-line define, `<?PHP`, and `<?php \define` spellings. The
+  unanchored find over the comment-stripped view with the
+  masked re-confirmation: a comment define never survives the
+  first view, a heredoc define never the second.
+
+- **The round's own pins and costs (t31-glm39-5/6/7)** — the
+  snapshot creation path owns `json_encode()`'s FALSE (glm14-8's
+  write side: an unencodable capture once committed a 1-byte
+  newline snapshot and skipped green); the last two hand-rolled
+  tearDowns rode the `releaseScratch` owner; and the
+  unused-import mention check scans offsets through one helper —
+  no per-import file copy (measured ~127ms of the 211ms
+  conventions run, ~7MB re-scanned for a real 130KB/54-import
+  connector), verdict-identical by construction.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 38)
 
 Twenty-fourth claude-glm pass (/code-review max over the FULL
