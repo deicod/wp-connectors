@@ -35,6 +35,24 @@ retired at the engine's spawn floor); the clock guard; and the
 quote-style unescape owner. Suite 1894 → 1905 tests, 48116 → 48192
 assertions, 3 skipped unchanged (every delta measured from output).
 
+- **The repo-scan test rides the production-shaped fresh child
+  (glm28-16, post-round, test-hygiene:medium;
+  tests/SecureFixturesTest.php, docs/review/REFUTATION_LEDGER.md)**
+  — the post-round check reddened over the repo's own two biggest
+  sources answering the secret-scan token-memory bound inside the
+  memory-squeezed phpunit process; the diagnosis (measured): a
+  LEGITIMATE trip of glm17-2's fail-safe census (estimates 72.1/70.0
+  MB against in-suite headrooms below the 55.9/58.0 MB break-evens)
+  and not a glm28-1 regression — the real costs are 13.4/11.6 MB and
+  the composer @scan-secrets gate scans both green in its fresh
+  process every check. No bound change can admit them in-suite
+  without reopening the adversarial fatal window (any lower factor
+  passes a hostile mid-size dense payload into a fatal); the test
+  scans the repo through the spawned fresh child instead, a
+  squeezed-child leg pinning the census's loud refusal unchanged.
+  The order-dependent blip class is closed for the suite — four
+  consecutive random-order runs green.
+
 - **A PCRE abort over the scanner's pattern walk refuses loudly
   (t31-glm28-1, security:low; bin/lib/secret-scanner.php,
   tests/SecureFixturesTest.php)** — `preg_match_all() === 0` read a

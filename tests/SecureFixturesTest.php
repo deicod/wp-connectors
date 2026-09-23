@@ -2276,12 +2276,62 @@ CHILD;
         $this->assertSame(PHP_INT_MAX, wp_connectors_memory_limit_to_bytes('not-a-limit'));
     }
 
+    /**
+     * glm28-16 (post-round): the repo scan rides a FRESH spawned child
+     * — the production context the composer @scan-secrets gate runs
+     * every check. The post-round check REDDERNED here with the
+     * census refusal over the repo's own two biggest sources
+     * (REFUTATION_LEDGER.md, BuildArtifactsTest.php), and the
+     * diagnosis — measured, recorded in the ledger's residual note —
+     * is a LEGITIMATE trip of glm17-2's fail-safe census inside the
+     * memory-squeezed phpunit process, never a scanner regression:
+     * the census estimates the dense-worst-case token cost
+     * (span_total × 98, glm17-2's measured adversarial ceiling) at
+     * 72.1 MB and 70.0 MB for the two files against an in-suite
+     * headroom that ambient suite usage regularly holds below their
+     * 55.9/58.0 MB break-evens — while the REAL token costs measure
+     * 13.4 MB and 11.6 MB and a fresh CLI child (headroom ~118 MB
+     * under the same 128M limit) scans both green, exactly as the
+     * composer gate does. NO scanner-side bound change can admit
+     * these files in-suite without reopening the adversarial fatal
+     * window glm17-2 closed (any factor low enough to fit the
+     * squeezed headroom under-estimates a hostile mid-size dense
+     * payload whose real cost is the full 98×, and the artifact scan
+     * — the hostile surface, files under the 2 MB cap — would FATAL
+     * instead of refusing); the honest fix is the CONTEXT: the test
+     * scans the repo in the fresh-process shape the scan's own
+     * production entry point spells. The squeezed-child leg below
+     * pins the census's fail-safe refusal as UNCHANGED — the guard
+     * moved nowhere.
+     */
     public function testScannerAcceptsRepoSources()
     {
         $repoRoot = dirname(__DIR__);
         // Mirror the CLI default: the whole repository root (the scan prunes
         // .git/vendor/node_modules/dist/tools itself), so root config files
         // like mise.toml and composer.json are covered too.
+        if (self::canSpawnChildren()) {
+            $script = sprintf(
+                'require %%s; fwrite(STDOUT, "FINDINGS=" . json_encode(wp_connectors_scan_paths(array(%s))) . "\n");',
+                var_export($repoRoot, true)
+            );
+            $spawned = $this->spawnScannerChild($script);
+            $this->assertSame(0, $spawned['exit'], 'The fresh-child repo scan completes — the production-shaped context: ' . $spawned['report']);
+            $this->assertSame(1, preg_match('/^FINDINGS=(\[\])$/m', $spawned['report']), "Repository sources must stay secret-free in the fresh-process context, our own biggest files included (red at HEAD: the ledger and BuildArtifactsTest answered the census refusal inside the squeezed phpunit process): {$spawned['report']}");
+
+            /*
+             * The fail-safe leg, pinned UNCHANGED beside the fix: a
+             * child whose memory_limit is pinned BELOW the census's
+             * own estimate still answers the loud refusal over the
+             * same repo — the guard glm17-2 built moves nowhere (the
+             * fix moved the test's context, never the census).
+             */
+            $squeezed = $this->spawnScannerChild($script, array( 'memory_limit=64M' ));
+            $this->assertSame(0, $squeezed['exit'], 'The squeezed child still completes — the census refuses LOUDLY per file, it never fatals: ' . $squeezed['report']);
+            $this->assertSame(1, preg_match('/REFUTATION_LEDGER\.md: over the secret-scan token-memory bound/', $squeezed['report']), 'A 64M child cannot afford the ledger\'s dense-worst-case estimate (72.1 MB against ~58 MB headroom) and the census answers its loud refusal — the fail-safe direction preserved (the fix moved the test\'s context, never the guard).');
+
+            return;
+        }
         $findings = wp_connectors_scan_paths(array( $repoRoot ));
 
         $this->assertSame(array(), $findings, 'Repository sources must stay secret-free: ' . implode("\n", $findings));
