@@ -6,6 +6,120 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 27)
+
+Thirteenth claude-glm pass: 15 findings at cap; 12 stand, #9
+records beside the standing deferral #12 (the remedy is the post-M3
+one-row redesign, not per-shape patches), #13/#15 stay deferred.
+DRIVER ADJUDICATION: #1-#8, #10, #11, #12, #14 ACCEPTED. Twelve
+numbered commits t31-glm27-1..12, the full offline check green
+after every commit (two first-check runs carrying the recorded
+seed-dependent census-refusal blip — re-runs green at the settled
+counts, and the round's own 16 MB token-memo first cut having made
+the class easier to hit, the bound corrected to 4 MB within the
+round), no push. The round's shape: round 26's own timeout_*
+exclusion over-refused — the parse learns the two namespaces with
+the premise correction recorded; the harness core-parity six
+(iteration resync, delete gating, map_deep, parse_str, ajax die,
+plugins_url); the encode-guard; the double-tokenization; two
+hoists; and the derive-first twin. Suite 1886 → 1894 tests,
+48070 → 48116 assertions, 3 skipped unchanged (every delta measured
+from output).
+
+- **Transients named `timeout_*` delete again — the two namespaces
+  of the one row (t31-glm27-1, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — glm26-3's
+  '_transient_timeout_' exclusion routed the whole family to the
+  missing-row false, so a transient literally named 'timeout_x' was
+  PERMANENTLY UNDELETABLE (core's namespace-blind delete answers
+  true over its live value row); the parse widens to the whole
+  '_transient_' family with a timeout twin beside it, the row
+  existing when any reading names a live half, the delete killing
+  every half it names (the timeout reading disarming the window
+  ALONE). The round-26 premise ('core answers false') held only for
+  ABSENT rows — the correction recorded in the ledger.
+- **The hook iteration re-syncs with the live registration array
+  (t31-glm27-2, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — the COW-snapshot foreach
+  inverted core's resort semantics BOTH ways: an
+  unhook-before-it-runs still delivered, a mid-run add at a pending
+  priority was invisible. One iteration owner re-derives the
+  priority list at every bucket boundary, the bucket snapshotted at
+  its own start (core's own foreach shape), do_action() and
+  apply_filters() both riding it.
+- **delete_option's success pair rides core's affected-rows gate
+  (t31-glm27-3, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — the pair fired
+  unconditionally after the pre-hook, so a mid-action deleting
+  observer got true plus the DOUBLE family where core's delete
+  affects nothing; the store re-consult (the missing-row consult
+  and the gate hoisted to one row-exists owner) answers false with
+  the pair suppressed.
+- **wp_unslash/wp_slash ride core's map_deep leaf semantics
+  (t31-glm27-4, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — the (string) coercion turned
+  int members into strings and OBJECT members into strict_types
+  fatals; one map_deep owner walks arrays and objects with the
+  strings-only callback (wp_unslash), wp_slash keeping core's own
+  three-arm shape (objects verbatim).
+- **wp_parse_args parses the string form
+  (t31-glm27-5, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — a string $args was discarded
+  into array(), mis-parsing get_sites('fields=ids&number=2') against
+  its own advertised array|string surface; the seat spells core's
+  three-branch head (wp_parse_str's query-string shape, the filter,
+  the merge guard).
+- **check_ajax_referer rides core's $die contract
+  (t31-glm27-6, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — the delegation to
+  check_admin_referer dropped $die, continuing execution on a nonce
+  failure where core's ajax twin DIES; the un-delegated seat spells
+  core's own shape (the three-way nonce lookup, the verdict action,
+  the $die gate) with the harness's wp_die RuntimeException as the
+  recorded stop-execution emulation.
+- **plugins_url derives the plugin's own folder
+  (t31-glm27-7, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — the $plugin argument was
+  ignored, addressing the plugins ROOT whatever file named the
+  plugin; the seat prefixes dirname(plugin_basename($plugin)) with
+  core's '.' skip, non-empty-string path guard, and 'plugins_url'
+  filter.
+- **The plaintext-scan assertion guards its encode
+  (t31-glm27-8, bug:low; tests/harness/WpConnectorsTestCase.php,
+  tests/FoundationHarnessTest.php)** — wp_json_encode()'s false fed
+  a natively string-typed assert under strict_types (a TypeError
+  instead of a verdict), and the HTTP-leaks warning's unguarded
+  concat silently dropped the leak detail; both seats assert the
+  encode not-false with a failure NAMING it.
+- **The embed leg reads and tokenizes each shared source once per
+  build (t31-glm27-9, efficiency:low; bin/build.php,
+  bin/lib/plugin-tools.php)** — the collector's PSR-4 fence and the
+  embed loop paid the read and the tokenize twice; the fence's bytes
+  flow out to readSharedSource() and one token-stream provider
+  (content-keyed, bounded 4 MB FIFO) serves the fence walk and the
+  rewrite's own walk. Measured 3273 → 2994 ms over 89 embed passes,
+  build verdicts byte-identical.
+- **The copyTree ancestor-walk stop set rides one owner
+  (t31-glm27-10, cleanup; tests/harness/WpHarness.php)** — the stop
+  condition was spelled twice with twin sentinels (the set already
+  evolved twice at these seats); walkToExistingComponent() serves
+  both walks, each keeping its own sentinel vocabulary.
+- **The containment fold's standalone table justified and pinned
+  (t31-glm27-11, cleanup; tests/harness/WpHarness.php,
+  tests/HarnessCopyTreeTest.php)** — derive-first REFUTES the
+  route-through: WpHarness.php loads bare in the php -r children
+  that drive copyTree(), where the tooling owner is undefined; the
+  standalone justification is documented in place and the table's
+  agreement with wp_connectors_ascii_lower() asserted over the full
+  byte range (a single-site mutation flips the pin).
+- **The Url authority split rides one owner
+  (t31-glm27-12, cleanup; shared/src/Http/Url.php)** — the
+  failed-parse screen and the success path had regrown the probe
+  arithmetic twin glm15-7 recorded deleted (the re-open rule
+  fired); split_authority_host_port() derives the first authority's
+  host[:port] region once (last-'@' userinfo strip, first ':' after
+  any ']'), both screens riding it, verdicts byte-identical.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 26)
 
 Twelfth claude-glm pass: 4 correctness + 3 test-hygiene + 1
