@@ -1027,21 +1027,46 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
-     * glm26-3: the prefix parse excludes the '_transient_timeout_'
-     * family — the timeout half's option spelling aliases the VALUE
-     * row of a transient named 'timeout_<name>', and the parse once
-     * resolved it onto that row: delete_option('_transient_timeout_
-     * demo') answered true and killed the transient 'timeout_demo'
-     * where core answers false over the absent timeout row (driven
-     * red at HEAD — the seat's own no-such-row comment claim was
-     * false, the alias the falsifier).
+     * glm27-1: the two namespaces of the one row — core's
+     * delete_option() is namespace-blind (option.php's row-check →
+     * pre-hook → delete → result-gated pair over whatever row the
+     * name carries), and the spelling '_transient_timeout_<name>'
+     * names ONE physical row under two readings: the VALUE row of a
+     * transient named 'timeout_<name>' and the timeout row of
+     * transient '<name>'. glm26-3's exclusion routed the whole family
+     * to the missing-row false — its recorded premise ('core answers
+     * false') held only for ABSENT rows; over the live aliased row
+     * core answers TRUE and kills it (driven red at HEAD: the value
+     * row permanently undeletable while the wpdb enumeration listed
+     * a row delete_option claimed absent).
      */
-    public function testTheTimeoutFamilySpellingIsNotATransientValueRow()
+    public function testDeleteOptionAnswersTheTwoNamespacesOfTheOneTimeoutRow()
     {
-        $this->assertTrue(set_transient('timeout_demo', 'v'), 'staging: the aliased name saves.');
+        // Leg 1 — the VALUE reading: a transient literally named
+        // 'timeout_demo' lives in the row '_transient_timeout_demo'.
+        $this->assertTrue(set_transient('timeout_demo', 'v1'), 'staging: the aliased name saves.');
+        $this->assertTrue(delete_option('_transient_timeout_demo'), 'The value reading answers TRUE — the row exists, and core kills it (red at HEAD: glm26-3\'s exclusion answered the missing-row false over the live row).');
+        $this->assertFalse(get_transient('timeout_demo'), 'The aliased transient is dead — its value row was the row the delete carried (red at HEAD: the row survived its own delete).');
 
-        $this->assertFalse(delete_option('_transient_timeout_demo'), 'The timeout spelling answers the missing-row false — the timeout half is no transient of its own (red at HEAD: true over the aliased live row).');
-        $this->assertSame('v', get_transient('timeout_demo'), 'No row dies — the aliased value row the transient store models is untouched (red at HEAD: the alias deleted it).');
+        // Leg 2 — the TIMEOUT reading: an armed window is this
+        // harness's model of the '_transient_timeout_<name>' row; its
+        // delete disarms the window ALONE, the value row surviving
+        // (core: the transient serves its value forever once its
+        // timeout row is gone).
+        $this->freezeTime(2000);
+        $this->assertTrue(set_transient('glm27_ttl', 'v2', 100), 'staging: the armed window saves.');
+        $this->assertTrue(delete_option('_transient_timeout_glm27_ttl'), 'The timeout reading answers TRUE — the armed window is the row the name carries (red at HEAD: the missing-row false).');
+        $this->assertSame('v2', get_transient('glm27_ttl'), 'The value row survives its timeout row\'s delete — the window alone died.');
+        $this->freezeTime(5000);
+        $this->assertSame('v2', get_transient('glm27_ttl'), 'The disarmed row never dies — no window remains to end.');
+
+        // Leg 3 — a plain transient under the family's spelling:
+        // neither a transient named 'timeout_plain' nor an armed
+        // window on 'plain' exists, so the row is absent and the
+        // delete keeps glm26-3's own verdict over the ABSENT row.
+        $this->assertTrue(set_transient('plain', 'v3'), 'staging: the plain transient saves.');
+        $this->assertFalse(delete_option('_transient_timeout_plain'), 'No reading names a live row — the missing-row false, exactly glm26-3\'s verdict over the absent timeout row.');
+        $this->assertSame('v3', get_transient('plain'), 'The plain transient is untouched.');
     }
 
     /**

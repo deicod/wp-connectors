@@ -307,11 +307,14 @@ function wp_connectors_transient_option_name($name)
 /**
  * The REVERSE parse — whether an option name is a transient VALUE
  * row, and the transient's name when it is (glm26-9: the parse twin
- * of the owner above). The '_transient_timeout_<name>' family is
- * EXCLUDED (glm26-3): the timeout half's spelling aliases the value
- * row of a transient named 'timeout_<name>', and the seat models no
- * timeout rows — the parse never routes the family onto the
- * transient store.
+ * of the owner above). glm27-1 CORRECTS glm26-3's exclusion: core's
+ * delete_option() is namespace-blind — the row '_transient_
+ * timeout_<name>' IS the value row of a transient named
+ * 'timeout_<name>' (delete_option over a live aliased row answers
+ * true and kills it, option.php's row-check → pre-hook → delete →
+ * result-gated pair), so the value parse resolves the WHOLE
+ * '_transient_' family, timeout spellings included. The alias's
+ * other reading is the timeout owner below.
  *
  * @param string $option Option name.
  * @return string|false The transient name, or false when the option
@@ -319,11 +322,37 @@ function wp_connectors_transient_option_name($name)
  */
 function wp_connectors_transient_name_from_option($option)
 {
-    if (0 !== strpos($option, '_transient_') || 0 === strpos($option, '_transient_timeout_')) {
+    if (0 !== strpos($option, '_transient_')) {
         return false;
     }
 
     return substr($option, strlen('_transient_'));
+}
+
+/**
+ * The TIMEOUT-half parse — whether an option name is the
+ * '_transient_timeout_<name>' row, and whose timeout it arms
+ * (glm27-1): the same string the value parse above reads as the
+ * value row of transient 'timeout_<name>' ALSO names the timeout
+ * row of transient '<name>' — core carries ONE physical row under
+ * the name, however it was written. The harness models the timeout
+ * half as the transient entry's expires_at (no separate rows, the
+ * standing simplification): the row EXISTS in this model exactly
+ * when the transient is live and its window is ARMED (expires_at
+ * !== false — a no-expiration transient wrote no timeout row), and
+ * deleting it disarms the window without touching the value half.
+ *
+ * @param string $option Option name.
+ * @return string|false The transient whose timeout row the option
+ *                      names, or false when it names none.
+ */
+function wp_connectors_transient_timeout_name_from_option($option)
+{
+    if (0 !== strpos($option, '_transient_timeout_')) {
+        return false;
+    }
+
+    return substr($option, strlen('_transient_timeout_'));
 }
 
 function update_option($option, $value, $autoload = null)
@@ -531,9 +560,23 @@ function delete_option($option)
      * path's LIKE-enumeration deletes the shape — the wpdb stub
      * presents transient rows in their _transient_<name> option_name
      * form). The missing-row predicate consults BOTH stores: the row
-     * exists whichever store carries it. The '_transient_timeout_'
-     * family rides the seat's standing no-such-row simplification
-     * (nothing creates those rows).
+     * exists whichever store carries it. glm27-1 CORRECTS the
+     * '_transient_timeout_' family's standing no-such-row
+     * simplification (glm25-7/glm26-3's premise — that core answers
+     * false over the family — held only for ABSENT rows): the family
+     * names a row the harness DOES model, twice over. The string
+     * '_transient_timeout_<name>' is core's ONE physical row under
+     * two readings — the VALUE row of a transient named
+     * 'timeout_<name>' (the value parse) AND the timeout row of
+     * transient '<name>' (the timeout parse, the entry's armed
+     * expires_at this harness's model of that row). The row EXISTS
+     * when ANY reading names a live half — a seeded literal option
+     * row, a live aliased transient, an armed window — and the
+     * delete kills EVERY half it names: the aliased transient's
+     * whole entry, the timeout reading's window DISARMED alone
+     * (core: the value row '_transient_<name>' survives its timeout
+     * row's delete — the transient serves its value forever after),
+     * and the literal option row.
      */
     /*
      * glm26-1: the transient half gates on IDENTITY, never truthiness
@@ -542,16 +585,18 @@ function delete_option($option)
      * over a live row, the row surviving its own delete (driven; the
      * PHP-truthiness class this loop has closed repeatedly).
      *
-     * glm26-3/glm26-9: the parse rides its ONE owner — the owner's
-     * own exclusion drops the '_transient_timeout_<name>' family (the
-     * timeout half's spelling ALIASES the value row of a transient
-     * named 'timeout_<name>'; delete_option over it answers the
-     * missing-row false, core's own answer over the absent timeout
-     * row — the seat models no such rows).
+     * glm26-3/glm26-9: the parse rides its ONE owner — glm27-1
+     * widens the owner's value parse to the whole '_transient_'
+     * family and adds the timeout twin beside it (the two readings
+     * of the one row, each unable to drift from its spelling again).
      */
     $transient = wp_connectors_transient_name_from_option($option);
+    $timeout_of = wp_connectors_transient_timeout_name_from_option($option);
     if (! array_key_exists($option, WpHarness::$options)
         && ! (false !== $transient && array_key_exists($transient, WpHarness::$transients))
+        && ! (false !== $timeout_of
+            && isset(WpHarness::$transients[ $timeout_of ])
+            && false !== WpHarness::$transients[ $timeout_of ]['expires_at'])
     ) {
         // Core still runs the DELETE (and its caches) for a missing row;
         // record the ATTEMPT so tests can pin "no needless delete" call
@@ -574,6 +619,13 @@ function delete_option($option)
     do_action('delete_option', $option);
     if (false !== $transient) {
         unset(WpHarness::$transients[ $transient ]);
+    }
+    if (false !== $timeout_of
+        && isset(WpHarness::$transients[ $timeout_of ])
+        && false !== WpHarness::$transients[ $timeout_of ]['expires_at']) {
+        // glm27-1: the timeout half dies ALONE — the value row it
+        // armed survives, core's own shape over the one row's halves.
+        WpHarness::$transients[ $timeout_of ]['expires_at'] = false;
     }
     unset(WpHarness::$options[ $option ], WpHarness::$option_autoload[ $option ]);
     WpHarness::$delete_option_attempts[] = $option;
