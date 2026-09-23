@@ -588,6 +588,29 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertNotEmpty($map_violations, 'The map twin likewise — the unterminated map write collected beside the benign literal.');
     }
 
+    public function testAnUnterminatedIncludeAtEofIsStillCollected(): void
+    {
+        /*
+         * R40-1 (security:medium, driven fail-open — R39-2's EOF arm
+         * swept the assignment seats and missed the include scan
+         * itself): the include collector's terminator alternation had
+         * no END-OF-INPUT arm, so an include terminated by neither
+         * ';' nor '?>' at the end of the file was invisible to every
+         * self-containment gate. THE FIXTURE IS DELIBERATELY NOT
+         * LINT-CLEAN (php -l refuses the unterminated statement), the
+         * pre-lint hostile-tree threat model the standing precedent.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php require __DIR__ . "/../../outside.php"'
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'An unterminated include at EOF is still an include — collected, never invisible (red at HEAD: 0 violations where the terminated twin flags).');
+        $this->assertStringContainsString('require __DIR__ . "/../../outside.php"', implode("\n", $violations), 'The violation names the unterminated include exactly.');
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*

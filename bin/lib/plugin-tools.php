@@ -4514,7 +4514,20 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * flag over that spelling is the correct verdict.
              */
             $includes = array();
-            $scanned = preg_match_all('/\b(?i:require|include)(?i:_once)?\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>)/', $masked, $includes, PREG_OFFSET_CAPTURE);
+            /*
+             * t31-glm40-1 [R40-1, security:medium, driven fail-open —
+             * R39-2's EOF arm swept the assignment seats and missed THIS
+             * one, the include scan itself]: the terminator alternation
+             * had no END-OF-INPUT arm, so an include terminated by
+             * neither ';' nor '?>' at the end of the file was invisible
+             * to every self-containment gate — '<?php require __DIR__ .
+             * "/../../outside.php"' (no terminator, a parse error under
+             * the recorded scan-before-lint hostile-tree threat model)
+             * answering 0 violations where the byte-identical
+             * terminated twin flags. The alternation admits the end of
+             * input: an unterminated include is still an include.
+             */
+            $scanned = preg_match_all('/\b(?i:require|include)(?i:_once)?\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>|$)/', $masked, $includes, PREG_OFFSET_CAPTURE);
             if (false === $scanned) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for includes — the self-containment scan aborted (PCRE: %s)',
