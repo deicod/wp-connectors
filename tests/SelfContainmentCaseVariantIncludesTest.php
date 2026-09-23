@@ -321,7 +321,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
         mkdir($twin_root, 0755, true);
         file_put_contents(
             $twin_root . '/fixture.php',
-            '<?PHP REQUIRE __dir__ . "/sub/x.php";'
+            '<?PHP REQUIRE __DIR__ . "/sub/x.php";'
         );
         $this->assertSame(array(), wp_connectors_self_containment_violations($twin_root), 'The __DIR__ twin stays clean beside it.');
         foreach ((glob($twin_root . '/*') ?: array()) as $entry) {

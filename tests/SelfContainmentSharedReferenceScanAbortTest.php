@@ -121,65 +121,57 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
          * arm's alternation still consumes the frames, verified on
          * this engine, so the recursion lever fires where the
          * include seat's pin rides the backtrack lever. THE JIT
-         * CLAUSE (round 32): PCRE2's JIT ignores the depth limit
-         * pcre.recursion_limit maps to (PCRE2 10.44's own docs —
-         * "The depth limit is ignored by JIT"; PHP's own
-         * ext/pcre recursion_limit test pins pcre.jit=0 beside the
-         * lever), so on a JIT-enabled host the floor never fires
-         * without this — the pin disables JIT for its duration
-         * (construction-evident on this --without-pcre-jit build,
-         * ini_set a no-op here). The limits are restored on every
-         * exit path. The refusal names the file and carries the
-         * engine's diagnostic; a candidate-free payload never
-         * starts a match attempt and keeps its clean verdict under
-         * the same floor; the control at the restored limit flags
-         * normally on its own root.
+         * CLAUSE (round 32) IS A SPAWNED CHILD NOW (round 33,
+         * php-src-verified): PCRE2's JIT ignores the depth limit
+         * pcre.recursion_limit maps to, and round 32's mid-process
+         * ini_set('pcre.jit','0') cannot reach an already-compiled
+         * pattern — PHP's per-process preg cache keys on the
+         * pattern string alone, JIT is baked at cache-insert, and
+         * the pcre.jit handler never invalidates the cache, so on
+         * a stock JIT host any earlier scan of the same pattern
+         * (this class's own first test included) leaves the floor
+         * dead: an order-dependent false red. The floor leg rides
+         * a fresh child with both flags on the COMMAND LINE
+         * (before any compile — the ledgered -d-before-script
+         * note), pcre.jit=0 beside the recursion floor exactly as
+         * PHP's own ext/pcre recursion_limit test pairs them; the
+         * child is deterministically abortable on every host.
+         * Exec-less hosts skip loudly (the ocr20-5 doctrine). The
+         * control at the restored limit flags normally in-process
+         * on its own root.
          */
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('The shared/-reference recursion floor requires a spawned child with pcre.jit=0 set before compile — no spawn capability on this host.');
+        }
+
         file_put_contents(
             $this->root . '/fixture.php',
             '<?php $x = "../shared/foo.php";'
         );
 
-        $host_limit = (string) ini_get('pcre.recursion_limit');
-        $host_jit = ini_set('pcre.jit', '0');
-        ini_set('pcre.recursion_limit', '1');
-        try {
-            $violations = wp_connectors_self_containment_violations($this->root);
-
-            $this->assertCount(1, $violations, 'The aborting shared/ scan answers exactly the one refusal line — never a clean pass over a file whose references went unscanned.');
-            $this->assertStringContainsString('fixture.php could not be scanned for shared/ references', $violations[0], 'The refusal names the file whose scan aborted.');
-            $this->assertStringContainsString('the self-containment scan aborted (PCRE:', $violations[0], 'The refusal rides the seat\'s own loud vocabulary with the engine\'s diagnostic.');
-        } finally {
-            ini_set('pcre.recursion_limit', $host_limit);
-            if (false !== $host_jit) {
-                ini_set('pcre.jit', $host_jit);
-            } else {
-                ini_restore('pcre.jit');
-            }
-        }
-
-        $plain_root = $this->root . '-plain';
-        mkdir($plain_root, 0755, true);
-        file_put_contents(
-            $plain_root . '/plain.php',
-            "<?php \$plain = 1;\n"
+        $library = realpath(__DIR__ . '/../bin/check-conventions.php');
+        $this->assertNotFalse($library, 'The conventions library resolves before the child embeds it.');
+        $fixture = $this->root . '/fixture.php';
+        $child_code = 'require ' . var_export($library, true) . ';'
+            . ' print(implode("\\n", wp_connectors_self_containment_violations(' . var_export($this->root, true) . ')));';
+        $command = sprintf(
+            '%s -d pcre.jit=0 -d pcre.recursion_limit=1 -r %s 2>&1',
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg($child_code)
         );
-        ini_set('pcre.recursion_limit', '1');
-        try {
-            // A file no shared/ or ../ candidate lives in never starts
-            // a match attempt, so the floor limit never fires.
-            $this->assertSame(array(), wp_connectors_self_containment_violations($plain_root), 'A candidate-free payload keeps its clean verdict under the pinned floor — the refusal is the abort, never the size.');
-        } finally {
-            ini_set('pcre.recursion_limit', $host_limit);
-        }
-        foreach ((glob($plain_root . '/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($plain_root);
+        $output = array();
+        $exit = 0;
+        exec($command, $output, $exit);
+        $report = implode("\n", $output);
 
-        // The control at the restored limit, on its own root (the
-        // views cache keys the path it already answered): the same
-        // reference flags through the scan it just aborted on.
+        $this->assertSame(0, $exit, 'The floor child completes — the abort is a verdict, never a fatal.');
+        $this->assertStringContainsString('fixture.php could not be scanned for shared/ references', $report, 'The aborting shared/ scan answers the loud refusal naming the file — on every host, JIT or not (round 32\'s in-process floor was JIT-blind).');
+        $this->assertStringContainsString('the self-containment scan aborted (PCRE:', $report, 'The refusal rides the seat\'s own loud vocabulary with the engine\'s diagnostic.');
+        $this->assertStringNotContainsString('references shared/ (generated copies only', $report, 'The floor answers the refusal, never the violation — the abort fired before any match completed.');
+
+        // The control at the host default, in-process on its own root
+        // (the views cache keys the path it already answered): the same
+        // reference flags through the scan the child refused.
         $control = $this->root . '-control';
         mkdir($control, 0755, true);
         file_put_contents(
