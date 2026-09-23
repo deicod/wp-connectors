@@ -32,6 +32,38 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      * no option row delegates to add_option() and fires ONLY the
      * add_option_ hook family; real updates fire the update family.
      */
+    /**
+     * glm27-4: wp_unslash()/wp_slash() ride core's LEAF semantics —
+     * core's stripslashes_deep() is map_deep() over the strings-only
+     * callback (arrays recursed, OBJECTS walked through their string
+     * properties, every non-string leaf VERBATIM), and wp_slash()
+     * spells its own three-arm shape (arrays recursed, strings
+     * slashed, everything else verbatim — objects untouched,
+     * formatting.php:5864, pinned 7.1.1). The stub coerced every
+     * non-string member through (string) — an int member answered
+     * its string twin, and an object member FATALED under
+     * strict_types (driven red at HEAD: coerced/fatal).
+     */
+    public function testUnslashAndSlashRideCoresMapDeepLeafSemantics()
+    {
+        $input = array(
+            's' => 'a\\b',
+            'i' => 7,
+            'o' => (object) array( 's' => 'c\\d', 'i' => 9 ),
+        );
+        $unslashed = wp_unslash($input);
+        $this->assertSame('ab', $unslashed['s'], 'String members strip.');
+        $this->assertSame(7, $unslashed['i'], 'An int member stays INT — core\'s callback passes non-strings through verbatim (red at HEAD: coerced to \'7\').');
+        $this->assertSame('cd', $unslashed['o']->s, 'An object member is WALKED, never fataled — its string properties strip (red at HEAD: (string) on the instance).');
+        $this->assertSame(9, $unslashed['o']->i, 'The object\'s int property stays int too.');
+
+        $object = new stdClass();
+        $object->x = 'q\\w';
+        $this->assertSame($object, wp_slash($object), 'wp_slash() returns an OBJECT untouched — core\'s own three-arm shape, objects verbatim (red at HEAD: fataled).');
+        $this->assertSame("a\\'b", wp_slash("a'b"), 'String scalars slash.');
+        $this->assertSame(7, wp_slash(7), 'Non-string scalars pass through verbatim (red at HEAD: \'7\').');
+    }
+
     public function testWpdbPrepareSubstitutesBoundValuesVerbatim()
     {
         /*

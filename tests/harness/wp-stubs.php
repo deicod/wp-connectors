@@ -1906,22 +1906,69 @@ function wp_json_encode($data, $options = 0)
     return json_encode($data, $options);
 }
 
-function wp_unslash($value)
+/**
+ * Core's map_deep (glm27-4, formatting.php:5215-5234, pinned 7.1.1):
+ * the callback maps onto every NON-array, NON-object leaf — arrays
+ * recursed by value reassignment, OBJECTS walked through
+ * get_object_vars() with their properties reassigned — so a leaf the
+ * callback does not transform passes through UNTOUCHED. The former
+ * `(string)` seats coerced every non-string member (an int member
+ * became its string twin) and an object member FATALED under
+ * strict_types — neither is core's shape.
+ *
+ * @param mixed    $value    The array, object, or scalar.
+ * @param callable $callback The leaf transform.
+ * @return mixed The value with the callback applied to every leaf.
+ */
+function wp_connectors_map_deep($value, $callback)
 {
     if (is_array($value)) {
-        return array_map('wp_unslash', $value);
+        foreach ($value as $index => $item) {
+            $value[ $index ] = wp_connectors_map_deep($item, $callback);
+        }
+    } elseif (is_object($value)) {
+        foreach (get_object_vars($value) as $property => $item) {
+            $value->{$property} = wp_connectors_map_deep($item, $callback);
+        }
+    } else {
+        $value = $callback($value);
     }
 
-    return stripslashes((string) $value);
+    return $value;
+}
+
+function wp_unslash($value)
+{
+    /*
+     * glm27-4: core's stripslashes_deep() — map_deep() over the
+     * strings-only callback (formatting.php, pinned 7.1.1): strings
+     * stripped, every other leaf VERBATIM (an int member stays int),
+     * objects WALKED (their string properties stripped), never the
+     * (string) coercion that turned ints into strings and objects
+     * into fatals.
+     */
+    return wp_connectors_map_deep($value, static function ($item) {
+        return is_string($item) ? stripslashes($item) : $item;
+    });
 }
 
 function wp_slash($value)
 {
+    /*
+     * glm27-4: core's own three-arm shape (formatting.php:5864,
+     * pinned 7.1.1) — arrays recursed, strings slashed, everything
+     * else VERBATIM: objects pass through untouched (the mirror
+     * divergence from wp_unslash's map_deep walk is core's own; the
+     * former (string) coercion answered string twins for both).
+     */
     if (is_array($value)) {
         return array_map('wp_slash', $value);
     }
+    if (is_string($value)) {
+        return addslashes($value);
+    }
 
-    return addslashes((string) $value);
+    return $value;
 }
 
 function wp_parse_args($args, $defaults = array())
