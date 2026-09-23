@@ -814,7 +814,17 @@ final class WpConnectorsBuild
         $root_lower = wp_connectors_ascii_lower(implode('\\', $family_segments));
         $vendor_lower = wp_connectors_ascii_lower($vendor);
 
-        $tokens = token_get_all($source);
+        /*
+         * glm27-9: the tokenize rides the ONE provider
+         * (wp_connectors_token_stream(), bin/lib/plugin-tools.php) —
+         * the collector's PSR-4 fence already tokenized these exact
+         * bytes over the same build, and the content-keyed memo
+         * answers that stream here: one token_get_all() per source
+         * content per process, the embed leg's dominant CPU cost paid
+         * once (the stream is an array — this walk's copy detaches on
+         * write, the cached stream never mutated through it).
+         */
+        $tokens = wp_connectors_token_stream($source);
         $count = count($tokens);
 
         /*
@@ -2772,7 +2782,17 @@ final class WpConnectorsBuild
                  * before any filesystem mutation, and the embed loop
                  * below reuses the walk instead of re-collecting).
                  */
-                $sharedSources = wp_connectors_php_source_files($sharedDir);
+                /*
+                 * glm27-9: the collector's BYTES ride to the embed leg —
+                 * the by-ref out-param captures the read the PSR-4 fence
+                 * already paid (one read per source per build; the embed
+                 * loop's readSharedSource() consults the map before the
+                 * disk, the same-build window the fence's own judgments
+                 * already judge — the build stages into $distDir, never
+                 * back into shared/src).
+                 */
+                $sharedBytes = array();
+                $sharedSources = wp_connectors_php_source_files($sharedDir, $sharedBytes);
                 if ($sharedSources === array()) {
                     throw new RuntimeException("build: {$slug} requests the shared library but {$sharedDir} carries no PHP sources — a library-less zip is never silently built");
                 }
@@ -3114,7 +3134,7 @@ final class WpConnectorsBuild
                             throw new RuntimeException("build: {$slug} owns {$existing_entry} — a case-insensitive collision with the generated embed copy {$destination}; src/Shared/ is build-generated (build.json embed_shared), so remove or rename the plugin's own file");
                         }
                     }
-                    $source = self::readSharedSource($sharedDir, $relative);
+                    $source = self::readSharedSource($sharedDir, $relative, $sharedBytes);
                     $rewritten = self::rewriteSharedNamespace($source, $pluginSuffix, 'shared/src/' . $relative);
                     $target = $stage . '/' . wp_connectors_embed_destination_prefix($slug) . $relative;
                     @mkdir(dirname($target), 0755, true);
@@ -3701,14 +3721,30 @@ final class WpConnectorsBuild
      *
      * @param string $sharedDir Absolute shared/src root.
      * @param string $relative  The source's shared/src-relative path.
+     * @param array<string, string> $bytes The collector's byte map (glm27-9) —
+     *        absolute path => the bytes the PSR-4 fence already read this
+     *        build; a path the map carries is served from it, never the disk.
      * @return string The source bytes.
      * @throws RuntimeException When the source cannot be read or carries no bytes.
      */
-    private static function readSharedSource($sharedDir, $relative)
+    private static function readSharedSource($sharedDir, $relative, array $bytes = array())
     {
-        // @: the diagnostic is suppressed, the failed return owned below
-        // (glm17-16) — the refusal is the build's own message.
-        $source = @file_get_contents($sharedDir . '/' . $relative);
+        /*
+         * glm27-9: the collector's bytes flow here — the fence inside
+         * wp_connectors_php_source_files() already read this source for
+         * its PSR-4 judgment, and the embed leg re-read it from the
+         * disk for nothing (the measured double read). The map rides
+         * the SAME-BUILD window: the collector and this read judge one
+         * build over one $sharedDir, and the build never writes into
+         * shared/src, so the bytes the fence read are the bytes this
+         * rewrite consumes. The refusals below judge the cached bytes
+         * exactly as they judged the disk's — a failed read is
+         * impossible on the cached arm (the fence refused it first),
+         * and the empty-source refusal keeps its verdict either way.
+         */
+        $path = $sharedDir . '/' . $relative;
+        // @ on the disk arm: the diagnostic is suppressed, the failed return owned below (glm17-16).
+        $source = array_key_exists($path, $bytes) ? $bytes[$path] : @file_get_contents($path);
         if (false === $source) {
             throw new RuntimeException("build: cannot read the shared source {$sharedDir}/{$relative} — an unreadable shared source refuses the build, never ships as a 0-byte library file");
         }

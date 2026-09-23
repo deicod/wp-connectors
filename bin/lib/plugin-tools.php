@@ -297,6 +297,68 @@ function wp_connectors_file_code_views($path)
 }
 
 /**
+ * The one token-stream provider (glm27-9) — the raw token_get_all()
+ * twin of the views memo above, keyed by the SOURCE's md5 (the
+ * glm15-6 memoization boundary: same content, same stream, a
+ * rewritten file re-tokenizing).
+ *
+ * The embed path reads and tokenizes every shared source TWICE per
+ * build: the collector's PSR-4 fence walks the declarations
+ * (wp_connectors_php_name_references()), and the rewrite's relative-
+ * use pass walks its own token_get_all() over the same bytes
+ * (bin/build.php's rewriteRelativeUseImports()) — the tokenize being
+ * the embed leg's dominant CPU cost beside the doubled disk read.
+ * ONE provider serves both: the fence's wrapper routes through it,
+ * and the rewrite consults it directly. Retention rides the same
+ * BOUNDED-FIFO doctrine as glm14-6 (4 MB of retained token text,
+ * oldest-first eviction; a single stream exceeding the bound still
+ * enters — the walk over one file needs its whole stream; the bound
+ * sits 8x over the whole shared/src stream set — ~0.5 MB measured —
+ * because the process's headroom is the SECRET SCANNER's own budget
+ * (its token-memory bound reads memory_limit minus
+ * memory_get_usage(), secret-scanner.php's headroom owner), and the
+ * first cut's 16 MB made the suite's recorded seed-dependent
+ * census-refusal blip EASIER to hit — the memo's retention is
+ * counted against the scanner the same as any other consumer).
+ * Tokens are arrays: a caller's copy detaches on write, so the
+ * cached stream is never mutated through a consumer.
+ *
+ * @param string $source PHP source bytes.
+ * @return array<int, array{0:int,1:string,2?:int}|string> The token stream.
+ */
+function wp_connectors_token_stream($source)
+{
+    /** @var array<string, array<int, array{0:int,1:string,2?:int}|string>> $streams */
+    static $streams = array();
+    /** @var array<string, int> $sizes */
+    static $sizes = array();
+    /** @var int $retained */
+    static $retained = 0;
+
+    $source = (string) $source;
+    $key = md5($source);
+    if (isset($streams[$key])) {
+        return $streams[$key];
+    }
+
+    $tokens = token_get_all($source);
+    $entry_bytes = strlen($source);
+    foreach ($tokens as $token) {
+        $entry_bytes += strlen(is_array($token) ? $token[1] : $token);
+    }
+    while ($streams !== array() && $retained + $entry_bytes > 4 * 1024 * 1024) {
+        $oldest = (string) array_key_first($streams);
+        $retained -= $sizes[$oldest];
+        unset($streams[$oldest], $sizes[$oldest]);
+    }
+    $streams[$key] = $tokens;
+    $sizes[$key] = $entry_bytes;
+    $retained += $entry_bytes;
+
+    return $tokens;
+}
+
+/**
  * The shared source's own namespace — the tree the build's namespace
  * rewriter owns (record 0005): `Deicod\WpConnectors\Shared`.
  *
@@ -992,7 +1054,10 @@ function wp_connectors_name_run(array $tokens, $start)
  */
 function wp_connectors_php_name_references($source)
 {
-    return wp_connectors_name_references_from_tokens(token_get_all($source));
+    // glm27-9: the tokenize rides the ONE provider — the embed's
+    // collector fence and the rewrite's own walk share one stream per
+    // content, never a second token_get_all() over the same bytes.
+    return wp_connectors_name_references_from_tokens(wp_connectors_token_stream($source));
 }
 
 /**
@@ -4414,6 +4479,11 @@ function wp_connectors_is_embed_destination($entry, $slug)
  * source tree.
  *
  * @param string $dir Absolute source-only directory (shared/src).
+ * @param array<string, string>|null $bytes Optional OUT map (glm27-9):
+ *        absolute path => the bytes the walk's PSR-4 fence read — the
+ *        embed leg's second consumer rides the read this walk already
+ *        paid (ONE read per source per build; pass null or omit it to
+ *        keep the walk's historical behavior).
  * @return list<string> Sorted relative .php file paths.
  * @throws RuntimeException When the tree carries a symlink, a
  *                          non-canonical extension casing, a
@@ -4421,7 +4491,7 @@ function wp_connectors_is_embed_destination($entry, $slug)
  *                          the extension or riding a path segment),
  *                          or a subdirectory the walk cannot list.
  */
-function wp_connectors_php_source_files($dir)
+function wp_connectors_php_source_files($dir, ?array &$bytes = null)
 {
     $files = array();
     /*
@@ -4569,6 +4639,17 @@ function wp_connectors_php_source_files($dir)
                     'shared source %s cannot be read for the PSR-4 casing fence — an unreadable source refuses the walk, never ships unverified',
                     $dir . '/' . $relative
                 ));
+            }
+            /*
+             * glm27-9: the read the fence already paid is HANDED OUT —
+             * the embed leg's readSharedSource() re-read these bytes
+             * from the disk for nothing, the measured double read; the
+             * out map carries them keyed by the absolute path the
+             * second consumer spells (same $dir, same $relative, the
+             * same-build window).
+             */
+            if (null !== $bytes) {
+                $bytes[ $dir . '/' . $relative ] = $contents;
             }
             /*
              * Every declaration the source carries, not just the first
