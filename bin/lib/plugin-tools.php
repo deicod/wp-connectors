@@ -3760,15 +3760,27 @@ function wp_connectors_quoted_literals($expression)
     $literals = array();
     if (preg_match_all(wp_connectors_quoted_literal_grammar(), $expression, $matches, PREG_SET_ORDER)) {
         foreach ($matches as $match) {
+            /*
+             * glm28-15: the value rides the ONE quote-style-aware
+             * owner (wp_connectors_unescape_php_string_literal(),
+             * the round-7 owner that sat UNUSED here): the blind
+             * callback decoded \' and \" alike whatever the literal's
+             * own quote style, returning values PHP never computes
+             * (a single-quoted \" decoded to " — the backslash IS the
+             * value there), violating glm14-1's runtime-values
+             * promise; the double-quoted leg now computes the full
+             * escape table PHP itself resolves (the octal/hex/\u
+             * spellings included — the owner's own contract, the
+             * 57,649-spelling driven sweep finding ZERO fail-open
+             * flips over the consumers' verdicts).
+             */
+            $literal = $match[0];
             $literals[] = array(
-                $match[0][0],
-                (string) preg_replace_callback(
-                    '/\\\\[\'"\\\\]/',
-                    static function ($pair) {
-                        return $pair[0][1];
-                    },
-                    substr($match[0], 1, -1)
-                ),
+                // The pair keeps its contract: [quote, runtime value] —
+                // the quote byte feeds the interpolation predicate
+                // (wp_connectors_literal_is_interpolated()).
+                $literal[0],
+                wp_connectors_unescape_php_string_literal($literal[0], (string) substr($literal, 1, -1)),
             );
         }
     }

@@ -87,6 +87,31 @@ final class SelfContainmentEscapedQuoteTest extends TestCase
         $this->assertSame(array( array( '\'', "/sub/it's/fine.php" ) ), $legit);
     }
 
+    public function testTheDecodingIsQuoteStyleAware(): void
+    {
+        /*
+         * glm28-15: the blind callback decoded \' and \" alike, so a
+         * SINGLE-QUOTED \" decoded to " — a value PHP never computes
+         * (the backslash IS the value there), violating glm14-1's
+         * runtime-values promise while the correct owner
+         * (wp_connectors_unescape_php_string_literal) sat unused.
+         * The pair's runtime value rides the owner now: the single
+         * quote resolves \' and \\ only, the double quote the full
+         * escape table PHP itself computes.
+         */
+        $single = wp_connectors_quoted_literals('$x = ' . "'a\\\\\"b'" . ';');
+        $this->assertSame(array( array( "'", 'a\\"b' ) ), $single, 'A single-quoted \\" keeps its backslash — PHP never decodes it there (red at HEAD: decoded to a plain ").');
+
+        $single_slash = wp_connectors_quoted_literals('$x = ' . "'a\\\\b'" . ';');
+        $this->assertSame(array( array( "'", 'a\\b' ) ), $single_slash, 'A single-quoted double backslash resolves to one — the two escapes the single-quote arm owns.');
+
+        $double = wp_connectors_quoted_literals('$x = "a\\"b";');
+        $this->assertSame(array( array( '"', 'a"b' ) ), $double, 'A double-quoted \\" decodes to the quote — the blind leg that must stay.');
+
+        $hex = wp_connectors_quoted_literals('$x = "/sub/\\x2e\\x2e/x.php";');
+        $this->assertSame(array( array( '"', '/sub/../x.php' ) ), $hex, 'The double-quoted value computes the FULL escape table PHP resolves — the hex-spelled dots are the traversal they spell at runtime, the owner\'s own contract (glm14-1: judged by what PHP computes from it).');
+    }
+
     public function testTheIdenticalIncludeWithoutTheEscapedQuoteStaysRefused(): void
     {
         /*
