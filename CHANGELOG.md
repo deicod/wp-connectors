@@ -6,6 +6,65 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 34)
+
+Twentieth claude-glm pass (/code-review max, ledger-read first,
+every candidate re-driven at HEAD and at the pre-round-33
+baseline): still not zero — 13 candidates, the yield still
+concentrated on round 33's own commits. DRIVER ADJUDICATION under
+the scope rule: R34-1, R34-2 (+6/+12 folded), R34-3, R34-4/5/7/13
+(the floor pin's full regime), and R34-8/9/10 accepted; R34-11
+(the `]as` no-whitespace spelling, driven fail-closed and
+pre-existing at both baselines) recorded as inheritance; the
+per-arm-pattern and spawn-hoist redesigns recorded as design
+notes. Six commits t31-glm34-1..6, the full offline check green
+after EVERY commit, no push. Suite 1931 → 1932 tests, 48286 →
+48293 assertions, 3 skipped unchanged.
+
+- **The empty foreach source is not a binding (t31-glm34-1,
+  security:medium, driven fail-open — round 33's own regression;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — the
+  quantifier-free separator dropped the old anchored split's
+  non-empty-source requirement, so the parse-error header
+  `foreach ( as $f)` collected a synthetic `$f = ;` over an empty
+  RHS and proved a mixed-anchored include clean (0 violations at
+  HEAD where the baseline flags — the fixture deliberately not
+  lint-clean, the scan-before-lint threat model). The empty
+  source skips the binding; the seat's dead shapes (the never-read
+  tuple index, the capture-numbered `$parts` mimicry) deleted for
+  plain co-sliced locals.
+
+- **The anchor consults ride the tokenizer's view behind a
+  raw-first short-circuit (t31-glm34-2, security:medium + cost;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentCaseVariantIncludesTest.php)** — round 33's
+  quote-grammar blanker was heredoc-blind: a nowdoc body's
+  `__DIR__` text anchored (the shape laundering clean where the
+  quoted twin flags) and a heredoc apostrophe mis-paired the
+  grammar into blanking real code tokens.
+  `wp_connectors_anchor_view()` owns the class — the tokenizer's
+  masked bytes (statements start at code keywords, the
+  open-tag-prefixed slice tokenizing from PHP mode) behind the
+  short-circuit (blanks only remove bytes, so a raw statement
+  with no anchor text pays one probe triple, not a masking pass —
+  the +26% hostile-file measurement answered); the escapesUp
+  consult spells the explicit fail-closed abort form.
+
+- **The round's own pins completed (t31-glm34-3/4/5, the three
+  SelfContainment test files)** — the twelve scratch-roster
+  registrations moved to immediately after their mkdirs (round
+  33's "tearDown owns every exit" claim was false as landed); the
+  floor child's full regime restored (the candidate-free plain
+  leg under the same recursion floor, the exact one-line count in
+  child form, coreutils `timeout(1)` on POSIX hosts and the
+  negative diagnostics needle, the dead local deleted); the
+  boundary leg drives the header-embedded ` as ` string (the
+  reason text the discriminator, the old split's lost-binding
+  reason driven at the baseline); the wall bound 1.0s → 3.0s (the
+  round-30 precedent, contention-decoupled); the braced-do arm
+  reads the same folded `$tail` the other arms dispatch on.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 32)
 
 Eighteenth claude-glm pass (/code-review max, ledger-read first):
@@ -138,7 +197,10 @@ tests, 48274 → 48286 assertions, 3 skipped unchanged.
   `wp_connectors_blank_quoted_strings()` of its statement now;
   the dirname consults and the ABSPATH literal twin close with
   the same stroke. Literal spellings flag; code-token anchors
-  stay clean in every casing.
+  stay clean in every casing. (CORRECTED round 34: the
+  quote-grammar blanker was heredoc-blind — the view is the
+  tokenizer's behind a raw-first short-circuit, one owner,
+  t31-glm34-2.)
 
 - **The foreach as-split rides a quantifier-free separator
   (t31-glm33-3, cost + the latent R32-5 class;
@@ -179,7 +241,9 @@ tests, 48274 → 48286 assertions, 3 skipped unchanged.
   `WpHarness::releaseScratch()` owns every exit: tearDown
   releases `$this->root` plus an `$extra_roots` roster the
   mid-test roots register into — a mid-assert throw no longer
-  leaks, all fifteen chains deleted. Verdict-neutral.
+  leaks, all fifteen chains deleted. Verdict-neutral. (CORRECTED
+  round 34: the registrations sat after the judging assertions —
+  moved to the first mkdir, t31-glm34-3.)
 
 ### Fixed (shared — M3 Task 3.1, claude-glm round 31)
 
