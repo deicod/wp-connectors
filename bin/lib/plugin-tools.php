@@ -4407,8 +4407,24 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                          * these two loop-invariant probes from the same
                          * statement, appending the identical violation N
                          * times for an N-literal include.
+                         *
+                         * t31-glm35-3 [R35-8, measured +36-39% on the
+                         * benign anchored case]: this seat re-tokenized
+                         * the statement per include through the view
+                         * owner while the FILE's masked view — tokenized
+                         * once per file, the driver's own — already
+                         * carries the statement's string regions masked
+                         * in fuller context; the loop slices it at the
+                         * match offsets (length-aligned by the masker's
+                         * contract), the per-include tokenizer passes
+                         * gone. The four statement-text seats keep the
+                         * owner (they receive slices, not offsets);
+                         * this seat's bytes are the file's own masked
+                         * bytes — verdict-identical over the round's
+                         * full battery (the short-circuit's purpose
+                         * survives: no masking is PAID here at all).
                          */
-                        $anchor_view = wp_connectors_anchor_view($include[0]);
+                        $anchor_view = (string) substr($masked, $include_match[1], strlen($include_match[0]));
                         $anchored = stripos($anchor_view, '__DIR__') !== false || strpos($anchor_view, 'ABSPATH') !== false;
                         /*
                          * t31-glm34-2 (the review's R34-12): the escapesUp
