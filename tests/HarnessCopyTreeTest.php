@@ -2795,4 +2795,64 @@ echo "RETURNED\n";
 
         return true;
     }
+
+    /**
+     * glm27-11 (the derive-first REFUTATION pin): the containment
+     * fold's strtr is DELIBERATELY the third standalone ASCII table
+     * beside AsciiFold::lower() and wp_connectors_ascii_lower() — it
+     * cannot route through the tooling owner, because WpHarness.php
+     * loads BARE (the redirected-TMPDIR and crash-sim children
+     * require it into a plain `php -r` engine with no bootstrap and
+     * no bin/lib/plugin-tools.php, and those children drive
+     * copyTree() — a hard owner reference would answer the sims a
+     * call-to-undefined-function Error instead of the verdict; the
+     * ocr25-9 load contract). The divergence hazard a verdict-feeding
+     * third table carries is closed HERE instead: the suite — where
+     * both spellings load — asserts the fold's table equals the
+     * standalone owner's over the FULL byte range, so a single-site
+     * mutation of either table flips this pin, never a silent
+     * verdict drift.
+     *
+     * The fold's case-insensitive arm needs a volume answering TRUE,
+     * and this host measures every volume case-sensitively — the
+     * per-volume cache is planted through reflection (the one drive
+     * the host offers) and RESTORED in the finally: the cache is HOST
+     * truth by its own doctrine, and this pin leaves it exactly as it
+     * found it.
+     */
+    public function testTheContainmentFoldTableAgreesWithTheStandaloneAsciiOwner()
+    {
+        $holder = sys_get_temp_dir() . '/wpct-fold-equiv-' . uniqid('', true);
+        $this->assertTrue(mkdir($holder, 0755, true), "Staging {$holder} must land — a failed stage is the pin's own verdict, never a fold answer.");
+        $cache = new ReflectionProperty('WpHarness', 'case_insensitive_volumes');
+        $host_truth = $cache->getValue(null);
+        try {
+            $planted = $host_truth;
+            $planted[ (string) stat($holder)['dev'] ] = true;
+            $cache->setValue(null, $planted);
+
+            $fold = new ReflectionMethod('WpHarness', 'case_insensitive_containment_fold');
+            // Every byte but NUL — the volume probe walks is_dir() over
+            // the string's chain, and a NUL byte is the engine's own
+            // refusal, never the table's business.
+            $bytes = implode('', array_map('chr', range(1, 255)));
+            $probe = $holder . '/' . $bytes . '/' . $bytes;
+            $this->assertSame(
+                $holder . '/' . wp_connectors_ascii_lower($bytes) . '/' . wp_connectors_ascii_lower($bytes),
+                $fold->invoke(null, $probe),
+                'The fold\'s table equals the standalone owner\'s over the full byte range — a single-site mutation of either table flips this pin (the third-table divergence hazard, closed at the suite instead of the load).'
+            );
+
+            // The identity arm stays the suite's standing verdict where
+            // the volume answers FALSE: the unplanted spelling rides
+            // byte-unchanged (every Linux runner's containment verdict).
+            $unplanted = $host_truth;
+            unset($unplanted[ (string) stat($holder)['dev'] ]);
+            $cache->setValue(null, $unplanted);
+            $this->assertSame($probe, $fold->invoke(null, $probe), 'The case-sensitive volume keeps the IDENTITY fold — byte-unchanged, the standing verdict this host answers.');
+        } finally {
+            $cache->setValue(null, $host_truth);
+            WpHarness::releaseScratch($holder);
+        }
+    }
 }

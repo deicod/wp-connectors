@@ -1303,6 +1303,26 @@ final class WpHarness
             return $resolved;
         }
 
+        /*
+         * glm27-11 (derive-first, the refutation recorded): this strtr
+         * is DELIBERATELY the third ASCII fold table beside
+         * AsciiFold::lower() (shared/src) and
+         * wp_connectors_ascii_lower() (bin/lib/plugin-tools.php) —
+         * it cannot route through the tooling owner, because THIS
+         * FILE loads BARE: the redirected-TMPDIR and crash-sim
+         * children require WpHarness.php into a plain `php -r`
+         * engine (the ocr25-9 load contract verdict() itself carries
+         * — no tests/bootstrap.php, no bin/lib/plugin-tools.php) and
+         * those children drive copyTree(), so a hard reference to
+         * the tooling owner would answer the sims a call-to-
+         * undefined-function Error INSTEAD of the verdict. The
+         * divergence hazard the finding names is closed by the PIN
+         * instead: the suite — where both spellings load — asserts
+         * the fold's table equals wp_connectors_ascii_lower()'s over
+         * the full byte range (HarnessCopyTreeTest, glm27-11), so a
+         * drift between the standalone tables is a suite failure,
+         * never a silent verdict divergence in this seat.
+         */
         return strtr($resolved, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz');
     }
 
