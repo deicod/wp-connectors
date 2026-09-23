@@ -227,13 +227,79 @@ if (wp_connectors_cli_entry(__FILE__)) {
 
     $php = escapeshellarg(PHP_BINARY);
     $failures = 0;
-    foreach ($files as $path) {
-        $output = array();
-        $exit = 0;
-        exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($path)), $output, $exit);
-        if ($exit !== 0) {
-            ++$failures;
-            fwrite(STDERR, implode("\n", $output) . "\n");
+    // The serial arm, spelled once: the non-POSIX fallback and the
+    // scratch-staging failure fallback both ride it.
+    $lint_serial = static function () use ($php, $files, &$failures): void {
+        foreach ($files as $path) {
+            $output = array();
+            $exit = 0;
+            exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($path)), $output, $exit);
+            if ($exit !== 0) {
+                ++$failures;
+                fwrite(STDERR, implode("\n", $output) . "\n");
+            }
+        }
+    };
+    /*
+     * glm28-11: the POOLED shape (the glm21-14/15 pool precedents —
+     * ~3.5-4x on this host's spawn-bound walks). The serial loop
+     * spawned one engine per file at ~6.9 s of every check over 177
+     * files (measured, the timing in the commit); every probe is
+     * tree-independent, so one BATCHED fleet lints them — xargs -0
+     * -n2 -P8 sh -c, each child answering INDEX PATH (the index this
+     * gate maps back to its path, the per-file attribution by
+     * construction; -0 keeps every legal pathname byte whole), the
+     * verdict recorded BESIDE ITS INDEX (php -l's own output plus
+     * its exit code, the output naming the file in the report
+     * itself). The runner's trailing echo is LOAD-BEARING (glm21-15's
+     * documented idiom): php -l refuses parse errors at exit 255, a
+     * status bare xargs ABORTS on — the echo absorbs it, the fleet
+     * keeps walking past every failure. A POSIX host without xargs(1)
+     * answers the gate's own loud failure at the missing verdict file
+     * (the glm20-6 timeout(1) doctrine), never a silent pass;
+     * non-POSIX hosts keep the serial loop.
+     */
+    if ('/' !== DIRECTORY_SEPARATOR) {
+        $lint_serial();
+    } else {
+        $scratch = sys_get_temp_dir() . '/wpct-lint-' . uniqid('', true);
+        if (! @mkdir($scratch, 0755, true)) {
+            $lint_serial();
+        } else {
+            try {
+                $list = $scratch . '/files.nul';
+                $pairs = '';
+                foreach ($files as $index => $path) {
+                    $pairs .= $index . "\0" . $path . "\0";
+                }
+                if (false !== file_put_contents($list, $pairs)) {
+                    $runner = sprintf(
+                        '%1$s -l "$1" >"%2$s/$0.lint" 2>&1; echo "exit=$?" >>"%2$s/$0.lint"',
+                        $php,
+                        $scratch
+                    );
+                    exec(sprintf('xargs -0 -n2 -P8 sh -c %1$s < %2$s 2>&1', escapeshellarg($runner), escapeshellarg($list)));
+                }
+                foreach ($files as $index => $path) {
+                    $verdict = @file_get_contents(sprintf('%s/%d.lint', $scratch, $index));
+                    if (false === $verdict || 1 !== preg_match('/^exit=([0-9]+)$/m', $verdict, $code)) {
+                        ++$failures;
+                        fwrite(STDERR, "lint-php: FAIL {$path}: no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine).\n");
+
+                        continue;
+                    }
+                    if ('0' !== $code[1]) {
+                        ++$failures;
+                        fwrite(STDERR, rtrim((string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict)) . "\n");
+                    }
+                }
+            } finally {
+                @unlink($scratch . '/files.nul');
+                foreach (glob($scratch . '/*.lint') ?: array() as $verdict_file) {
+                    @unlink($verdict_file);
+                }
+                @rmdir($scratch);
+            }
         }
     }
 
