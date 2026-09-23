@@ -1,7 +1,8 @@
 <?php
 /**
- * Self-containment scanner close-tag terminator fixtures (t31-glm29-2,
- * the R29-2/R29-3 class's include seat).
+ * Self-containment scanner close-tag terminator fixtures (the R29-2 /
+ * R29-3 class: t31-glm29-2's include seat and t31-glm29-3's collector
+ * twins).
  *
  * PHP implies the semicolon at '?>' — a statement terminated by the
  * close tag is exactly as live as its ';'-spelled twin — but the
@@ -13,8 +14,15 @@
  * tag into the unrelated code after it. The terminator alternation
  * ';|?>' (the ocr62-1 shape, generalized to this seat) rides the owner
  * now: the match is lazy and ends at whichever terminator comes first.
- * These fixtures pin the driven fail-open closed, the glue bounded,
- * and the benign spellings byte-identical with their ';' twins.
+ * The SAME alternation rides the two collector seats (the assignment
+ * collector and its write-shape twin, moving together per the glm27-10
+ * owner doctrine): a close-tag-terminated WRITE with no later ';' was
+ * never collected — the benign literal predecessor alone satisfied a
+ * loop-shaped include while the second iteration required the outside
+ * path, and an invisible non-literal write left the map-literal proof
+ * standing (the glm18-7/8 write-visibility contract). These fixtures
+ * pin the driven fail-opens closed, the glue bounded, and the benign
+ * spellings byte-identical with their ';' twins.
  *
  * @package wp-connectors
  */
@@ -109,5 +117,71 @@ final class SelfContainmentCloseTagTerminatorsTest extends TestCase
         );
 
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'The benign close-tag spellings answer exactly their \';\' twins: zero violations.');
+    }
+
+    public function testACloseTagTerminatedWriteIsCollectedInTheLoopShape(): void
+    {
+        /*
+         * The collector seat (t31-glm29-3): a close-tag-terminated
+         * write with no later ';' was never collected, so the benign
+         * literal predecessor alone satisfied the include while the
+         * loop's second iteration required the outside path — a
+         * lint-clean payload whose execution attempts the outside
+         * require (red at the include-seat fix's tree: 0 violations).
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php \$path = __DIR__ . '/a.php';\nforeach (array(1, 2) as \$n) { require \$path ?><?php \$path = dirname(__DIR__) . '/../outside.php' ?><?php }\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'The close-tag-terminated evil write is collected — the include resolves through it and flags.');
+        $this->assertStringContainsString('escapes upward through dirname()', $report, 'The COLLECTED write resolves to the outside path, never the benign predecessor alone.');
+        $this->assertStringContainsString('require $path', $report, 'The violation names the include.');
+    }
+
+    public function testACloseTagTerminatedWriteRefusesTheMapLiteralProof(): void
+    {
+        /*
+         * The write-shape twin seat: an invisible non-literal write
+         * left the map-literal proof standing on the collected literal
+         * alone while the runtime value was the request parameter —
+         * the map's foreach binding refuses and the include flags
+         * (red at the include-seat fix's tree: 0 violations).
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php \$map = array( __DIR__ . '/safe.php' );\nforeach (\$map as \$f) { require \$f ?><?php \$map = \$_GET['page'] ?><?php }\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'The close-tag-terminated non-literal write refuses the map-literal proof — the include flags.');
+        $this->assertStringContainsString('require $f', implode("\n", $violations), 'The violation names the include.');
+    }
+
+    public function testTheSemicolonTwinsOfTheWriteShapesFlagIdentically(): void
+    {
+        /*
+         * ';'-spelling parity for the collector seats: the same two
+         * shapes with every close-tag terminator spelled ';' flag
+         * through the same seats — the alternation changed nothing for
+         * the ';' spellings.
+         */
+        file_put_contents(
+            $this->root . '/collector.php',
+            "<?php \$path = __DIR__ . '/a.php';\nforeach (array(1, 2) as \$n) { require \$path; \$path = dirname(__DIR__) . '/../outside.php'; }\n"
+        );
+        file_put_contents(
+            $this->root . '/writeshape.php',
+            "<?php \$map = array( __DIR__ . '/safe.php' );\nforeach (\$map as \$f) { require \$f; \$map = \$_GET['page']; }\n"
+        );
+
+        $report = implode("\n", wp_connectors_self_containment_violations($this->root));
+
+        $this->assertStringContainsString('require $path', $report, 'The \';\' twin of the collector shape flags.');
+        $this->assertStringContainsString('require $f', $report, 'The \';\' twin of the write-shape fixture flags.');
     }
 }

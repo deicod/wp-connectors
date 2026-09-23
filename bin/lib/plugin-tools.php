@@ -3143,8 +3143,19 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * The op tokens admit no internal whitespace in PHP, so no spacing
      * variants are missed; comparisons (==, !=, <=, >=, =>) stay
      * unmatched through the single-= lookahead and the op classes.
+     *
+     * t31-glm29-3 [R29-3, security:medium, driven fail-open]: the
+     * terminator is the same ';|?>' alternation the include owner
+     * rides (t31-glm29-2) — the capture ends at whichever terminator
+     * comes FIRST, so a close-tag-terminated write with no later ';'
+     * is COLLECTED (a '$map = $_GET[...]' spelled that way was an
+     * INVISIBLE write channel: the map-literal proof held on the
+     * collected literal alone while the runtime value was the request
+     * parameter — the glm18-7/8 write-visibility contract at this
+     * seat) and a later ';' never glues the capture across the close
+     * tag into unrelated code.
      */
-    $write_matches = preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+);/', $before, $writes, PREG_SET_ORDER);
+    $write_matches = preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+?)(?:;|\?>)/', $before, $writes, PREG_SET_ORDER);
     if (false === $write_matches) {
         return false; // A PCRE abort refuses the proof (glm36-8).
     }
@@ -3259,9 +3270,21 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      * keeps the every-assignment-must-prove rule covering the union:
      * each value source (the prior whole writes, the unioned RHS) is
      * analyzed separately, so a compound write can no longer hide.
+     *
+     * t31-glm29-3 [R29-3, security:medium, driven fail-open]: the
+     * terminator is the ';|?>' alternation (t31-glm29-2's class at the
+     * collector twin — the seats move together, the glm27-10 owner
+     * doctrine): the lazy body ends at whichever terminator comes
+     * FIRST, so a close-tag-terminated write with no later ';' is
+     * COLLECTED (a loop-shaped '$path = dirname(__DIR__) . "/..'
+     * spelling that way was never collected, so the benign literal
+     * predecessor alone satisfied the include while the loop's second
+     * iteration required the outside path — driven: 0 violations on a
+     * lint-clean payload whose execution attempts the outside require)
+     * and a later ';' never glues the collection across the close tag.
      */
     $assignments = array();
-    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))[^;]+;/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))[^;]+?(?:;|\?>)/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
         foreach ($matches[0] as $assignment) {
             if (! $visible($assignment[1])) {
                 // Outside every region the include can read a write from.
