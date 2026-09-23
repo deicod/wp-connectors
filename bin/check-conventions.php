@@ -497,7 +497,8 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 // comment), then require at least one label-boundary mention
                 // of the short name anywhere in the remaining source (code,
                 // comments, or docblocks).
-                $withoutUse = substr_replace($source, '', $statement_offset, strlen($statement));
+                // t31-glm39-7: the offset scan — no per-import copy (see the helper).
+                $mentioned = wp_connectors_mention_outside_statement($source, $short, $statement_offset, strlen($statement));
                 // Case-insensitive: PHP class and function name resolution is
                 // itself case-insensitive (glm17-9), so `new widget()` is a
                 // real use of an import of ...Widget. The i modifier only
@@ -515,7 +516,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                  * \b asked — does a name END here — over the bytes a PHP
                  * label actually admits.
                  */
-                if (preg_match('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . preg_quote($short, '/') . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])/i', $withoutUse) === 1) {
+                if ($mentioned) {
                     continue;
                 }
 
@@ -571,10 +572,12 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 $member_imports = wp_connectors_group_use_imports('', $body);
 
                 $statement = substr($source, $match[0][1], $statement_end - $match[0][1]);
-                $withoutUse = substr_replace($source, '', $match[0][1], strlen($statement));
+                // t31-glm39-7: the offset scan — no per-group copy (see the helper).
+                $without_group_offset = $match[0][1];
+                $without_group_length = strlen($statement);
 
                 foreach ($member_imports as $member_import) {
-                    if (preg_match('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . preg_quote($member_import['short'], '/') . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])/i', $withoutUse) === 1) {
+                    if (wp_connectors_mention_outside_statement($source, $member_import['short'], $without_group_offset, $without_group_length)) {
                         continue;
                     }
 
@@ -642,7 +645,9 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                  * statement is the declaration surface.
                  */
                 $statement = substr($source, $match[0][1], $statement_end - $match[0][1]);
-                $withoutUse = substr_replace($source, '', $match[0][1], strlen($statement));
+                // t31-glm39-7: the offset scan — no per-member copy (see the helper).
+                $group_offset = $match[0][1];
+                $group_length = strlen($statement);
 
                 foreach ($member_imports as $member_import) {
                     // Same mention contract as the single form: one
@@ -652,7 +657,7 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                     // this seam with it: \b broke both directions for a
                     // high-byte short name in the single form, and the
                     // member twin carries the same short names.
-                    if (preg_match('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . preg_quote($member_import['short'], '/') . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])/i', $withoutUse) === 1) {
+                    if (wp_connectors_mention_outside_statement($source, $member_import['short'], $group_offset, $group_length)) {
                         continue;
                     }
 
@@ -743,6 +748,36 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
  * @return bool True when no non-namespace block encloses the statement
  *              AND the statement sits in PHP code, never inline HTML.
  */
+/**
+ * Whether the short import name is mentioned (label-boundary, case-insensitive)
+ * anywhere in the source OUTSIDE one statement's own byte range.
+ *
+ * t31-glm39-7 [R39-12, measured efficiency — the gate's dominant-cost seat]:
+ * the check once materialized a full copy of the file per import
+ * (substr_replace) and ran the mention regex over each copy — O(imports x
+ * filesize) allocations and scans, ~7MB re-scanned for a real 130KB/54-import
+ * connector file, ~127ms of the 211ms conventions run. The offset form is
+ * verdict-identical BY CONSTRUCTION: the copy's removal excluded exactly the
+ * statement's byte range, so scanning the un-copied source and skipping
+ * matches inside that range asks the same question at zero allocation.
+ */
+function wp_connectors_mention_outside_statement($source, $short, $statement_offset, $statement_length)
+{
+    $pattern = '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . preg_quote($short, '/') . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])/i';
+    $hits = preg_match_all($pattern, $source, $matches, PREG_OFFSET_CAPTURE);
+    if (false === $hits || 0 === $hits) {
+        return false;
+    }
+    $excluded_end = $statement_offset + $statement_length;
+    foreach ($matches[0] as $match) {
+        if ($match[1] >= $excluded_end || $match[1] + strlen($match[0]) <= $statement_offset) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function wp_connectors_use_statement_in_import_position(string $code_view, int $offset, string $source): bool
 {
     $frames = array();
