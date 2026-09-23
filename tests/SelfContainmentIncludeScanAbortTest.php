@@ -329,6 +329,37 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringContainsString('depends on $f with no resolvable same-file assignment', $report, 'The include flags through its no-resolvable-assignment reason — the empty source collected nothing, the mixed anchor did not resolve.');
     }
 
+    public function testAStatementJunkForeachSourceIsNotABinding(): void
+    {
+        /*
+         * R35-1 (security:medium, driven fail-open — round 34's
+         * empty-source guard was a SYMPTOM patch): the trimmed-
+         * to-nothing check only covered 'foreach ( as', so the
+         * parse-error 'foreach (; as $f)' — the scanner's
+         * established poison byte, the same pre-lint threat model —
+         * minted '$f = ;;', the value extractor reduced it to '',
+         * and the substitution deleted $f leaving a statement every
+         * gate judged clean. The guard reads the MASKED source
+         * side now: a ';' there is real code junk (string bytes
+         * blanked — a whole-literal source masks to spaces and its
+         * mint stays the recorded pre-existing shape), and no valid
+         * header expression carries a statement terminator outside
+         * strings. THE FIXTURE IS DELIBERATELY NOT LINT-CLEAN
+         * (php -l refuses 'foreach (; as'), recorded per the
+         * round-31 doctrine.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php foreach (; as $f) { require __DIR__ . "/" . $f; }'
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'Statement junk where an expression must be is not a binding — the synthetic mint over junk never proves an include clean (red at HEAD: 0 violations).');
+        $this->assertStringContainsString('depends on $f with no resolvable same-file assignment', $report, 'The include flags through its no-resolvable-assignment reason — the junk source collected nothing.');
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*

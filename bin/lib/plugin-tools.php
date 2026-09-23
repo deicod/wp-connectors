@@ -3499,6 +3499,24 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
              * skipped, the include flagging through its own
              * no-resolvable-assignment reason exactly as the old
              * anchored split's no-match did.
+             *
+             * t31-glm35-1 [R35-1, security:medium, driven fail-open —
+             * round 34's guard was a SYMPTOM patch]: the empty-source
+             * check only covered the trimmed-to-nothing spelling, so a
+             * statement-junk source still laundered — the parse error
+             * 'foreach (; as $f)' (the scanner's established poison
+             * byte, the same pre-lint threat model) minted '$f = ;;',
+             * the value extractor reduced it to '', and the
+             * substitution deleted $f leaving a 'require __DIR__ .
+             * "/" . ;' every gate judged clean (driven: 0 violations
+             * where the empty-source twin flags). The guard reads the
+             * MASKED source now: a ';' there is real code junk (string
+             * bytes are blanked in that view — a junk-free source
+             * like a quoted literal passes untouched, its mint the
+             * recorded pre-existing shape), and no valid header
+             * expression carries a statement terminator outside
+             * strings, so a masked ';' is never a binding the
+             * collector can prove.
              */
             $mask_slice = (string) substr($masked, $foreach_match[1], strlen($foreach_match[0]));
             $separator = preg_match('/\s(?i:as)\s/', $mask_slice, $as_match, PREG_OFFSET_CAPTURE);
@@ -3510,13 +3528,22 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
             if (0 === $separator) {
                 continue;
             }
+            if (false !== strpos((string) substr($mask_slice, 0, $as_match[0][1]), ';')) {
+                // Statement junk where an expression must be: not a
+                // binding the collector can prove — the include stays
+                // flagged. (The ';' is read on the MASKED side, where
+                // string bytes are blank — a whole-literal source masks
+                // to spaces and passes untouched, its mint the recorded
+                // pre-existing shape.)
+                continue;
+            }
             $statement_slice = (string) substr($code, $foreach_match[1], strlen($foreach_match[0]));
             $source = trim((string) substr($statement_slice, 0, $as_match[0][1]));
-            $value_part = (string) substr($statement_slice, $as_match[0][1] + strlen($as_match[0][0]));
             if ('' === $source) {
                 // No source expression: not a binding the collector can prove.
                 continue;
             }
+            $value_part = (string) substr($statement_slice, $as_match[0][1] + strlen($as_match[0][0]));
             $value_variable = trim($value_part);
             $arrow = strpos($value_variable, '=>');
             if (false !== $arrow) {
