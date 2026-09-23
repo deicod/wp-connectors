@@ -755,7 +755,91 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
         $violations = array_merge($violations, wp_connectors_printable_lines(wp_connectors_self_containment_violations($pluginDir)));
 
         // Every PHP file must pass a syntax check after independent extraction.
-        $php = escapeshellarg(PHP_BINARY);
+        /*
+         * glm28-12: the syntax walk rides the POOLED fleet (the
+         * glm21-14/15 pool precedents, the lint gate's own pooled twin
+         * one round over at glm28-11 — the second consumer of the
+         * shape; the repo's THIRD-consumer hoist threshold names when
+         * the fleet core becomes ONE owner). The walk once spawned
+         * ONE ENGINE PER FILE serially — 2.35 s of a 2.50 s
+         * inspection over a real zip (~94% spawn cost, measured at
+         * HEAD); every probe is tree-independent, so the walk now
+         * COLLECTS the files and one xargs -0 -n2 -P8 sh -c fleet
+         * lints them, each verdict recorded beside its INDEX (php
+         * -l's own output plus its exit code). The runner's trailing
+         * echo is LOAD-BEARING (glm21-15's documented idiom): php -l
+         * refuses parse errors at exit 255, a status bare xargs
+         * ABORTS on — the echo absorbs it, the fleet keeps walking.
+         * A POSIX host without xargs(1) answers the walk's own loud
+         * failure at the missing verdict file (the refusal class
+         * below), never a silent pass; non-POSIX hosts keep the
+         * serial loop. The verdict sentence is byte-identical.
+         */
+        $syntax_verdicts = static function (array $syntax_files) use ($extractDir): array {
+            $violations = array();
+            $php = escapeshellarg(PHP_BINARY);
+            // The serial arm, spelled once: the non-POSIX fallback and
+            // the scratch-staging failure fallback both ride it.
+            $serial = static function () use ($php, $syntax_files, $extractDir, &$violations): void {
+                foreach ($syntax_files as $path) {
+                    $output = array();
+                    $exit = 0;
+                    exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($path)), $output, $exit);
+                    if ($exit !== 0) {
+                        $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $path)), wp_connectors_printable(implode(' ', $output)));
+                    }
+                }
+            };
+            $missing_verdict = static function (string $path) use ($extractDir): string {
+                return sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $path)), 'no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine)');
+            };
+            if ('/' !== DIRECTORY_SEPARATOR) {
+                $serial();
+
+                return $violations;
+            }
+            $scratch = sys_get_temp_dir() . '/wpct-inspect-' . uniqid('', true);
+            if (! @mkdir($scratch, 0755, true)) {
+                $serial();
+
+                return $violations;
+            }
+            try {
+                $list = $scratch . '/files.nul';
+                $pairs = '';
+                foreach ($syntax_files as $index => $path) {
+                    $pairs .= $index . "\0" . $path . "\0";
+                }
+                if (false !== file_put_contents($list, $pairs)) {
+                    $runner = sprintf(
+                        '%1$s -l "$1" >"%2$s/$0.lint" 2>&1; echo "exit=$?" >>"%2$s/$0.lint"',
+                        $php,
+                        $scratch
+                    );
+                    exec(sprintf('xargs -0 -n2 -P8 sh -c %1$s < %2$s 2>&1', escapeshellarg($runner), escapeshellarg($list)));
+                }
+                foreach ($syntax_files as $index => $path) {
+                    $verdict = @file_get_contents(sprintf('%s/%d.lint', $scratch, $index));
+                    if (false === $verdict || 1 !== preg_match('/^exit=([0-9]+)$/m', $verdict, $code)) {
+                        $violations[] = $missing_verdict($path);
+
+                        continue;
+                    }
+                    if ('0' !== $code[1]) {
+                        $output = (string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict);
+                        $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $path)), wp_connectors_printable(implode(' ', array_values(array_filter(explode("\n", rtrim($output)), static function ( $line ) { return '' !== $line; })))));
+                    }
+                }
+            } finally {
+                @unlink($scratch . '/files.nul');
+                foreach (glob($scratch . '/*.lint') ?: array() as $verdict_file) {
+                    @unlink($verdict_file);
+                }
+                @rmdir($scratch);
+            }
+
+            return $violations;
+        };
         /*
          * The walk rides the glm31-4 fence every sibling walker in this
          * change set already carries (OCR round 24, t31-ocr24-2): a
@@ -779,6 +863,7 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          * results collected before a mid-walk refusal are kept.
          */
         try {
+            $syntax_files = array();
             $iterator = new RecursiveIteratorIterator(
                 new RecursiveDirectoryIterator($pluginDir, FilesystemIterator::SKIP_DOTS)
             );
@@ -792,18 +877,17 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
                 if (! wp_connectors_is_php_source($file->getPathname())) {
                     continue;
                 }
-                $output = array();
-                $exit = 0;
-                exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($file->getPathname())), $output, $exit);
-                if ($exit !== 0) {
-                    // Both interpolations carry the LANDED entry bytes (a
-                    // newline is a legal filename character here, and the
-                    // engine's own diagnostic echoes the same path) — both
-                    // ride the seam (see the dev-entry site).
-                    $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $file->getPathname())), wp_connectors_printable(implode(' ', $output)));
-                }
+                $syntax_files[] = $file->getPathname();
             }
         } catch (UnexpectedValueException $walk_refusal) {
+            /*
+             * The partial results collected before a mid-walk refusal
+             * are kept (the fence's own recorded behavior): the files
+             * the walk did reach keep their syntax verdicts, the
+             * refusal rides after them, and the artifact is judged
+             * whole or not at all.
+             */
+            $violations = array_merge($violations, $syntax_verdicts($syntax_files));
             $violations[] = sprintf(
                 'inspect: cannot walk %s for the post-extraction syntax check — %s; the artifact is judged whole or not at all, never over a partially readable tree.',
                 $slug,
@@ -812,6 +896,11 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
 
             return $violations;
         }
+        // Both interpolations of every verdict carry the LANDED entry bytes
+        // (a newline is a legal filename character here, and the engine's
+        // own diagnostic echoes the same path) — both ride the seam (see
+        // the dev-entry site).
+        $violations = array_merge($violations, $syntax_verdicts($syntax_files));
 
         /*
          * No development credentials inside artifacts — the scan runs
