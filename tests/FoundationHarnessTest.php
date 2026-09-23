@@ -608,6 +608,41 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * glm28-14: advanceTime() rejects NEGATIVE advances — the sibling
+     * DeterministicClock::advanceBy()'s own doctrine ('only advances;
+     * rewinding is not a wall-clock behavior'). The seat once accepted
+     * negatives and silently rewound the frozen clock, so an expiry
+     * assertion with a sign error false-greened against time moving
+     * the other way.
+     */
+    public function testAdvanceTimeRejectsNegativeAdvances()
+    {
+        $this->freezeTime(1700000000);
+
+        try {
+            WpHarness::advanceTime(-60);
+            $this->fail('A negative advance must THROW — red at HEAD it silently rewound the frozen clock.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('only advances', $e->getMessage(), 'The refusal names the sibling\'s own doctrine.');
+        }
+        $this->assertSame(1700000000, WpHarness::$frozen_time, 'The clock never rewound — the refused advance landed nowhere.');
+
+        // Positive advances unchanged.
+        WpHarness::advanceTime(400);
+        $this->assertSame(1700000400, WpHarness::$frozen_time, 'A positive advance keeps moving the frozen clock.');
+
+        // The refusal is unconditional: the sign error is the defect
+        // wherever the clock state stands (live clock included).
+        WpHarness::reset();
+        try {
+            WpHarness::advanceTime(-1);
+            $this->fail('A negative advance over a live clock throws too — the sign error is the defect, never the clock state.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertNull(WpHarness::$frozen_time, 'The live clock stays untouched by the refused advance.');
+        }
+    }
+
     public function testDeterministicClockDrivesTransientsAndCron()
     {
         $this->freezeTime(1700000000);

@@ -384,11 +384,24 @@ final class WpHarness
     /**
      * Advances the frozen clock (no-op when the clock is live).
      *
-     * @param int $seconds Seconds to advance.
+     * glm28-14: a NEGATIVE advance is refused — the sibling
+     * DeterministicClock::advanceBy()'s own doctrine ('only advances;
+     * rewinding is not a wall-clock behavior', the sign error the
+     * throw exists to name). The seat once accepted negatives and
+     * silently REWOUND the frozen clock, so an expiry assertion with
+     * a sign error false-greened against time moving the other way.
+     * The refusal is unconditional (frozen or live): the sign error
+     * is the defect wherever the clock state stands.
+     *
+     * @param int $seconds Seconds to advance (must be non-negative).
      * @return void
+     * @throws InvalidArgumentException When $seconds is negative.
      */
     public static function advanceTime($seconds)
     {
+        if ($seconds < 0) {
+            throw new InvalidArgumentException('WpHarness::advanceTime() only advances; ' . $seconds . ' given (DeterministicClock::advanceBy()\'s own doctrine — rewinding is not a wall-clock behavior).');
+        }
         if (self::$frozen_time !== null) {
             self::$frozen_time += $seconds;
         }
