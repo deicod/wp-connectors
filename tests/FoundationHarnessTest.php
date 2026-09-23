@@ -1111,6 +1111,68 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm27-2: the hook ITERATION re-syncs with the live registration
+     * array — core's WP_Hook walks priorities through a pointer that
+     * add_filter()/remove_filter() resort mid-run
+     * (class-wp-hook.php's resort_active_iterations, pinned 7.1.1):
+     * a remove at a pending priority STOPS its delivery (the bucket
+     * is consulted when the walk reaches it), and an add at a pending
+     * priority DELIVERS. The stub rode PHP's copy-on-write foreach
+     * snapshot of the whole tag array — the exact inverse on BOTH
+     * shapes: the unhook-before-it-runs idiom still ran the removed
+     * callback, and the mid-run add at a pending priority was
+     * invisible to the walk (driven red at HEAD both ways). The
+     * filter seat rides the same ONE iteration owner, so the value
+     * threading resyncs identically.
+     */
+    public function testHookIterationResyncsWithTheLiveRegistrationArray()
+    {
+        // Leg 1 — unhook-before-it-runs: the priority-10 callback
+        // removes the pending priority-20 registration before the
+        // walk reaches its bucket; core never delivers it.
+        $order = array();
+        $late = static function () use (&$order) {
+            $order[] = 'late';
+        };
+        add_action('glm27_resync', static function () use (&$late) {
+            remove_action('glm27_resync', $late, 20);
+        }, 10, 0);
+        add_action('glm27_resync', $late, 20);
+        do_action('glm27_resync');
+        $this->assertSame(array(), $order, 'The removed callback never delivers — the walk consults the LIVE array when it reaches the pending priority (red at HEAD: the snapshot still delivered it).');
+
+        // Leg 2 — mid-run add at a pending priority: the priority-10
+        // callback registers at the pending 20; core's resort splices
+        // the new priority into the running iteration and DELIVERS it.
+        $order = array();
+        add_action('glm27_addmid', static function () use (&$order) {
+            $order[] = 'early';
+            add_action('glm27_addmid', static function () use (&$order) {
+                $order[] = 'added';
+            }, 20, 0);
+        }, 10, 0);
+        add_action('glm27_addmid', static function () use (&$order) {
+            $order[] = 'base';
+        }, 20, 0);
+        do_action('glm27_addmid');
+        $this->assertSame(array( 'early', 'base', 'added' ), $order, 'The mid-run add at the pending priority DELIVERS after the bucket\'s standing members — core\'s resort shape (red at HEAD: the snapshot never saw it).');
+
+        // Leg 3 — the filter seat rides the same owner: a mid-run add
+        // at a pending priority threads its value into the fold.
+        $add_filter_value = static function ($value) {
+            if ('first' === $value) {
+                add_filter('glm27_fmid', static function () {
+                    return 'second';
+                }, 20, 0);
+            }
+
+            return $value;
+        };
+        add_filter('glm27_fmid', $add_filter_value, 10, 1);
+        $this->assertSame('second', apply_filters('glm27_fmid', 'first'), 'The mid-run filter add at the pending priority folds its value — never a snapshot skip (red at HEAD: \'first\').');
+    }
+
+    /**
      * glm25-1: TTL (re)arming survives the stored-false row's MISSING
      * read — glm24-4's keep-guard keyed on $own_entry alone, but a
      * stored-false row answers $existing FALSE (the get_option-shaped

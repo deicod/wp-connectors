@@ -141,6 +141,58 @@ function has_action($tag, $callback = false)
     return has_filter($tag, $callback);
 }
 
+/**
+ * The ONE hook-iteration owner (glm27-2): core's WP_Hook walks the
+ * priorities through a LIVE pointer that add_filter()/
+ * remove_filter() re-sync mid-run (class-wp-hook.php's
+ * resort_active_iterations, pinned 7.1.1 — derived against the local
+ * reference): the walk re-derives the priority list at every bucket
+ * boundary, so a remove at a pending priority STOPS its delivery
+ * (the bucket is consulted when the walk reaches it, never snap-
+ * shotted at run start) and an add at a pending priority DELIVERS
+ * (the new priority is in the list the next tick reads). The old
+ * `foreach (WpHarness::$filters[$tag])` rode PHP's copy-on-write
+ * snapshot — the exact inverse of core on BOTH shapes: an
+ * unhook-before-it-runs STILL RAN (the snapshot still carried the
+ * bucket) and a mid-run add at a pending priority was INVISIBLE
+ * (the mutation detached the walk's copy; driven red at HEAD both
+ * ways). The bucket itself is snapshotted at ITS start — core's own
+ * `foreach ($this->callbacks[$priority])` shape: a same-bucket
+ * unhook of a LATER sibling still delivers, and a same-bucket add
+ * never joins the running bucket.
+ *
+ * Emulation boundary, recorded: core's resort also steps the pointer
+ * BACK for a priority ADDED at the numeric value currently executing
+ * (class-wp-hook.php's $new_priority === current_priority arm) — a
+ * self-re-entering quirk no suite shape rides; this walk keeps the
+ * forward-only floor (a bucket, once left, never re-runs in one
+ * pass), the honest approximation of every driven shape.
+ *
+ * @param string $tag Hook tag.
+ * @return iterable<array{callback: mixed, accepted_args: int, key: string}> The live walk's entries.
+ */
+function wp_connectors_harness_hook_entries($tag)
+{
+    $floor = null;
+    while (true) {
+        $next = null;
+        foreach (array_keys(WpHarness::$filters[ $tag ] ?? array()) as $priority) {
+            if (null === $floor || $priority > $floor) {
+                $next = $priority;
+                break;
+            }
+        }
+        if (null === $next) {
+            return;
+        }
+        $floor = $next;
+        $bucket = WpHarness::$filters[ $tag ][ $next ] ?? array();
+        foreach ($bucket as $entry) {
+            yield $entry;
+        }
+    }
+}
+
 function apply_filters($tag, $value, ...$args)
 {
     if (! isset(WpHarness::$filters[ $tag ])) {
@@ -149,12 +201,10 @@ function apply_filters($tag, $value, ...$args)
 
     WpHarness::$current_action_stack[] = $tag;
     try {
-        foreach (WpHarness::$filters[ $tag ] as $callbacks) {
-            foreach ($callbacks as $entry) {
-                $call_args = array_merge(array( $value ), $args);
-                $call_args = array_slice($call_args, 0, max(1, $entry['accepted_args']));
-                $value = call_user_func_array($entry['callback'], $call_args);
-            }
+        foreach (wp_connectors_harness_hook_entries($tag) as $entry) {
+            $call_args = array_merge(array( $value ), $args);
+            $call_args = array_slice($call_args, 0, max(1, $entry['accepted_args']));
+            $value = call_user_func_array($entry['callback'], $call_args);
         }
     } finally {
         array_pop(WpHarness::$current_action_stack);
@@ -172,13 +222,9 @@ function do_action($tag, ...$args)
     WpHarness::$current_action_stack[] = $tag;
 
     try {
-        if (isset(WpHarness::$filters[ $tag ])) {
-            foreach (WpHarness::$filters[ $tag ] as $callbacks) {
-                foreach ($callbacks as $entry) {
-                    $call_args = array_slice($args, 0, $entry['accepted_args']);
-                    call_user_func_array($entry['callback'], $call_args);
-                }
-            }
+        foreach (wp_connectors_harness_hook_entries($tag) as $entry) {
+            $call_args = array_slice($args, 0, $entry['accepted_args']);
+            call_user_func_array($entry['callback'], $call_args);
         }
     } finally {
         array_pop(WpHarness::$current_action_stack);
