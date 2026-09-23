@@ -181,7 +181,24 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
             . ' $plain = wp_connectors_self_containment_violations(' . var_export($plain_root, true) . ');'
             . ' print("candidate=" . count($candidate) . "\\n" . implode("\\n", $candidate)'
             . ' . "\\nplain=" . count($plain) . "\\n" . implode("\\n", $plain));';
-        $timeout_prefix = WpHarness::isPosixHost() ? 'timeout 30 ' : '';
+        /*
+         * t31-glm35-5 (the review's R35-4): the timeout prefix probes
+         * for the BINARY, not the platform — stock macOS is a POSIX
+         * host without coreutils timeout(1), where the round-34
+         * prefix made sh answer 'command not found' exit 127 and the
+         * test RED as a failure on a previously-green host class the
+         * harness doctrine names. The prefix rides only where the
+         * binary exists; without it the child runs unbounded exactly
+         * as it did before round 34 (the SecureFixtures owner's own
+         * accepted posture for the same corner).
+         */
+        $timeout_prefix = '';
+        if (WpHarness::isPosixHost()) {
+            exec('command -v timeout', $probe_output, $probe_exit);
+            if (0 === $probe_exit) {
+                $timeout_prefix = 'timeout 30 ';
+            }
+        }
         $command = sprintf(
             '%s%s -d pcre.jit=0 -d pcre.recursion_limit=1 -r %s 2>&1',
             $timeout_prefix,

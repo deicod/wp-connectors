@@ -231,15 +231,25 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
         $this->assertSame(array(), wp_connectors_self_containment_violations($root3), 'The code-token anchor stays clean in every casing — the blanked view keeps what the runtime keeps.');
 
         /*
-         * R34-2's heredoc half: round 33's quote-grammar blanker was
-         * HEREDOC-BLIND — a nowdoc body's '__DIR__' TEXT survived
-         * blanking and anchored (the shape laundering clean at HEAD
-         * where the quoted twin flags), and an apostrophe inside a
-         * heredoc body mis-paired the quote grammar far enough to
-         * blank real code tokens. The view is the TOKENIZER's now
-         * (wp_connectors_anchor_view()): the nowdoc spelling flags
-         * exactly like its quoted twin — string data never anchors,
-         * whatever its enclosure.
+         * R34-2's heredoc half, its pin made DISCRIMINATING at round
+         * 35 (the review's R35-3): round 33's quote-grammar blanker
+         * was HEREDOC-BLIND — a nowdoc body's '__DIR__' TEXT survived
+         * blanking and kept the runtime-segment machinery double-
+         * flagging the statement ('combines the anchor with
+         * unresolvable runtime segments' twice, driven at the
+         * pre-round-34 baseline) instead of the quoted twin's one
+         * clean 'not anchored' verdict. THE ROUND-34 PROVENANCE
+         * RECORD WAS FALSE — its '(red at HEAD: laundered clean)'
+         * claim originated in a broken red drive (the round's own
+         * pre-fix fixture lacked the '<?php' open tag, so the file
+         * was not a PHP source and answered 0 violations trivially
+         * — the php -l doctrine's lesson extended: a driven fixture
+         * must be a PHP file before its verdict means anything).
+         * The view is the TOKENIZER's now (wp_connectors_anchor_
+         * view()): the nowdoc spelling answers EXACTLY the quoted
+         * twin's one 'not anchored' violation — the count and the
+         * reason the discriminators, a revert to the heredoc-blind
+         * blanker flipping back to the double 'combines' shape.
          */
         $root4 = $this->root . '-nowdoc';
         mkdir($root4, 0755, true);
@@ -248,7 +258,10 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             $root4 . '/fixture.php',
             "<?php require <<<'EOT'\n__DIR__ . \"/sub/x.php\"\nEOT;"
         );
-        $this->assertNotEmpty(wp_connectors_self_containment_violations($root4), 'A nowdoc body\'s __DIR__ text is a directory NAME at runtime — the unanchored flag fires exactly like the quoted twin (red at HEAD: laundered clean).');
+        $nowdoc_violations = wp_connectors_self_containment_violations($root4);
+        $this->assertCount(1, $nowdoc_violations, 'The nowdoc spelling answers EXACTLY the quoted twin\'s one violation — not the heredoc-blind blanker\'s double flag (driven at the pre-round-34 baseline: 2 violations).');
+        $this->assertStringContainsString('includes a path not anchored to the plugin dir', $nowdoc_violations[0], 'A nowdoc body\'s __DIR__ text is a directory NAME at runtime — the unanchored flag fires exactly like the quoted twin.');
+        $this->assertStringNotContainsString('combines the anchor with unresolvable runtime segments', $nowdoc_violations[0], 'The heredoc-blind shape\'s misattributed reason is gone — string data never anchors, whatever its enclosure.');
     }
 
     public function testACaseVariantDoWhileTailWriteStaysVisible(): void

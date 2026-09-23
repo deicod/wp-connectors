@@ -268,7 +268,17 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $elapsed = microtime(true) - $started;
 
         $this->assertStringContainsString('variable $f depends on $evil with no resolvable same-file assignment', implode("\n", $violations), 'The binding through the whitespace-run header is collected — the include flags exactly like its tight twin.');
-        $this->assertLessThan(3.0, $elapsed, sprintf('A whitespace-run header scans in wall-clock the linear pipeline owns (%.3fs here; red at HEAD: 4.55s) — the round-30 cost-pin precedent value, a generous class guard with the verdict the discriminating pin, decoupled from host contention the 1.0s bound was not.', $elapsed));
+        /*
+         * t31-glm35-5 (the review's R35-7): 3.0s -> 1.5s — the 3.0s
+         * bound had narrowed the discrimination range to hosts no
+         * faster than ~1.52x this one (mainstream hardware), the old
+         * quadratic measuring 4.556s against the linear 0.032s here
+         * with byte-identical violation text, so only the wall can
+         * catch a pure cost regression. 1.5s guards hosts to ~3x
+         * this speed while holding 47x headroom over the measured
+         * actual — contention-decoupled AND discrimination-ranged.
+         */
+        $this->assertLessThan(1.5, $elapsed, sprintf('A whitespace-run header scans in wall-clock the linear pipeline owns (%.3fs here; red at HEAD: 4.55s; the reintroduced quadratic at 4.556s still reddens).', $elapsed));
 
         /*
          * The masked-view boundary the round-33 comment claimed and
