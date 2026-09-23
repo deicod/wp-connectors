@@ -1198,8 +1198,23 @@ abstract class WpConnectorsTestCase extends TestCase
         $snapshot = array('url' => $url, 'body' => $body);
 
         if (!is_file($path)) {
+            /*
+             * t31-glm39-6 [R39-7, driven false-green — the WRITE side of
+             * glm14-8's read doctrine]: the creation path did not own
+             * json_encode()'s FALSE — an unencodable capture (invalid
+             * UTF-8 in a recorded URL, the channel glm27-8's own guard
+             * text names) committed a bare 1-byte newline snapshot and
+             * skipped green, the verify re-run then misreporting the
+             * defect as 'Snapshot is corrupt' — an
+             * operator-hunting-a-hand-edited-snapshot message for an
+             * unencodable capture (driven through the repo's phpunit).
+             * The encode is asserted NOT-FALSE first, the failure naming
+             * the capture — glm27-8's sibling guards on the same write.
+             */
             @mkdir(dirname($path), 0755, true);
-            file_put_contents($path, json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+            $encoded = json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            $this->assertNotFalse($encoded, "Snapshot {$name} cannot be encoded — the captured request carries bytes json_encode refuses (invalid UTF-8 in the URL or body?), never a snapshot to create.");
+            file_put_contents($path, $encoded . "\n");
             $this->markTestSkipped("Snapshot {$name} created; re-run to verify.");
         }
 
