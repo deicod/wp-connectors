@@ -7195,7 +7195,18 @@ FIXTURE;
          */
         foreach (array(
             'empty member before its comma' => 'use Deicod\\WpConnectors\\{, Shared\\Clock};',
-            'trailing comma' => 'use Deicod\\WpConnectors\\{Shared\\Clock,};',
+            /*
+             * t31-glm40-4 (R40-4): the trailing-comma row MOVED — the
+             * spelling is LEGAL PHP 7.2+ ('use …{Clock,};' php -l clean
+             * on 8.5.10, the ocr31-4 record's premise falsified at the
+             * engine), once refused here with a message claiming a parse
+             * error. The final empty piece now DROPS at both call sites
+             * and the group rewrites clean — pinned in
+             * testTheGroupUseTrailingCommaAndCommentTriviaRewrite below;
+             * the interior empty member stays refused (a real parse
+             * error) in this battery beside its siblings.
+             */
+            'empty member between commas' => 'use Deicod\\WpConnectors\\{Shared\\Clock,, Now};',
             'empty brace body (the t31-r10-9 row, moved to its owning seam)' => 'use Deicod\\WpConnectors\\{};',
             'dangling as' => 'use Deicod\\WpConnectors\\{Shared\\Clock as};',
             /*
@@ -7326,6 +7337,24 @@ FIXTURE;
             );
             $this->assertStringContainsString('group-use member grammar refuses', $refusal->getMessage(), "The refusal names the member grammar's own seam — never a late postcondition verdict over a body the grammar should have named ({$label}).");
         }
+
+        /*
+         * t31-glm40-4 (R40-4+R40-6, driven false refusals over legal
+         * input — the ocr31-4 record's premise falsified at the
+         * engine): the trailing comma and the trailing COMMENT are
+         * LEGAL spellings php -l accepts on 8.5.10 ('use …{Clock,};'
+         * since PHP 7.2; 'use …{Clock (block comment) , Now};' always)
+         * yet the grammar refused both with messages claiming parse
+         * errors. The final empty piece DROPS at both call sites and
+         * the trailing comment strips before the grammar judges — both
+         * spellings construct and rewrite clean (red at HEAD: the
+         * refusals), the interior empty member staying refused beside
+         * its siblings above.
+         */
+        $trailing_comma = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock,};\nclass TrailingStore\n{\n}\n", 'OpenAiOauth', 'shared/src/TrailingStore.php');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\{OpenAiOauth\\Shared\\Clock};', $trailing_comma, 'The PHP 7.2+ trailing comma drops and the group rewrites clean — never a refusal over legal input (red at HEAD: the grammar threw).');
+        $comment_member = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock /* c */, Shared\\Now};\nclass CommentStore\n{\n}\n", 'OpenAiOauth', 'shared/src/CommentStore.php');
+        $this->assertStringContainsString('use Deicod\\WpConnectors\\{OpenAiOauth\\Shared\\Clock, OpenAiOauth\\Shared\\Now};', $comment_member, 'A trailing comment is legal trivia — the member rewrites clean, the comment riding neither verdict nor output (red at HEAD: the grammar threw).');
 
         /*
          * OCR round 68 (t31-ocr68-1 — the t31-ocr60-1 sweep's

@@ -494,6 +494,10 @@ final class WpConnectorsBuild
                     if ('' !== $brace_tail) {
                         $body = (string) substr($brace_tail, (int) strpos($brace_tail, '{') + 1, -1);
                         $member_pieces = explode(',', $body);
+                        // t31-glm40-4: a final trailing comma is legal PHP 7.2+ — dropped, never refused.
+                        if (count($member_pieces) > 1 && '' === trim((string) end($member_pieces))) {
+                            array_pop($member_pieces);
+                        }
                         foreach ($member_pieces as $member_index => $member_piece) {
                             self::groupUseMemberGrammar(trim($member_piece), $body, $member_index, count($member_pieces), $sourceVersion);
                         }
@@ -556,6 +560,10 @@ final class WpConnectorsBuild
                 static function ($matches) use ($pluginSuffix, $sourceVersion, $shared_leaf) {
                     $members = array();
                     $member_pieces = explode(',', $matches[3]);
+                    // t31-glm40-4: a final trailing comma is legal PHP 7.2+ — dropped, never refused.
+                    if (count($member_pieces) > 1 && '' === trim((string) end($member_pieces))) {
+                        array_pop($member_pieces);
+                    }
                     foreach ($member_pieces as $member_index => $member_piece) {
                         /*
                          * The member grammar is validated BEFORE
@@ -2362,6 +2370,19 @@ final class WpConnectorsBuild
      */
     private static function groupUseMemberGrammar($member, $body, $member_index, $piece_count, $sourceVersion)
     {
+        /*
+         * t31-glm40-4 [R40-6, driven false refusal over legal input]:
+         * a trailing COMMENT inside a group body is engine-legal
+         * trivia ('use A\B\{Clock (block comment) , Now};' with the
+         * comment spelled in real bytes — php -l clean on 8.5.10)
+         * but the comma split handed the comment-bearing member to
+         * the label regex and the build threw 'a member that is not
+         * a NAME' over a spelling the engine accepts. The trailing
+         * comment (block or line) strips BEFORE the grammar judges —
+         * the reassembly rebuilding from the parsed pieces, the
+         * comment riding neither verdict nor output.
+         */
+        $member = (string) preg_replace('/\s*(?:\/\*\*?.*?\*\/|\/\/[^\n]*|#(?!\[)[^\n]*)\s*$/s', '', $member);
         if ('' === $member) {
             $shape = '' === trim($body)
                 ? 'an empty brace body'
@@ -2370,7 +2391,7 @@ final class WpConnectorsBuild
                     : ($member_index === $piece_count - 1
                         ? 'a trailing comma'
                         : 'an empty member between commas'));
-            throw new RuntimeException("build: the group-use member grammar refuses the statement (body: '" . trim($body) . "') in {$sourceVersion} — here: {$shape}: every one of these spellings is a parse error the engine rejects at compile time, and the reassembly once normalized it through explode/trim/implode into a silent pass that shipped the parse-error bytes verbatim at exit 0; write one named member per comma, never an empty one");
+            throw new RuntimeException("build: the group-use member grammar refuses the statement (body: '" . trim($body) . "') in {$sourceVersion} — here: {$shape}: the engine rejects these spellings at compile time (the TRAILING comma being the one legal exception — dropped at both call sites since PHP 7.2, t31-glm40-4), and the reassembly once normalized it through explode/trim/implode into a silent pass that shipped the parse-error bytes verbatim at exit 0; write one named member per comma, never an empty one");
         }
         /*
          * The dangling-tail boundary rides the label-class lookbehind
