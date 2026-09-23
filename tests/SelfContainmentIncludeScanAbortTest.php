@@ -483,6 +483,72 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringContainsString('variable $f resolves to a path', $report, 'The trailing write target joins the proof — the EOF over-approximation refusing, never laundering.');
     }
 
+    public function testAByReferenceClosureCaptureMakesEveryWriteVisible(): void
+    {
+        /*
+         * R38-3 (security:medium, driven fail-open — the
+         * deferred-execution channel): a closure capturing the proof
+         * variable BY REFERENCE may be invoked after any write in
+         * the file — the runtime reads the variable's LAST value,
+         * wherever written. The function-arm span once covered only
+         * the closure body, so the post-definition write was
+         * invisible and the php -l CLEAN shape '$f = ...inside...;
+         * $go = function () use (&$f) { require $f; }; $f =
+         * .../../../outside.php; $go();' answered 0 violations while
+         * executing it requires the OUTSIDE path. The by-ref capture
+         * extends the span to the whole file; the BY-VALUE twin
+         * (arrow-function semantics — the capture snapshots the
+         * value) keeps its clean verdict.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php $f = __DIR__ . "/inside.php"; $go = function () use (&$f) { require $f; }; $f = __DIR__ . "/../../outside.php"; $go();'
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'A by-ref closure capture may be invoked after any write — the whole file is visible to the proof (red at HEAD: 0 violations while execution requires the outside path).');
+        $this->assertStringContainsString('variable $f resolves to a path', $report, 'The post-definition write joins the proof — the deferred invocation reading the LAST value.');
+
+        $value_root = $this->root . '-byvalue';
+        mkdir($value_root, 0755, true);
+        $this->extra_roots[] = $value_root;
+        file_put_contents(
+            $value_root . '/fixture.php',
+            '<?php $f = __DIR__ . "/inside.php"; $go = function () use ($f) { require $f; }; $f = __DIR__ . "/outside.php"; $go();'
+        );
+        $this->assertSame(array(), wp_connectors_self_containment_violations($value_root), 'The by-value twin captures the snapshot — the later write never reaches the closure, the verdict stays clean.');
+    }
+
+    public function testAnUnclosableFunctionHeaderBoundsToEof(): void
+    {
+        /*
+         * R38-5 (security:medium, driven — the R37-4 class one arm
+         * over): the function arm's forward scan once continued with
+         * NO span when no '{' followed — EOF before any body opener,
+         * or the include sitting inside an unclosed header ahead of
+         * the ';' the bodyless break reads — the post-include write
+         * invisible, the include proving clean on the pre-include
+         * assignment. Both spellings over-approximate to EOF now;
+         * the true bodyless declarations (interface/abstract, the
+         * include never inside their headers) keep bounding nothing.
+         * THE FIXTURE IS DELIBERATELY NOT LINT-CLEAN (php -l refuses
+         * the unclosed header), the pre-lint hostile-tree threat
+         * model the standing precedent.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php $f = __DIR__ . "/safe.php"; function evil ( require $f; $f = __DIR__ . "/../../outside.php";'
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'An unclosable function header bounds everything after it — the include inside the header never proves clean on the pre-include assignment alone (red at HEAD: 0 violations).');
+        $this->assertStringContainsString('variable $f resolves to a path', $report, 'The trailing write target joins the proof — the EOF over-approximation refusing, never laundering.');
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*

@@ -2935,7 +2935,7 @@ function wp_connectors_matching_paren_end($masked, $open)
  * @param int    $offset Byte offset the include statement starts at.
  * @return list<array{0: int, 1: int}> Inclusive [start, end] byte ranges.
  */
-function wp_connectors_write_visibility_spans($masked, $offset)
+function wp_connectors_write_visibility_spans($masked, $offset, $reference_captured_variable = '')
 {
     $spans = array(array(0, max(0, $offset - 1)));
     $length = strlen($masked);
@@ -3012,12 +3012,33 @@ function wp_connectors_write_visibility_spans($masked, $offset)
              * inside it. A bodyless declaration (interface/abstract —
              * a ';' before any '{') bounds nothing; a body brace we
              * cannot close falls to the shared EOF approximation.
+             *
+             * t31-glm38-4 [R38-5, security:medium, driven — the R37-4
+             * class one arm over]: EOF before any '{' (an unclosable
+             * header's ';' bytes never terminating the scan) once
+             * continued with NO span — the same under-bounding the
+             * paren arm carried, a post-include write reading 'not
+             * visible in any span'. EOF before '{' over-approximates
+             * to EOF now (everything after the declaration MAY be its
+             * body); the ';' bodyless break alone keeps bounding
+             * nothing.
              */
             $j = $loop[1] + strlen($construct);
             $body_open = false;
+            $hit_eof = false;
             while ($j < $length) {
                 if (';' === $masked[ $j ]) {
-                    break; // Bodyless declaration: no body to span.
+                    /*
+                     * Bodyless declaration — UNLESS the include sits inside
+                     * the header segment ahead of this ';': that shape is an
+                     * unclosed header (a real bodyless declaration carries no
+                     * include between keyword and ';'), everything after it
+                     * MAY be the body, the R37-4 over-approximation.
+                     */
+                    if ($offset >= $loop[1] && $offset <= $j) {
+                        $hit_eof = true;
+                    }
+                    break;
                 }
                 if ('{' === $masked[ $j ]) {
                     $body_open = $j;
@@ -3025,12 +3046,42 @@ function wp_connectors_write_visibility_spans($masked, $offset)
                 }
                 ++$j;
             }
-            if (false === $body_open) {
+            if ($j >= $length) {
+                $hit_eof = true; // No body opener anywhere ahead: everything may be the body.
+            }
+            if (false === $body_open && ! $hit_eof) {
                 continue;
             }
-            $body_close = wp_connectors_matching_brace_end($masked, $body_open);
+            $body_close = $hit_eof ? ($length - 1) : wp_connectors_matching_brace_end($masked, $body_open);
+            // A body brace we cannot close falls to the shared EOF approximation.
+            if (false === $body_close) {
+                $body_close = $length - 1;
+            }
 
             if ($offset >= $loop[1] && $offset <= $body_close) {
+                /*
+                 * t31-glm38-3 [R38-3, security:medium, driven — the
+                 * deferred-execution channel]: a closure capturing the
+                 * proof variable BY REFERENCE ('use (&$f)') may be
+                 * invoked after ANY write in the file — the runtime
+                 * reads the variable's LAST value, wherever written
+                 * (driven, php -l clean: '$f = __DIR__ . "/inside";
+                 * $go = function () use (&$f) { require $f; }; $f =
+                 * __DIR__ . "/../../outside.php"; $go();' answered 0
+                 * violations while executing it requires the OUTSIDE
+                 * path — the function-arm span covering only the
+                 * body, the post-definition write invisible). The
+                 * by-ref capture extends the span to the WHOLE FILE:
+                 * the closure's activation time is unknown, so every
+                 * write precedes some invocation.
+                 */
+                if ('' !== $reference_captured_variable) {
+                    $header = (string) substr($masked, $loop[1], ($hit_eof ? $length : $body_open) - $loop[1]);
+                    if (1 === preg_match('/\b(?i:use)\s*\([^)]*&\s*' . preg_quote($reference_captured_variable, '/') . '\b/', $header)) {
+                        $spans[] = array(0, $length - 1);
+                        continue;
+                    }
+                }
                 $spans[] = array($loop[1], $body_close);
             }
             continue;
@@ -3177,7 +3228,7 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * used to re-tokenize the whole file on every consult).
      */
     $before = '';
-    foreach (wp_connectors_write_visibility_spans($masked, $offset) as $span) {
+    foreach (wp_connectors_write_visibility_spans($masked, $offset, $variable) as $span) {
         $before .= (string) substr($masked, $span[0], $span[1] - $span[0] + 1);
     }
     $quoted = preg_quote($variable, '/');
@@ -3393,7 +3444,7 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      * iteration, so visibility rides the write-visibility spans (the
      * pre-include prefix plus every spanning loop construct).
      */
-    $spans = wp_connectors_write_visibility_spans($masked, $offset);
+    $spans = wp_connectors_write_visibility_spans($masked, $offset, $variable);
     $visible = static function (int $at) use ($spans): bool {
         foreach ($spans as $span) {
             if ($at >= $span[0] && $at <= $span[1]) {
