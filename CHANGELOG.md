@@ -6,6 +6,70 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 29)
+
+Fifteenth claude-glm pass: the FIRST round under the scope rule
+(shared/ production code, driven fail-opens, security high/medium)
+— 37 raw findings → 3 in-scope, every one a driven security
+fail-open, plus the reviewer's self-noted vacuous-pin leg. DRIVER
+ADJUDICATION: R29-1/2/3 ACCEPTED — R29-2/R29-3 one class at two
+seats, TWO commits (the seats' fixes differ: the terminator
+alternation at the include owner, the collection change at the
+write seats); the vacuous-pin touch-up the fourth commit. Four
+commits t31-glm29-1..4, the full offline check green after EVERY
+commit, no push. The round's shape: the CR-line laundering closed
+at the scanner's line split; the close-tag terminator class swept
+to the include owner and both collector seats; the vacuous pin
+made failable; the out-of-scope residuals recorded for Task 3.3
+inheritance (5 harness-parity latents, the test-hygiene set, 12
+cleanups, 2 ledger-covered re-flags dropped). Suite 1905 → 1913
+tests, 48201 → 48228 assertions, 3 skipped unchanged (every delta
+measured from output).
+
+- **The scanner's line split owns the tokenizer's exact three
+  terminators (t31-glm29-1, security:high; bin/lib/secret-scanner.php,
+  bin/lib/plugin-tools.php, tests/SecureFixturesTest.php)** —
+  explode("\n") collapsed a CR-only payload to ONE line, so the
+  line-local `secrets:allow` marker exempted a live secret on a
+  DIFFERENT CR-line (the artifact ACCEPTED at exit 0 where the LF
+  twin rejected). One hand-walk owner (wp_connectors_line_split(),
+  \r\n|\r|\n — never PCRE's broader \R, never a preg_split abort
+  surface) answers each line's true byte start; the marker's
+  line-locality rides the same split at both arms, the masker's
+  blank preserving \r beside \n so the masked view stays
+  index-aligned (glm17-1's line-preservation completed at the CR
+  boundary). Driven: the CR twin flags exactly like its LF twin,
+  CRLF byte-identical, a marked CR-line still exempts.
+- **The include owner's terminator is the ocr62-1 alternation ';|?>'
+  (t31-glm29-2, security:medium; bin/lib/plugin-tools.php,
+  tests/SelfContainmentCloseTagTerminatorsTest.php)** — a
+  close-tag-terminated include (PHP implies the semicolon) was
+  INVISIBLE to every gate riding the owner, and a later ';' glued
+  the greedy match across the close tag into unrelated code. The
+  match is lazy and ends at whichever terminator comes FIRST; the
+  implied-semicolon tail joins the ';' in the two argument
+  derivations the statement feeds, so benign close-tag spellings
+  stay byte-identical with their ';' twins. Driven: the php -l
+  clean `require dirname(__DIR__, 2) . "/outside.php" ?>` flags
+  exactly like its ';' twin (red at HEAD: 0 violations).
+- **The same ';|?>' class at both collector seats, the twins moving
+  together (t31-glm29-3, security:medium; bin/lib/plugin-tools.php,
+  tests/SelfContainmentCloseTagTerminatorsTest.php)** — a
+  close-tag-terminated WRITE with no later ';' was never collected:
+  the driven lint-clean loop shape answered 0 violations while its
+  second iteration requires the outside path, and the map twin left
+  the map-literal proof standing on the collected literal while the
+  runtime value was the request parameter. Both seats' bodies end
+  at whichever terminator comes FIRST (the glm18-7/8
+  write-visibility contract restored at the close-tag boundary);
+  the ';' spellings byte-identical.
+- **The vacuous nonce-guard pin made failable (t31-glm29-4,
+  test-hygiene; tests/Zai/ZaiSettingsTest.php)** —
+  assertArrayNotHasKey over an array_column VALUES list probed
+  integer keys, never the codes; the assertNotContains idiom asserts
+  what it means (the nonce failure surface never reaches the
+  response). Structural only; no behavior change.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 28)
 
 Fourteenth claude-glm pass: 15 findings, all verified. DRIVER
