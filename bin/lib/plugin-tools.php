@@ -2508,10 +2508,10 @@ function wp_connectors_header_violations(array $headers, $slug)
  */
 function wp_connectors_anchored_include_escapes_plugin($file, $include, array $literals, $pluginDir)
 {
-    if (strpos($include, '__DIR__') === false) {
+    if (stripos($include, '__DIR__') === false) {
         return false;
     }
-    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include)) {
+    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $include)) {
         // Already flagged by the upward-dirname rule; do not double-report.
         return false;
     }
@@ -2568,10 +2568,10 @@ function wp_connectors_anchored_include_escapes_plugin($file, $include, array $l
  */
 function wp_connectors_include_expression_reasons($file, $expression, $pluginDir)
 {
-    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $expression)) {
+    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $expression)) {
         return array( 'escapes upward through dirname()' );
     }
-    if (strpos($expression, '__DIR__') === false && strpos($expression, 'ABSPATH') === false) {
+    if (stripos($expression, '__DIR__') === false && strpos($expression, 'ABSPATH') === false) {
         return array( 'is not anchored to __DIR__ or ABSPATH' );
     }
     $quoted_literals = wp_connectors_quoted_literals($expression);
@@ -2646,7 +2646,13 @@ function wp_connectors_include_runtime_segments($statement)
     $runtime = array();
     foreach ($segments as $segment) {
         $trimmed = trim($segment);
-        if ($trimmed === '' || $trimmed === "''" || $trimmed === '__DIR__' || $trimmed === 'ABSPATH') {
+        /*
+         * t31-glm32-4: __DIR__ folds case-insensitively (a magic
+         * constant — '__dir__' anchors at runtime exactly like its
+         * canonical spelling), ABSPATH stays byte-exact (a
+         * define()'d constant is case-sensitive in the engine).
+         */
+        if ($trimmed === '' || $trimmed === "''" || 0 === strcasecmp($trimmed, '__DIR__') || $trimmed === 'ABSPATH') {
             continue;
         }
         $runtime[] = $trimmed;
@@ -3428,7 +3434,7 @@ function wp_connectors_is_psr4_autoloader_shape($file, $statement, array $segmen
     if (rtrim((string) $pluginDir, '/') . '/src/autoload.php' !== $file) {
         return false;
     }
-    if (strpos($statement, '__DIR__') === false) {
+    if (stripos($statement, '__DIR__') === false) {
         return false;
     }
     foreach (wp_connectors_quoted_literals($statement) as $literal_pair) {
@@ -3476,11 +3482,11 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
     if ($segments === array()) {
         return array();
     }
-    if (strpos($statement, '__DIR__') === false && strpos($statement, 'ABSPATH') === false) {
+    if (stripos($statement, '__DIR__') === false && strpos($statement, 'ABSPATH') === false) {
         // Unanchored statements are flagged by the literal analysis already.
         return array();
     }
-    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $statement)) {
+    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $statement)) {
         // Already flagged by the upward-dirname rule; do not double-report.
         return array();
     }
@@ -4169,6 +4175,27 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * case variant of require/require_once/include/
              * include_once admits reach the same terminator-matched
              * statement the lowercase spellings always did.
+             *
+             * t31-glm32-4 [R32-8, driven false-anchored flags —
+             * R31-C2's parity completed at the consults the widened
+             * arm feeds]: the widening routes case-variant
+             * statements into anchor consults that once spelled
+             * __DIR__/__FILE__/dirname() byte-exact — but PHP folds
+             * the magic constants and the function name
+             * case-insensitively too (driven on this engine:
+             * '__dir__' resolves, DirName() calls), so '<?PHP
+             * REQUIRE __dir__ . "/sub/x.php";' — legal, downward,
+             * anchored at runtime — flagged 'not anchored' where
+             * its '__DIR__' twin scanned clean, and 'require
+             * DirName(__DIR__, 2) …' misattributed its reason.
+             * Every anchor consult folds now (stripos on the
+             * __DIR__ token, /i on the dirname regexes — the
+             * anchored-escape walk, the expression reasons, the
+             * runtime segments, the PSR-4 shape, this seat) while
+             * ABSPATH STAYS byte-exact: a define()'d constant is
+             * case-sensitive in the engine (driven), 'abspath'
+             * names nothing a runtime resolves, and an unanchored
+             * flag over that spelling is the correct verdict.
              */
             $includes = array();
             $scanned = preg_match_all('/\b(?i:require|include)(?i:_once)?\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>)/', $masked, $includes, PREG_OFFSET_CAPTURE);
@@ -4203,8 +4230,8 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                          * statement, appending the identical violation N
                          * times for an N-literal include.
                          */
-                        $anchored = strpos($include[0], '__DIR__') !== false || strpos($include[0], 'ABSPATH') !== false;
-                        $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/', $include[0]);
+                        $anchored = stripos($include[0], '__DIR__') !== false || strpos($include[0], 'ABSPATH') !== false;
+                        $escapesUp = (bool) preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $include[0]);
                         if (! $anchored || $escapesUp) {
                             $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
                         }

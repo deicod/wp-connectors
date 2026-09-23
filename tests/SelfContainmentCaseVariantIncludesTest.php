@@ -194,4 +194,76 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             'variable $f has no resolvable same-file assignment'
         );
     }
+
+    public function testACaseVariantDirAnchorScansClean(): void
+    {
+        /*
+         * R32-8 (driven false-anchored flag — R31-C2's parity at
+         * the consults the widened arm feeds): PHP folds the
+         * __DIR__ magic constant case-insensitively (verified on
+         * this engine: '__dir__' resolves), so the lint-clean
+         * downward '<?PHP REQUIRE __dir__ . "/sub/x.php";' is
+         * anchored at runtime — but the anchor consults once
+         * spelled the token byte-exact, flagging it 'not anchored'
+         * where its '__DIR__' twin scanned clean. Every consult
+         * folds now (stripos, the dirname regexes' /i, the segment
+         * walk's strcasecmp); ABSPATH stays byte-exact by design
+         * (a define()'d constant is case-sensitive — 'abspath'
+         * names nothing a runtime resolves, and the unanchored
+         * flag over it is the correct verdict).
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?PHP REQUIRE __dir__ . "/sub/x.php";'
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A case-variant __dir__ anchor is a legal downward anchored include — clean, exactly like its __DIR__ twin (red at HEAD: the false not-anchored flag).');
+
+        $twin_root = $this->root . '-twin';
+        mkdir($twin_root, 0755, true);
+        file_put_contents(
+            $twin_root . '/fixture.php',
+            '<?PHP REQUIRE __dir__ . "/sub/x.php";'
+        );
+        $this->assertSame(array(), wp_connectors_self_containment_violations($twin_root), 'The __DIR__ twin stays clean beside it.');
+        foreach ((glob($twin_root . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($twin_root);
+    }
+
+    public function testACaseVariantDirnameAnswersItsTwinSReason(): void
+    {
+        /*
+         * R32-8's reason-parity half: 'require DirName(__DIR__, 2)'
+         * once misattributed its reason ('combines the anchor with
+         * unresolvable runtime segments') where the lowercase twin
+         * answered the anchor-family verdict — the widened keyword
+         * arm had routed a legal case variant into consults that
+         * disagreed with their own twins. The dirname consults fold
+         * now; the twins answer byte-identical reports.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php require DirName(__DIR__, 2) . "/outside.php";'
+        );
+        $report = implode("\n", wp_connectors_self_containment_violations($this->root));
+        $this->assertNotEmpty($report, 'The upward escape flags.');
+
+        $twin_root = $this->root . '-twin';
+        mkdir($twin_root, 0755, true);
+        file_put_contents(
+            $twin_root . '/fixture.php',
+            '<?php require dirname(__DIR__, 2) . "/outside.php";'
+        );
+        $this->assertSame(
+            str_replace(array(basename($this->root), 'DirName'), array(basename($twin_root), 'dirname'), $report),
+            implode("\n", wp_connectors_self_containment_violations($twin_root)),
+            'DirName and dirname answer byte-identical reports modulo the fixture root and the keyword spelling the statement text carries — the consults fold, never disagree with their own twins.'
+        );
+        foreach ((glob($twin_root . '/*') ?: array()) as $entry) {
+            @unlink($entry);
+        }
+        @rmdir($twin_root);
+    }
 }
