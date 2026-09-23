@@ -4069,9 +4069,15 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * ~490KB span preg_match_all() returned FALSE, which the
              * seat's truthiness consumed as "no includes": EVERY
              * include in the file silently invisible (driven: the
-             * lint-clean laundering payload alone flags, while
+             * laundering payload — lint-clean alone, php -l verified
+             * — flags alone, while
              * preceded by one benign ~700KB 'require $x . "AAA…";'
-             * statement it answered 0 violations — glm36-8's
+             * statement it answered 0 violations (the composite as
+             * driven was NOT lint-clean — the pad's '";' leaves the
+             * lexer in PHP mode at the laundering half's '<?php',
+             * php -l refusing at line 2; the genuinely lint-clean
+             * composite, the pad closed with '?>', pinned round 31)
+             * — glm36-8's
              * abort-is-a-refusal doctrine at the one seat that round
              * never swept; inspect-artifact rides this seat over
              * hostile extracted trees with no size cap, and its
@@ -4079,7 +4085,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * POSSESSIVE unrolled loop now: '[^;?]*+' runs to the
              * next ';' or '?', and each '\?(?!>)' iteration eats one
              * '?' that is not a close tag (a ternary or
-             * null-coalescing '?' is statement body; a '? >' pair is
+             * null-coalescing '?' is statement body; a '?>' pair is
              * PHP's own close-tag lexing) — the match still ends at
              * whichever terminator comes FIRST (the lazy and
              * possessive match sets driven byte-identical over the

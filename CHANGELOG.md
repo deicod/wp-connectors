@@ -6,6 +6,86 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 31)
+
+Seventeenth claude-glm pass: the convergence round that wasn't the
+zero close — 2 in-scope survivors, both driven security fail-opens
+at sibling seats of the round-30 hardening. DRIVER ADJUDICATION:
+R31-C1 and R31-C2 ACCEPTED; the three record corrections ACCEPTED
+as one docs commit (the "lint-clean" claim traced to the driver's
+own round-30 order language — both sides verify fixture claims with
+php -l from now on). Three commits t31-glm31-1..3, the full offline
+check green after EVERY commit, no push. The round's shape: the
+`../`-recursion abort closed loud at the shared/-reference seat;
+the case-insensitive keyword spellings closed at the include owner
+(re-opened by the demonstrated-production-path rule); round 30's
+own records corrected in place with the missing composite pin
+added; the out-of-scope residuals recorded for Task 3.3
+inheritance (5 test-hygiene, 1 driven fail-closed misattribution,
+1 latent masker view, 1 measured efficiency, 3 cleanups). Suite
+1916 → 1921 tests, 48238 → 48255 assertions, 3 skipped unchanged.
+
+- **The shared/-reference check's abort closed loud
+  (t31-glm31-1, security:medium, driven fail-open;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentSharedReferenceScanAbortTest.php)** — the
+  `(?:\.\./)+` repetition exhausts pcre.recursion_limit at DEFAULT
+  limits on a long `../` run, and the seat's truthiness consumed
+  the FALSE as "no reference" — call-wide, so the `\bshared/` arm
+  died with it: every shared/ reference in the file silently
+  invisible (driven: the lint-clean 600KB-`../` payload, php -l
+  verified, answered 0 violations where the 3KB twin flags;
+  inspect-artifact rides this seat over hostile extracted trees
+  with no size cap — R30-C1's exact threat model at the sibling
+  seat that round hardened). FALSE is the LOUD refusal naming the
+  file (`preg_last_error_msg()`'s diagnostic); the repetition
+  stays — every linear respelling measured worse than the abort on
+  this host (possessive trades it for an O(n²) restart storm,
+  minutes-plus at 600KB; a `{1,64}` bound still answers the
+  quadratic class at 3.5s) — the refusal the host-independent
+  half, R30-C1's own precedent. The refusal pinned at the
+  pinned-limit idiom on this seat's own lever, the recursion floor
+  1 (the frames nest per repetition iteration) where the include
+  seat's pin rides the backtrack lever; the include abort pin's
+  fixture lost its `.`/`s` bytes so the new sibling never starts a
+  match attempt under that pin's floor.
+
+- **The include owner's keyword arm matches case-insensitively
+  (t31-glm31-2, security:medium, driven fail-open, re-opened by
+  rule; bin/lib/plugin-tools.php,
+  tests/SelfContainmentCaseVariantIncludesTest.php)** — PHP lexes
+  require/include case-insensitively; the owner's keyword arm
+  spelled them byte-exact lowercase, so `<?PHP REQUIRE …` and
+  `<?php Include_Once …` (both lint-clean, php -l verified) were
+  invisible to every gate riding the owner where the lowercase
+  twins flag. The phpcs lowercase-keywords boundary gates the repo
+  tree only; the artifact channel is a demonstrated production
+  path php -l passes and phpcs never touches. The ocr46-9 scoped
+  `(?i:…)` idiom at the keyword arm —
+  `\b(?i:require|include)(?i:_once)?\b` — the fold on the keyword
+  tokens alone (no `/u`, ASCII folding only, no interaction with
+  the case-free body classes); both argument derivations already
+  rode `/i`, so the case-variant statement derives through the
+  same arms the lowercase one always did. Each variant and its
+  lowercase twin answer byte-identical reports modulo the keyword
+  spelling.
+
+- **Round 30's records corrected (t31-glm31-3, the r26-8
+  post-mortem class; CHANGELOG, ledger, the seat comment, the
+  abort-test comments)** — the composite laundering fixture round
+  30 drove and pinned is NOT lint-clean (php -l: "unexpected
+  token `<`", line 2 — the pad's `";` leaves the lexer in PHP mode
+  at the laundering half's `<?php`); the laundering payload alone
+  IS lint-clean; the genuinely lint-clean composite (the pad
+  closed with `?>`, the implied semicolon) was never driven — now
+  pinned, flags through the pad. The seat comment's close-tag
+  spelling `'? >'` corrected to `?>`; the CHANGELOG/ledger
+  citations of `preg_last_error()` corrected to the
+  `preg_last_error_msg()` the code calls. The claim originated in
+  the driver's own round-30 order language, the fixer echoing it
+  unverified — both verify fixture claims by running php -l
+  before recording them.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 30)
 
 Sixteenth claude-glm pass: the SECOND round under the scope rule —
@@ -28,13 +108,17 @@ efficiency, 7 cleanups, 2 ledger-covered re-flags dropped). Suite
   terminator-free spans, and past pcre.backtrack_limit on a ~490KB
   span preg_match_all() returned FALSE, which the seat's truthiness
   consumed as "no includes": every include in the file silently
-  invisible (driven end-to-end: the lint-clean laundering payload
-  flags alone, 0 violations when preceded by one benign ~700KB
-  `require $x . "AAA…";` statement — the masker blanks the literal
+  invisible (driven end-to-end: the laundering payload — lint-clean
+  alone, php -l verified — flags alone, 0 violations when preceded
+  by one benign ~700KB `require $x . "AAA…";` statement, the
+  composite itself NOT lint-clean (php -l refuses it at line 2 —
+  the pad's `";` leaves the lexer in PHP mode at the laundering
+  half's `<?php`; corrected round 31, the genuinely lint-clean
+  composite pinned there) — the masker blanks the literal
   to same-length spaces; inspect-artifact rides this seat over
   hostile extracted trees with no size cap, and its php -l rejection
   runs after the scan). Both halves one commit: FALSE is the LOUD
-  refusal naming the file (preg_last_error()'s diagnostic, the
+  refusal naming the file (preg_last_error_msg()'s diagnostic, the
   glm36-8 abort-is-a-refusal doctrine at the one seat that round
   never swept), and the body is the possessive unrolled loop
   `[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>)` — `[^;?]*+` runs to the

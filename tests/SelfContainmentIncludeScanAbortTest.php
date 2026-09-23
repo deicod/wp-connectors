@@ -10,8 +10,9 @@
  * pcre.backtrack_limit on a ~490KB span preg_match_all() returned
  * FALSE, which the seat's truthiness consumed as "no includes" —
  * every include in the file silently INVISIBLE (driven: the
- * lint-clean laundering payload alone flags, while preceded by one
- * benign ~700KB 'require $x . "AAA…";' statement it answered 0
+ * laundering payload — lint-clean alone, php -l verified — flags
+ * alone, while preceded by one benign ~700KB 'require $x .
+ * "AAA…";' statement it answered 0
  * violations; inspect-artifact rides this seat over hostile
  * extracted trees with no size cap, and its php -l rejection runs
  * after the scan — glm36-8's abort-is-a-refusal doctrine at the one
@@ -58,7 +59,7 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
     {
         /*
          * The driven fail-open (R30-C1, security): the laundering
-         * payload flags on its own, but one lint-clean ~700KB benign
+         * payload flags on its own, but one ~700KB benign
          * 'require $x . "AAA…";' statement ahead of it exhausted the
          * lazy body's backtrack limit — preg_match_all() answered
          * FALSE, the seat's truthiness read "no includes", and the
@@ -148,6 +149,40 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
             @unlink($entry);
         }
         @rmdir($control);
+    }
+
+    public function testTheGenuinelyLintCleanCompositeLaunderingPadFlags(): void
+    {
+        /*
+         * The record correction's pin (t31-glm31-3, the r26-8
+         * post-mortem class over round 30's own records): the
+         * composite round 30 drove and pinned was NOT lint-clean —
+         * the pad's '";' leaves the lexer in PHP mode at the
+         * laundering half's second '<?php' (php -l: "unexpected
+         * token <", line 2; verified this round against the exact
+         * fixture spelling) — while the laundering payload alone IS
+         * lint-clean, and the records' "lint-clean" adjective
+         * attached to the composite was false. The GENUINELY
+         * lint-clean composite closes the pad with '?>' (the
+         * implied semicolon, glm29-2's own terminator class), so
+         * the lexer re-enters HTML mode and the laundering half's
+         * open tag is legal again — php -l verified — and the drive
+         * it never got in round 30 rides here: the pad hides
+         * nothing, the laundering include flags through it, and the
+         * report carries violations, never the refusal.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php $x = __DIR__ . "/a.php"; require $x . "' . str_repeat('A', 700000) . '" ?>' . "\n"
+            . "<?php \$map = array( __DIR__ . '/safe.php' );\nforeach (\$map as \$f) { require \$f ?><?php \$map = \$_GET[\"page\"] ?><?php }\n"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'The genuinely lint-clean composite laundering pad flags — the close-tag-terminated pad hides nothing.');
+        $this->assertStringContainsString('require $f', $report, 'The violation names the laundering include behind the lint-clean pad.');
+        $this->assertStringNotContainsString('could not be scanned for includes', $report, 'The lint-clean composite scans — never refused.');
     }
 
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
