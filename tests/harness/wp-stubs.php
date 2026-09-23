@@ -1763,11 +1763,46 @@ function check_admin_referer($action = -1, $query_arg = '_wpnonce')
 
 function check_ajax_referer($action = -1, $query_arg = false, $die = true)
 {
-    if (false === $query_arg) {
-        $query_arg = '_ajax_nonce';
+    /*
+     * glm27-6: core's own shape (pluggable.php, pinned 7.1.1 — the
+     * pin names the third parameter $stop; the same seat, spelled
+     * $die here). The seat DELEGATED to check_admin_referer(), which
+     * dropped \$die and answered the admin twin's own contract — a
+     * false return with execution CONTINUING — where core's ajax
+     * twin DIES on the failure (the opposite behavior; the
+     * adjudicated check_admin_referer no-die contract is that
+     * function's, never this seat's). The nonce lookup is core's own
+     * three-way order: the named query arg, then '_ajax_nonce', then
+     * '_wpnonce'; the verdict rides wp_verify_nonce() and the
+     * 'check_ajax_referer' action fires with core's arity over it.
+     */
+    if (-1 === $action) {
+        _doing_it_wrong(__FUNCTION__, 'You should specify an action to be verified by using the first parameter.', '4.7.0');
+    }
+    $nonce = '';
+    if ($query_arg && isset($_REQUEST[ $query_arg ])) {
+        $nonce = $_REQUEST[ $query_arg ];
+    } elseif (isset($_REQUEST['_ajax_nonce'])) {
+        $nonce = $_REQUEST['_ajax_nonce'];
+    } elseif (isset($_REQUEST['_wpnonce'])) {
+        $nonce = $_REQUEST['_wpnonce'];
+    }
+    $result = wp_verify_nonce($nonce, $action);
+    do_action('check_ajax_referer', $action, $result);
+    if ($die && false === $result) {
+        /*
+         * Emulation boundary, recorded: core splits wp_doing_ajax()
+         * (wp_die(-1, 403)) from a plain die('-1'); the harness has
+         * no wp_doing_ajax() and ONE die vocabulary — its wp_die()
+         * stub, which THROWS the RuntimeException that stops
+         * execution under the suite's warning-to-exception regime.
+         * The 403 response shape rides the args core's own call
+         * carries.
+         */
+        wp_die('-1', '', array( 'response' => 403 ));
     }
 
-    return check_admin_referer($action, $query_arg);
+    return $result;
 }
 
 function wp_nonce_field($action = -1, $name = '_wpnonce', $referer = true, $echo = true)

@@ -2703,6 +2703,39 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertTrue(check_admin_referer('test_action'));
     }
 
+    /**
+     * glm27-6: check_ajax_referer() rides core's \$die contract
+     * (pluggable.php, pinned 7.1.1 — the pin names the parameter
+     * \$stop): a nonce FAILURE with \$die standing STOPS EXECUTION —
+     * core's wp_die(-1, 403), the harness's wp_die() stub throwing
+     * the RuntimeException that halts the caller (the recorded
+     * emulation boundary). The seat once delegated to
+     * check_admin_referer(), whose adjudicated no-die contract
+     * answered a plain false with execution CONTINUING — the
+     * opposite behavior, the admin twin's contract riding the ajax
+     * seat (driven red at HEAD: the failure returned, the caller
+     * kept running).
+     */
+    public function testAjaxRefererDiesOnNonceFailureWhenDieStands()
+    {
+        $this->asAdministrator();
+        $_REQUEST['_ajax_nonce'] = 'forged';
+
+        $caught = null;
+        try {
+            check_ajax_referer('glm27_act');
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+        $this->assertNotNull($caught, 'The failed nonce with $die standing STOPS EXECUTION — the wp_die stub\'s RuntimeException (red at HEAD: the call returned and the caller kept running).');
+        $this->assertStringContainsString('-1', $caught->getMessage(), 'The die carries core\'s own \'-1\' payload.');
+
+        $this->assertFalse(check_ajax_referer('glm27_act', false, false), '$die=false answers the false verdict UNCHANGED — no die, execution continues.');
+
+        $_REQUEST['_ajax_nonce'] = wp_create_nonce('glm27_act');
+        $this->assertSame(1, check_ajax_referer('glm27_act'), 'A valid nonce answers wp_verify_nonce()\'s own 1 — no die over the passing shape.');
+    }
+
     /*
      * Secret-handling helper.
      */
