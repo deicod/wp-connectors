@@ -596,6 +596,39 @@ function add_option($option, $value = '', $deprecated = '', $autoload = null)
     return true;
 }
 
+/**
+ * The ONE row-exists predicate for the delete seat (glm27-3): the
+ * missing-row consult AND the post-pre-hook affected-rows gate read
+ * the SAME three representations of core's one row — the seeded
+ * literal option row, the value-half transient (identity-keyed,
+ * glm26-1), and the armed timeout half (glm27-1's model of the
+ * '_transient_timeout_<name>' row). The gate is core's own shape
+ * (option.php:1253, pinned 7.1.1): \$wpdb->delete()'s AFFECTED ROWS
+ * decide the success pair, and a mid-action observer at the
+ * 'delete_option' pre-hook that deleted the row leaves the delete
+ * affecting nothing — false, no success hooks — where the seat once
+ * fired the pair unconditionally (the glm26-2 class one seat over:
+ * the store re-consulted, never the pre-family capture trusted).
+ *
+ * @param string      $option    Option name.
+ * @param string|false $transient The value-half transient name, or false.
+ * @param string|false $timeout_of The timeout-half transient name, or false.
+ * @return bool True when any modeled representation of the row is live.
+ */
+function wp_connectors_delete_option_row_live($option, $transient, $timeout_of)
+{
+    if (array_key_exists($option, WpHarness::$options)) {
+        return true;
+    }
+    if (false !== $transient && array_key_exists($transient, WpHarness::$transients)) {
+        return true;
+    }
+
+    return false !== $timeout_of
+        && isset(WpHarness::$transients[ $timeout_of ])
+        && false !== WpHarness::$transients[ $timeout_of ]['expires_at'];
+}
+
 function delete_option($option)
 {
     /*
@@ -638,12 +671,7 @@ function delete_option($option)
      */
     $transient = wp_connectors_transient_name_from_option($option);
     $timeout_of = wp_connectors_transient_timeout_name_from_option($option);
-    if (! array_key_exists($option, WpHarness::$options)
-        && ! (false !== $transient && array_key_exists($transient, WpHarness::$transients))
-        && ! (false !== $timeout_of
-            && isset(WpHarness::$transients[ $timeout_of ])
-            && false !== WpHarness::$transients[ $timeout_of ]['expires_at'])
-    ) {
+    if (! wp_connectors_delete_option_row_live($option, $transient, $timeout_of)) {
         // Core still runs the DELETE (and its caches) for a missing row;
         // record the ATTEMPT so tests can pin "no needless delete" call
         // shapes (e.g. availability state cleanup).
@@ -661,8 +689,22 @@ function delete_option($option)
      * check returns before the pre-hook). The seat modeled zero hook
      * seats — newly load-bearing because glm25-6 routes every
      * transient deletion through this seat as core's own delegation.
+     *
+     * glm27-3: 'successful' is core's AFFECTED-ROWS gate
+     * (option.php:1253, pinned 7.1.1) — the delete's result decides
+     * the pair, and the harness's result is the store re-consult: a
+     * mid-action observer at the pre-hook may have deleted the row
+     * (a legal core shape; the inner delete answers its own family),
+     * and the outer delete then affects NOTHING — false with no
+     * success hooks, never the true + double pair the seat once
+     * answered (driven; the glm26-2 class one seat over).
      */
     do_action('delete_option', $option);
+    if (! wp_connectors_delete_option_row_live($option, $transient, $timeout_of)) {
+        WpHarness::$delete_option_attempts[] = $option;
+
+        return false;
+    }
     if (false !== $transient) {
         unset(WpHarness::$transients[ $transient ]);
     }

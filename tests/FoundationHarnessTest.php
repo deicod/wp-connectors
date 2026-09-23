@@ -1111,6 +1111,44 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
     }
 
     /**
+     * glm27-3: the success pair rides core's AFFECTED-ROWS gate
+     * (option.php:1253, pinned 7.1.1) — \$wpdb->delete()'s result
+     * decides the pair, and a mid-action observer at the
+     * 'delete_option' pre-hook that deletes the row itself leaves
+     * the outer delete affecting NOTHING: core answers FALSE with no
+     * keyed/closing hooks over that row (the inner delete answered
+     * its own family), where the seat fired the pair
+     * unconditionally — true plus the DOUBLE family (driven red at
+     * HEAD). The store re-consult is the harness's affected-rows
+     * reading, the glm26-2 class one seat over.
+     */
+    public function testDeleteOptionGatesTheSuccessPairOnAffectedRows()
+    {
+        $order = array();
+        $observe = static function (...$args) use (&$order) {
+            $order[] = $args;
+        };
+        add_action('delete_option', $observe, 10, 1);
+        add_action('delete_option_glm27_gate', $observe, 10, 1);
+        add_action('deleted_option', $observe, 10, 1);
+        $fired = 0;
+        add_action('delete_option', static function ($option) use (&$fired) {
+            if (0 === $fired++) {
+                delete_option($option); // The mid-action deleting observer (one shot).
+            }
+        });
+
+        $this->assertTrue(add_option('glm27_gate', 'x'), 'staging: the row saves.');
+        $this->assertFalse(delete_option('glm27_gate'), 'The outer delete answers FALSE — its row was already gone when the DELETE ran, core\'s own affected-rows verdict (red at HEAD: true).');
+        $this->assertSame(
+            array( array( 'glm27_gate' ), array( 'glm27_gate' ), array( 'glm27_gate' ), array( 'glm27_gate' ) ),
+            $order,
+            'The family fires core\'s shape over the observer delete — the generic pre-hook TWICE (outer and inner), the keyed/closing pair ONCE (the inner\'s alone; red at HEAD: the pair doubled).'
+        );
+        $this->assertFalse(get_option('glm27_gate'), 'The row is gone either way — the gate is about the verdict and the pair, never the store.');
+    }
+
+    /**
      * glm27-2: the hook ITERATION re-syncs with the live registration
      * array — core's WP_Hook walks priorities through a pointer that
      * add_filter()/remove_filter() resort mid-run
