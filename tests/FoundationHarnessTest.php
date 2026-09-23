@@ -2758,6 +2758,28 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      * Secret-handling helper.
      */
 
+    /**
+     * glm27-8: the plaintext-scan assertion NAMES an unencodable
+     * stored value — wp_json_encode() answers false for one (NAN, a
+     * resource, recursion, invalid UTF-8), and the false feeding the
+     * natively string-typed assert under strict_types answered a
+     * TypeError — the engine's vocabulary over the harness's own
+     * failure channel (driven red at HEAD: TypeError, never a
+     * verdict). The failed encode is a named finding of its own; the
+     * verdict channel stays the assertion's.
+     */
+    public function testEncryptedOptionAssertionNamesAnUnencodableStoredValue()
+    {
+        update_option('fixture_unencodable', NAN);
+
+        try {
+            $this->assertOptionNotPlaintext('fixture_unencodable', 'sk-fixture-not-a-real-key');
+            $this->fail('The unencodable stored value must fail the assertion — a false encode is never a pass.');
+        } catch (PHPUnit\Framework\ExpectationFailedException $e) {
+            $this->assertStringContainsString('could not be JSON-encoded', $e->getMessage(), 'The failure NAMES the encode — the stored shape is itself the finding (red at HEAD: a TypeError, never a verdict).');
+        }
+    }
+
     public function testEncryptedOptionAssertionDetectsPlaintextSecrets()
     {
         $secret = 'sk-fixture-not-a-real-key-0123456789abcdef';

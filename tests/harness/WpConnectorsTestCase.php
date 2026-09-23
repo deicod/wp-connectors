@@ -161,8 +161,17 @@ abstract class WpConnectorsTestCase extends TestCase
         }
 
         if ($leaks !== array()) {
+            /*
+             * glm27-8: the encode is GUARDED — wp_json_encode() answers
+             * false for an unencodable attempt row (a resource the SDK
+             * transport recorded, invalid UTF-8 in a URL), and the
+             * unguarded concat silently dropped the whole leak detail
+             * into '' — the warning naming nothing it promised to name.
+             */
+            $encoded = wp_json_encode($leaks);
             $this->addWarning(
-                'Test made unmocked HTTP attempts (wp_remote_* or SDK transport): ' . wp_json_encode($leaks)
+                'Test made unmocked HTTP attempts (wp_remote_* or SDK transport): '
+                . (false !== $encoded ? $encoded : sprintf('[%d unmocked attempts; the JSON encode of the leak rows itself failed]', count($leaks)))
             );
         }
     }
@@ -1011,7 +1020,18 @@ abstract class WpConnectorsTestCase extends TestCase
     protected function assertOptionNotPlaintext($option, $secret, $message = '')
     {
         $this->assertNotSame(false, get_option($option, false), sprintf('Option "%s" is not set.', $option));
+        /*
+         * glm27-8: the encode is GUARDED — wp_json_encode() answers
+         * false for an unencodable stored value (NAN, a resource,
+         * recursion, invalid UTF-8), and the false feeding the
+         * natively string-typed assert under strict_types answered a
+         * TypeError instead of a verdict — the harness's own failure
+         * vocabulary, never the assertion's. The failed encode is a
+         * NAMED failure of its own: an unencodable stored row is
+         * itself a finding the caller must read, never a crash.
+         */
         $stored = wp_json_encode(get_option($option));
+        $this->assertNotFalse($stored, sprintf('Option "%s" could not be JSON-encoded for the plaintext scan — the stored value carries an unencodable shape (NAN, resource, recursion, invalid UTF-8) that is itself a finding; name the shape before judging the secret.', $option));
         $this->assertStringNotContainsString($secret, $stored, $message !== '' ? $message : sprintf('Option "%s" contains the plaintext secret.', $option));
     }
 
