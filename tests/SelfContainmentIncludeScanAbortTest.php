@@ -370,6 +370,43 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringContainsString('depends on $f with no resolvable same-file assignment', $report, 'The include flags through its no-resolvable-assignment reason — the junk source collected nothing.');
     }
 
+    public function testAMegabyteNowdocQuoteByteCannotMisPairTheView(): void
+    {
+        /*
+         * R36-1 (security:medium, driven fail-open — round 35's
+         * megabyte degrade arm): the quote-grammar view MIS-PAIRS
+         * when a quote byte rides inside a megabyte nowdoc body —
+         * the mis-paired span blanking the real __DIR__ code token
+         * from every statement-seat consult and consuming the
+         * traversal literal's opening quote, the whole
+         * anchor/escape analysis silently dropped (driven,
+         * lint-clean: 0 violations where the one-quote-byte-short
+         * control flags — the arm's documented ceiling covered
+         * only body-text-reads-as-anchored, the fail-OPEN
+         * direction undocumented; and the arm carried no
+         * abort/length guard of its own, a PCRE abort collapsing
+         * the blanked view to zero bytes silently consumed —
+         * R36-3). THE ARM IS DELETED — the tokenizer view at
+         * every size, its OOM motivation having been the 8MB pad
+         * whose halving removed it (a synthetic fail-closed view
+         * was tried and refuted in derivation: the seats DEFER to
+         * the literal analysis on an anchor-less view, so the
+         * sentinel silenced the deferring seats while the loop
+         * seat stayed anchored — fail-open through the deferral
+         * chain, driven 0 on the control itself). Both the
+         * mis-paired and the escaping-literal shapes flag now.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php require <<<'EOT'\n" . str_repeat('A', 1100000) . "\"\nEOT . __DIR__ . \"/../outside.php\";"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+
+        $this->assertNotEmpty($violations, 'A quote byte inside a megabyte nowdoc body cannot mis-pair the anchor/escape analysis away — the escaping literal flags (red at HEAD: 0 violations where the control flags).');
+        $this->assertStringContainsString('not provably inside the plugin dir', implode("\n", $violations), 'The escape through the megabyte nowdoc flags through the tokenizer view at every size.');
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*

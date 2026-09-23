@@ -2654,24 +2654,32 @@ function wp_connectors_anchor_view($statement)
     }
 
     /*
-     * t31-glm35-6 [R35-8's memory half, driven — the statement
-     * seats' re-tokenization]: the owner's tokenizer pass over a
-     * MEGABYTE expression tips the 128M runner at suite-ambient
-     * memory (the 8MB pad test order-dependently fataling through
-     * include_expression_reasons -> anchor_view ->
-     * mask_string_contents -> token_get_all, the full stack driven)
-     * — round 34's quote-grammar view carried no tokenizer and the
-     * 8MB pad never fatalled. Above 1MB the view degrades to the
-     * QUOTE-GRAMMAR blanker (linear, low-memory): the documented
-     * ceiling is heredoc-blindness beyond the cap — a >1MB
-     * heredoc/nowdoc body's anchor text reads as anchored there,
-     * the pre-glm34-2 posture for hostile sizes only (the loop
-     * seat never reaches this arm at all since glm35-3 — it slices
-     * the file's own masked view, tokenized once at driver scale).
+     * t31-glm36-1 [R36-1+R36-3, security:medium, driven — round
+     * 35's degrade arm failed OPEN, the arm DELETED]: the quote-
+     * grammar view MIS-PAIRS when a quote byte rides inside a
+     * megabyte heredoc/nowdoc body — the mis-paired span blanking
+     * the real __DIR__ code token from every statement-seat
+     * consult and consuming the traversal literal's opening
+     * quote, the whole anchor/escape analysis silently dropped
+     * (driven, lint-clean: the mis-paired nowdoc shape answered 0
+     * violations where the one-quote-byte-short control flags,
+     * the escaping-literal twin 0 where its control flags — the
+     * arm's documented ceiling covered only body-text-reads-as-
+     * anchored, the fail-OPEN direction undocumented), and the
+     * arm carried no abort/length guard of its own (a PCRE abort
+     * collapsing the blanked view to zero bytes silently
+     * consumed — R36-3, the exact contract the shrunken-view
+     * guard below states). A synthetic fail-closed view was
+     * tried and REFUTED IN DERIVATION: the runtime-segment seat
+     * DEFERS to 'the literal analysis' whenever its view shows no
+     * anchor, so an empty view silences the deferring seats while
+     * the loop seat (the file's own masked slice) stays anchored
+     * — fail-open through the deferral chain, driven 0 violations
+     * on the CONTROL itself. The tokenizer view stands at every
+     * size — the arm's OOM motivation was the 8MB pad whose
+     * halving (glm35-6) removed it; the stress verification is
+     * the pad test and the eight-run check discipline.
      */
-    if (strlen($statement) > 1048576) {
-        return wp_connectors_blank_quoted_strings($statement);
-    }
 
     $view = (string) substr(wp_connectors_mask_string_contents('<?php ' . $statement), 6);
     if (strlen($view) !== strlen($statement)) {
