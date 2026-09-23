@@ -549,6 +549,45 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringContainsString('variable $f resolves to a path', $report, 'The trailing write target joins the proof — the EOF over-approximation refusing, never laundering.');
     }
 
+    public function testAnUnterminatedWriteAtEofIsStillCollected(): void
+    {
+        /*
+         * R39-2 (security:medium, driven fail-open): both assignment
+         * collectors' terminator alternation had no END-OF-INPUT
+         * arm, so a write terminated by neither ';' nor '?>' at the
+         * end of the file was invisible even though the span walk
+         * over-approximates the unclosed '{' to EOF (R38-5) — the
+         * unterminated while and map shapes answering 0 violations
+         * where their terminated twins flag, the pre-include benign
+         * assignment alone proving the include clean. The
+         * alternation admits the end of input: an unterminated
+         * write is still a write. THE FIXTURES ARE DELIBERATELY
+         * NOT LINT-CLEAN (php -l refuses each unterminated shape),
+         * the pre-lint hostile-tree threat model the standing
+         * precedent.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php $f = __DIR__ . "/inside.php"; while (true) { require $f; $f = "/etc/passwd"'
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'An unterminated write at EOF is still collected — the benign pre-include assignment never proves the include alone (red at HEAD: 0 violations).');
+        $this->assertStringContainsString('variable $f resolves to a path', $report, 'The trailing write target joins the proof — collected to the last byte.');
+
+        $map_root = $this->root . '-map';
+        mkdir($map_root, 0755, true);
+        $this->extra_roots[] = $map_root;
+        file_put_contents(
+            $map_root . '/fixture.php',
+            '<?php $map = array(__DIR__ . "/safe.php"); foreach ($map as $f) { require $f; $map = array("/etc/passwd")'
+        );
+        $map_violations = wp_connectors_self_containment_violations($map_root);
+        $this->assertNotEmpty($map_violations, 'The map twin likewise — the unterminated map write collected beside the benign literal.');
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*

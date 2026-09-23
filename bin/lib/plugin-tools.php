@@ -3386,7 +3386,20 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * seat) and a later ';' never glues the capture across the close
      * tag into unrelated code.
      */
-    $write_matches = preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+?)(?:;|\?>)/', $before, $writes, PREG_SET_ORDER);
+    /*
+     * t31-glm39-2 [R39-2, security:medium, driven fail-open — the
+     * terminator alternation has no END-OF-INPUT arm]: a write
+     * terminated by neither ';' nor '?>' at the end of the file was
+     * invisible to the collector even though the span walk
+     * over-approximates the unclosed '{' to EOF (R38-5) — the
+     * unterminated 'while (true) { require $f; $f = "/etc/passwd"'
+     * answering 0 violations where the terminated twin flags (the
+     * pre-lint hostile-tree threat model, the payloads parse errors
+     * the scan judges before any gate). The alternation admits the
+     * END OF INPUT beside the two terminators — an unterminated
+     * write is still a write, its bytes collected to the last byte.
+     */
+    $write_matches = preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+?)(?:;|\?>|$)/', $before, $writes, PREG_SET_ORDER);
     if (false === $write_matches) {
         return false; // A PCRE abort refuses the proof (glm36-8).
     }
@@ -3515,7 +3528,8 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      * and a later ';' never glues the collection across the close tag.
      */
     $assignments = array();
-    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))[^;]+?(?:;|\?>)/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
+    // t31-glm39-2: the same END-OF-INPUT arm at this seat — see the write-shape twin at wp_connectors_array_writes_recognized.
+    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))[^;]+?(?:;|\?>|$)/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
         foreach ($matches[0] as $assignment) {
             if (! $visible($assignment[1])) {
                 // Outside every region the include can read a write from.
