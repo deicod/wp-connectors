@@ -407,6 +407,54 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringContainsString('not provably inside the plugin dir', implode("\n", $violations), 'The escape through the megabyte nowdoc flags through the tokenizer view at every size.');
     }
 
+    public function testATerminatorJunkAssignmentProvesNothing(): void
+    {
+        /*
+         * R36-2 (security:medium, driven fail-open — round 35's
+         * junk guard was ONE SPELLING of a class): every
+         * terminator byte in the value extractor's trim class
+         * reduces a minted assignment to nothing — '$f = ;' at the
+         * plain collector, '?' or ')' on a foreach source, junk on
+         * the value side — and the layered trims erased the junk
+         * from the substituted statement until nothing remained to
+         * flag (driven: four spellings, all 0 violations at HEAD
+         * where the parse-valid twins flag, ALL pre-existing at
+         * the baseline — round 35's records claiming the class
+         * root-fixed, the class-level correction at the docs). THE
+         * GUARD at the extractor seam — one class, both collector
+         * seats, every spelling: an assignment whose extracted
+         * value reduces to nothing under the terminator trim is no
+         * assignment. THE FIXTURES ARE DELIBERATELY NOT LINT-CLEAN
+         * (php -l refuses each junk spelling), the pre-lint
+         * hostile-tree threat model the standing precedent.
+         */
+        $shapes = array(
+            'plain mint' => '<?php $f = ; require __DIR__ . "/" . $f;',
+            'question source' => '<?php foreach (? as $f) { require __DIR__ . "/" . $f; }',
+            'paren source' => '<?php foreach () as $f) { require __DIR__ . "/" . $f; }',
+            'value-side junk' => '<?php foreach ($map as $f = ;) { require __DIR__ . "/" . $f; }',
+        );
+
+        foreach ($shapes as $name => $code) {
+            $root = $this->root . '-' . md5($name);
+            mkdir($root, 0755, true);
+            $this->extra_roots[] = $root;
+            file_put_contents($root . '/fixture.php', $code);
+
+            $violations = wp_connectors_self_containment_violations($root);
+
+            $this->assertNotEmpty($violations, sprintf('The %s junk shape proves nothing — the include flags, never laundering through trims that erase the junk (red at HEAD: 0 violations).', $name));
+            $this->assertStringContainsString('no resolvable same-file assignment', implode("\n", $violations), sprintf('The %s shape flags through the no-resolvable-assignment reason.', $name));
+        }
+
+        // The parse-valid control keeps its own reason.
+        $control = $this->root . '-control';
+        mkdir($control, 0755, true);
+        $this->extra_roots[] = $control;
+        file_put_contents($control . '/fixture.php', '<?php $f = $unknown; require __DIR__ . "/" . $f;');
+        $this->assertStringContainsString('depends on $f built from unresolvable runtime segments', implode("\n", wp_connectors_self_containment_violations($control)), 'The parse-valid twin keeps its own runtime-segment reason — the guard refuses only the reduces-to-nothing spellings.');
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*

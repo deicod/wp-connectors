@@ -3713,6 +3713,24 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
         }
         foreach ($assignments as $assignment) {
             $value = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
+            /*
+             * t31-glm36-2 [R36-2, security:medium, driven fail-open —
+             * round 35's junk guard was ONE SPELLING of a class]: an
+             * assignment whose extracted value reduces to NOTHING
+             * under the terminator trim ('$f = ;', a '?' or ')'
+             * body, junk on the value side — every terminator byte
+             * in the class trimming away at this seam) proves
+             * nothing: the mint never happened as far as the runtime
+             * is concerned, and the include reads as having no
+             * resolvable assignment — flagged, never substituted
+             * into a statement whose junk the later trims would
+             * erase to clean (driven: four spellings, all 0
+             * violations at HEAD where the parse-valid twins flag).
+             */
+            if ('' === trim($value, " \t\n\r();?>")) {
+                $reasons[] = sprintf('depends on %s with no resolvable same-file assignment', $segment);
+                continue;
+            }
             if (wp_connectors_include_runtime_segments($value) !== array()) {
                 $reasons[] = sprintf('depends on %s built from unresolvable runtime segments', $segment);
                 continue;
@@ -3835,6 +3853,13 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
 function wp_connectors_assignment_value_reasons($file, $code, $reason_variable, $owned_variable, $expression, $offset, $pluginDir, $masked, $prefix, $depth)
 {
     $reasons = array();
+
+    // t31-glm36-2: an extracted value that reduces to nothing under the
+    // terminator trim is no assignment (see the segment-walk seam — one
+    // class, both collector seats, every spelling).
+    if ('' === trim($expression, " \t\n\r();?>")) {
+        return array( sprintf($prefix, 'is not anchored to __DIR__ or ABSPATH') );
+    }
 
     if (preg_match('/^(?:array\s*\(|\[)/i', $expression)
         && wp_connectors_array_writes_recognized($masked, $owned_variable, $offset)) {
