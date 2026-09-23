@@ -403,12 +403,28 @@ final class ZaiSettingsTest extends WpConnectorsTestCase
             PlanRegionSettings::OPTION_PLAN => 'general',
         );
 
-        do_action('admin_init');
-
-        // Nonce enforcement is terminal in real WordPress (check_admin_referer
-        // wp_dies); the guard records the failure and leaves the rest to core.
-        $this->assertNotEmpty(WpHarness::$doing_it_wrong);
-        $this->assertArrayNotHasKey('zai_connector_unauthorized', array_column(WpHarness::$settings_errors, 'code'));
+        /*
+         * glm28-2: core enforcement IS the die — check_admin_referer()
+         * terminates a failed verification through wp_nonce_ays()
+         * (pluggable.php:1374, pinned), and the harness's wp_die()
+         * stub answers the RuntimeException. The test's own prior
+         * shape asserted post-conditions that only ran because the
+         * die never fired (the doing_it_wrong row the stub's old
+         * no-die contract recorded) — the exact live consumer the
+         * glm15 refutation's re-open rule waited on. The plugin-side
+         * post-condition survives the re-derivation: the guard
+         * emitted NOTHING of its own (no unauthorized notice, the
+         * capability path's vocabulary) — enforcement is core's.
+         */
+        $caught = null;
+        try {
+            do_action('admin_init');
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+        $this->assertNotNull($caught, 'An authorized save with an invalid nonce is stopped by CORE enforcement — the wp_die stub\'s RuntimeException through wp_nonce_ays().');
+        $this->assertStringContainsString('The link you followed has expired.', $caught->getMessage(), 'The die carries core\'s own generic nonce-failure message.');
+        $this->assertArrayNotHasKey('zai_connector_unauthorized', array_column(WpHarness::$settings_errors, 'code'), 'The plugin guard emitted nothing of its own — the nonce is core\'s to enforce.');
     }
 
     public function testPlanSwitchInvalidatesStateButKeepsTheStoredKey()

@@ -1746,19 +1746,55 @@ function wp_verify_nonce($nonce, $action = -1)
     return is_string($nonce) && hash_equals(wp_create_nonce($action), $nonce) ? 1 : false;
 }
 
+/*
+ * glm28-2: core's wp_nonce_ays() (functions.php:3727, pinned 7.1.1) —
+ * the die screen check_admin_referer() terminates a failed
+ * verification through. The harness models the GENERIC arm (the
+ * 'log-out' arm's logout-URL rendering rides core machinery the
+ * harness does not stub — the recorded divergence at this seam, the
+ * generic message serving every action the suite drives).
+ */
+function wp_nonce_ays($action)
+{
+    wp_die(__('The link you followed has expired.'), __('An error occurred.'), array( 'response' => 403 ));
+}
+
 function check_admin_referer($action = -1, $query_arg = '_wpnonce')
 {
-    $nonce = isset($_REQUEST[ $query_arg ]) ? (string) wp_unslash($_REQUEST[ $query_arg ]) : '';
-    if ($nonce !== '' && wp_verify_nonce($nonce, $action)) {
-        return true;
+    /*
+     * glm28-2: core's own shape (pluggable.php:1374, pinned 7.1.1) —
+     * a FAILED verification DIES (wp_nonce_ays + die), whatever the
+     * request carried: the glm15 refutation's premise ("dies ONLY
+     * when \$query_arg is absent") was falsified against the pin (a
+     * PRESENT-but-bad nonce dies identically), and the re-open rule
+     * its own entry names — a driven spelling where the stub's
+     * verdict differs from core's on the same request — fired at the
+     * live consumer (ZaiSettingsTest's authorized-user-without-valid-
+     * nonce leg asserted post-conditions that only ran because the
+     * die never fired). The former seat recorded the failure into
+     * doing_it_wrong and CONTINUED — the opposite contract. The
+     * emulation boundary is the ajax twin's own (glm27-6): the
+     * harness has ONE die vocabulary, its wp_die() stub THROWING the
+     * RuntimeException that stops execution — wp_nonce_ays() never
+     * returns here, and core's trailing die() is unreachable by
+     * construction. Core's referer escape (-1 === \$action with a
+     * referer under admin_url()) is dropped with the boundary
+     * recorded: the harness answers no referer vocabulary, so the
+     * escape arm is unconstructible in this engine — every failed
+     * verification dies, the stricter and simpler truth of the two.
+     */
+    if (-1 === $action) {
+        _doing_it_wrong(__FUNCTION__, 'You should specify an action to be verified by using the first parameter.', '3.2.0');
     }
-    WpHarness::$doing_it_wrong[] = array(
-        'function' => 'check_admin_referer',
-        'message' => 'Nonce verification failed in the test harness.',
-        'version' => '0.0.0',
-    );
+    $nonce = isset($_REQUEST[ $query_arg ]) ? (string) wp_unslash($_REQUEST[ $query_arg ]) : '';
+    $result = '' !== $nonce ? wp_verify_nonce($nonce, $action) : false;
+    do_action('check_admin_referer', $action, $result);
+    if (! $result) {
+        wp_nonce_ays($action);
+        die(); // phpcs:ignore Generic.CodeAnalysis.UnreachableCode -- core's own trailing die, unreachable through the throwing stub.
+    }
 
-    return false;
+    return $result;
 }
 
 function check_ajax_referer($action = -1, $query_arg = false, $die = true)
@@ -1771,7 +1807,11 @@ function check_ajax_referer($action = -1, $query_arg = false, $die = true)
      * false return with execution CONTINUING — where core's ajax
      * twin DIES on the failure (the opposite behavior; the
      * adjudicated check_admin_referer no-die contract is that
-     * function's, never this seat's). The nonce lookup is core's own
+     * function's, never this seat's — CORRECTED at glm28-2: that
+     * no-die contract was itself falsified against the pin, the
+     * admin twin now dying on every failed verification; the
+     * delegation this paragraph records answered the WRONG contract
+     * either way). The nonce lookup is core's own
      * three-way order: the named query arg, then '_ajax_nonce', then
      * '_wpnonce'; the verdict rides wp_verify_nonce() and the
      * 'check_ajax_referer' action fires with core's arity over it.

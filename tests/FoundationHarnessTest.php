@@ -2711,14 +2711,35 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('https://example.test/wp-content/plugins', plugins_url(), 'The empty path answers the bare plugins URL — core\'s non-empty-string guard, no trailing slash.');
     }
 
-    public function testAdminRefererChecksNonce()
+    /**
+     * glm28-2: check_admin_referer() rides core's die-contract
+     * (pluggable.php:1374, pinned 7.1.1): a FAILED verification
+     * terminates the request through wp_nonce_ays() — the glm15
+     * refutation's premise ("dies only when the nonce is absent")
+     * falsified against the pin, the re-open rule its own entry
+     * names fired at the live consumer. The harness's one die
+     * vocabulary answers: the wp_die() stub's RuntimeException,
+     * core's generic wp_nonce_ays message riding it (driven red at
+     * HEAD: the failure returned false and the caller kept running).
+     */
+    public function testAdminRefererDiesOnNonceFailure()
     {
         $this->asAdministrator();
+        $_REQUEST['_wpnonce'] = 'forged';
 
-        $this->assertFalse(check_admin_referer('test_action'));
+        $caught = null;
+        try {
+            check_admin_referer('test_action');
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+        $this->assertNotNull($caught, 'A failed verification STOPS EXECUTION through the harness\'s wp_die stub — red at HEAD the call returned false and the caller kept running.');
+        $this->assertStringContainsString('The link you followed has expired.', $caught->getMessage(), 'The die carries core\'s own generic wp_nonce_ays() message.');
 
+        // The valid-nonce leg answers wp_verify_nonce()'s own 1 — no die
+        // over the passing shape.
         $this->withValidNonce('test_action');
-        $this->assertTrue(check_admin_referer('test_action'));
+        $this->assertSame(1, check_admin_referer('test_action'), 'A valid nonce answers wp_verify_nonce()\'s own 1, execution continuing.');
     }
 
     /**
@@ -2732,7 +2753,9 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      * answered a plain false with execution CONTINUING — the
      * opposite behavior, the admin twin's contract riding the ajax
      * seat (driven red at HEAD: the failure returned, the caller
-     * kept running).
+     * kept running; CORRECTED at glm28-2: that no-die contract was
+     * itself falsified against the pin — both twins die on a failed
+     * verification now, the admin seat through wp_nonce_ays()).
      */
     public function testAjaxRefererDiesOnNonceFailureWhenDieStands()
     {
