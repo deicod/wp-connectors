@@ -1983,9 +1983,89 @@ function sanitize_key($key)
     return apply_filters('sanitize_key', $sanitized_key, $key);
 }
 
+/**
+ * Strips out all characters that are not allowable in an email —
+ * core's gates verbatim (glm28-6, formatting.php:3831 pinned 7.1.1).
+ *
+ * The seat was a bare FILTER_SANITIZE_EMAIL passthrough, so
+ * 'bogus@@example..com' passed where core answers '' and the
+ * `if ( ! $email = sanitize_email( ... ) )` idiom never saw the
+ * refusal — the documented dot/at/length checks are the contract
+ * every consumer of the sanitizer rides. Each gate and the success
+ * path speak core's own 'sanitize_email' filter arms (context string
+ * third; the harness's apply_filters answers with no suite listener
+ * changing the value).
+ *
+ * @param string $email Email address to filter.
+ * @return string The filtered email address ('' when a gate refuses).
+ */
 function sanitize_email($email)
 {
-    return filter_var((string) $email, FILTER_SANITIZE_EMAIL);
+    $email = (string) $email;
+
+    // Test for the minimum length the email can be.
+    if (strlen($email) < 6) {
+        return apply_filters('sanitize_email', '', $email, 'email_too_short');
+    }
+
+    // Test for an @ character after the first position.
+    if (false === strpos($email, '@', 1)) {
+        return apply_filters('sanitize_email', '', $email, 'email_no_at');
+    }
+
+    // Split out the local and domain parts.
+    list( $local, $domain ) = explode('@', $email, 2);
+
+    // LOCAL PART: Test for invalid characters.
+    $local = preg_replace('/[^a-zA-Z0-9!#$%&\'*+\/=?^_`{|}~\.-]/', '', $local);
+    if ('' === $local) {
+        return apply_filters('sanitize_email', '', $email, 'local_invalid_chars');
+    }
+
+    // DOMAIN PART: Test for sequences of periods.
+    $domain = preg_replace('/\.{2,}/', '', $domain);
+    if ('' === $domain) {
+        return apply_filters('sanitize_email', '', $email, 'domain_period_sequence');
+    }
+
+    // Test for leading and trailing periods and whitespace.
+    $domain = trim($domain, " \t\n\r\0\x0B.");
+    if ('' === $domain) {
+        return apply_filters('sanitize_email', '', $email, 'domain_period_limits');
+    }
+
+    // Split the domain into subs.
+    $subs = explode('.', $domain);
+
+    // Assume the domain will have at least two subs.
+    if (2 > count($subs)) {
+        return apply_filters('sanitize_email', '', $email, 'domain_no_periods');
+    }
+
+    // Create an array that will contain valid subs.
+    $new_subs = array();
+
+    // Loop through each sub.
+    foreach ($subs as $sub) {
+        // Test for leading and trailing hyphens.
+        $sub = trim($sub, " \t\n\r\0\x0B-");
+
+        // Test for invalid characters.
+        $sub = preg_replace('/[^a-z0-9-]+/i', '', $sub);
+
+        // If there's anything left, add it to the valid subs.
+        if ('' !== $sub) {
+            $new_subs[] = $sub;
+        }
+    }
+
+    // If there aren't 2 or more valid subs.
+    if (2 > count($new_subs)) {
+        return apply_filters('sanitize_email', '', $email, 'domain_no_valid_subs');
+    }
+
+    // Join valid subs into the new domain; put the email back together.
+    return apply_filters('sanitize_email', $local . '@' . implode('.', $new_subs), $email, null);
 }
 
 function absint($maybeint)

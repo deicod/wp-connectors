@@ -2747,6 +2747,29 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('', esc_url('/relative/path'), 'A scheme-less spelling keeps the seat\'s documented \'\' (core\'s relative arms ride the request context this stub does not model).');
     }
 
+    /**
+     * glm28-6: sanitize_email() rides core's gates (formatting.php
+     * pinned) — the bare FILTER_SANITIZE_EMAIL passthrough let
+     * 'bogus@@example..com' through where core answers '', so the
+     * `if ( ! $email = sanitize_email() )` idiom never saw the
+     * refusal.
+     */
+    public function testSanitizeEmailAnswersCoreSGateVerdicts()
+    {
+        $this->assertSame('', sanitize_email('bogus@@example..com'), 'The double-@/double-dot shape answers the domain gates\' refusal (red at HEAD: passthrough).');
+        $this->assertSame('', sanitize_email('a@b'), 'Under the six-byte minimum the length gate refuses (email_too_short).');
+        $this->assertSame('', sanitize_email('no-at-sign.test'), 'No @ after the first position refuses (email_no_at).');
+        $this->assertSame('', sanitize_email('()@example.test'), 'A local part empty after the character strip refuses (local_invalid_chars — the sub-address specials !#$%&*+/=?^_`{|}~.- are core\'s LEGAL local bytes and survive).');
+        $this->assertSame('', sanitize_email('user@example'), 'A domain without a second sub refuses (domain_no_periods).');
+        $this->assertSame('', sanitize_email('user@-.-'), 'Every sub stripped to nothing refuses (domain_no_valid_subs).');
+
+        // Valid emails unchanged, core's strip-then-verify shape intact.
+        $this->assertSame('user@example.test', sanitize_email('user@example.test'));
+        $this->assertSame('user.name+tag@example.test', sanitize_email('user.name+tag@example.test'));
+        $this->assertSame('', sanitize_email('user@sub..example...test'), 'A doubled period run is REMOVED whole (never collapsed) — the domain loses its separator and the no-periods gate refuses, core\'s own reading.');
+        $this->assertSame('user@example.test', sanitize_email('us er@exa mple.test'), 'Illegal bytes strip in place through the sanitizer — core\'s own cleaning, not a refusal.');
+    }
+
     public function testCapabilityGateDistinguishesUsers()
     {
         $this->asAnonymous();
