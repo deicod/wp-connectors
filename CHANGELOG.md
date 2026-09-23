@@ -6,6 +6,71 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 37)
+
+Twenty-third claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first): round 36's recorded unverified partials
+verified FIRST per the driver's order — all five refuted on driven
+probes (the three Url.php candidates: the bracket screens' jurisdiction
+is the host region, the dead >65535 arm is glm14-9's recorded
+derivation, the edge-strip is the refused-from-derivation doctrine
+working as adjudicated; the wp-stubs surfaces core-correct on the
+bounded re-drive). Still not zero — 15 confirmed candidates, the cap
+cutting eight harness divergences and the cleanup set. DRIVER
+ADJUDICATION under the scope rule: R37-1/5 (one class two seats),
+R37-2, R37-3 (the R33-6 axis riding), R37-4 accepted; R37-6/7/8
+(driven false-positive classes, pre-existing) and the harness set
+recorded as inheritance. Five commits t31-glm37-1..5, the full
+offline check green after EVERY commit. Suite 1935 → 1942 tests,
+48308 → 48337 assertions, 3 skipped unchanged.
+
+- **The pooled fleets' verdict reads anchor to the LAST exit line
+  (t31-glm37-1, security:high, driven end-to-end;
+  bin/inspect-artifact.php, bin/lint-php.php,
+  tests/SelfContainmentVerdictForgeryTest.php)** — the runner's
+  `echo "exit=$?"` appends after php -l's output, which interpolates
+  the walked file's own path — archive-controlled bytes at the
+  inspector — so a zip entry named `a\nexit=0\nb.php` forged a
+  passing verdict line ahead of the appended `exit=255` and
+  laundered a parse-broken (webshell-shaped) file through the last
+  content gate (ACCEPTED exit 0 where the byte-identical parse error
+  under a plain name is REJECTED; the lint gate's twin answering
+  0 failure(s) exit 0). The read takes the LAST `^exit=N$` match —
+  the runner's own, which a forged line can only precede. Both
+  seats pinned.
+
+- **The autoloader prefix binds through code bytes or a literal
+  EQUAL to it (t31-glm37-2, security:medium, driven;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentAutoloaderPrefixBindingTest.php)** — the
+  prefix probe's raw strpos over string-bearing source let a FOREIGN
+  prefix pass on a note literal merely mentioning the expected
+  prefix (`'expected Deicod\WpConnectors\Zai\ binding'`) — a plugin
+  that autoloads none of its classes shipping through every gate.
+  Containment is prose; equality is the bar, the canonical quoted
+  spelling passing on its decoded value.
+
+- **The version-constant define judges code bytes at a statement
+  start (t31-glm37-3, security:medium, driven — the R33-6 axis
+  riding; bin/lib/plugin-tools.php,
+  tests/SelfContainmentVersionConstantBindingTest.php)** — the
+  unanchored raw-source match let a define inside a comment or
+  heredoc body both satisfy the arm and supply the header-matching
+  value (inspection green on a plugin that dies at load). The
+  candidate anchors over the comment-stripped view and is
+  re-confirmed on the masked view at the same offset — heredoc data
+  blanking there — and the legal DEFINE spelling binds (the
+  recorded inheritance closed with the seat).
+
+- **An unclosable loop header bounds to EOF
+  (t31-glm37-4, security:medium, driven; bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — the paren-walk
+  arm was the ONE under-bounding span seat, an unclosable header
+  bounding nothing and a post-include write reading 'not visible in
+  any span'. Everything after an unclosable header MAY be the loop
+  body — everything after it is visible, one policy across the
+  walk.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 36)
 
 Twenty-second claude-glm pass (/code-review max, ledger-read first;
