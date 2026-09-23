@@ -60,7 +60,9 @@ unchanged.
   foreign include through a benign same-file write (0 violations
   where the all-lowercase twins flag). Scoped `(?i:…)` groups at
   every seat, one census; each variant and its twin answer
-  byte-identical reports.
+  byte-identical reports. (CORRECTED round 33: the pattern was
+  half the seat — the arm dispatch and the as-split still
+  misrouted/quadratically stalled; both closed at t31-glm33-1/3.)
 
 - **The foreach-header collector's abort refuses the proof
   (t31-glm32-3, security:medium, driven fail-open;
@@ -89,7 +91,95 @@ unchanged.
   `strcasecmp`) while `ABSPATH` stays byte-exact by design (a
   define()'d constant is case-sensitive — driven). The `__dir__`
   variant scans clean like its twin; `DirName`/`dirname` twins
-  answer byte-identical reports.
+  answer byte-identical reports. (CORRECTED round 33: the stripos
+  consulted raw bytes — literal-text anchors laundered; every
+  consult judges the literal-blanked view now, t31-glm33-2.)
+
+### Fixed (shared — M3 Task 3.1, claude-glm round 33)
+
+Nineteenth claude-glm pass (/code-review max, ledger-read
+first): still not zero — 8 candidates, every one a defect or
+slip of round 32's own commits. DRIVER ADJUDICATION under the
+scope rule: R33-1, R33-2, R33-3, R33-4/5, R33-7 accepted;
+R33-6 (the version-constant probe's byte-exact `define(`, driven
+fail-closed and pre-existing) recorded as inheritance; the
+round-32 records' "every seat, byte-identical" claims corrected
+in place (R33-8). Six commits t31-glm33-1..6, the full offline
+check green after EVERY commit, no push. Suite 1927 → 1931
+tests, 48274 → 48286 assertions, 3 skipped unchanged.
+
+- **The write-visibility span dispatch reads the folded tail byte
+  (t31-glm33-1, security:medium, driven both directions;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentCaseVariantIncludesTest.php)** — round
+  32's case-fold widened the span pattern but the arm dispatch
+  still classified each match by its last byte case-sensitively,
+  so case-variant keywords misrouted into the paren walk: the
+  lint-clean `DO if (true) { require $f; } WHILE ($f =
+  "/etc/passwd");` answered 0 violations where the lowercase twin
+  flags (the misrouted bounds excluded the trailing WHILE write —
+  the glm18-17 tail-laundering channel reopened), and an
+  interface's `FUNCTION nb();` planted a phantom span and
+  false-flagged where `function` scans clean. The dispatch reads
+  `strtolower(substr($construct, -1))`; both driven shapes pinned
+  beside their twins.
+
+- **The anchor consults judge the literal-blanked view
+  (t31-glm33-2, security:medium, driven fail-open;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentCaseVariantIncludesTest.php)** — round
+  32's stripos consulted the raw statement bytes, where quoted
+  literals are intact, so the magic constant's TEXT inside a
+  quoted literal counted as an anchor for every casing:
+  `require "__dir__/sub/x.php";` — a literal directory name at
+  runtime, never the plugin dir — laundered the unanchored flag
+  (the exact-case spelling rode the same pre-existing heuristic,
+  the fold widening it). Every anchor consult (five seats) judges
+  `wp_connectors_blank_quoted_strings()` of its statement now;
+  the dirname consults and the ABSPATH literal twin close with
+  the same stroke. Literal spellings flag; code-token anchors
+  stay clean in every casing.
+
+- **The foreach as-split rides a quantifier-free separator
+  (t31-glm33-3, cost + the latent R32-5 class;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentIncludeScanAbortTest.php)** — the
+  `^(.+?)\s+(?i:as)\s+(.+)$` split burned a quadratic
+  lazy-dot × greedy-`\s+` search over whitespace-run headers
+  (4.55s on a lint-clean 60,000-space header, ~7min at 1MB — the
+  R32-1 hostile-tree stall class) and consumed a PCRE FALSE as
+  no-parse. The separator is a quantifier-free
+  `/\s(?i:as)\s/` find on the masked slice (linear by
+  construction, string contents blanked there), the value sliced
+  from the code view at the same offsets, a FALSE refusing the
+  proof. 60,000 spaces scan in 32ms with the binding collected;
+  the key-value/string-key boundaries stay clean.
+
+- **The round's own pin corrections
+  (t31-glm33-4, tests/SelfContainmentSharedReferenceScanAbortTest.php,
+  tests/SelfContainmentCaseVariantIncludesTest.php)** — round
+  32's JIT clause (`ini_set('pcre.jit','0')` around the
+  in-process recursion floor) is ineffective, php-src-verified
+  (the preg cache keys on the pattern string, JIT baked at
+  insert, no invalidation): on a stock JIT host the floor dies
+  after any earlier scan and the pin reddens order-dependently.
+  The floor leg rides a fresh child with both flags on the
+  command line (`-d pcre.jit=0 -d pcre.recursion_limit=1`, set
+  before any compile — PHP's own ext/pcre pairing),
+  deterministically abortable on every host, exec-less hosts
+  skipping loudly; and the `__DIR__`-twin fixture that wrote the
+  variant's own `__dir__` bytes is the true twin now.
+
+- **The scratch-release chains rode the ONE owner
+  (t31-glm33-5, the three round-31/32 test files)** — the
+  hand-rolled `glob/@unlink/@rmdir` chains had grown to fifteen,
+  the ledgered residual's regrowing-hand-copy re-open condition
+  firing (green-path-only cleanup stranding one uniqid-named
+  tree per failing re-run; the @-swallowed non-recursive seam).
+  `WpHarness::releaseScratch()` owns every exit: tearDown
+  releases `$this->root` plus an `$extra_roots` roster the
+  mid-test roots register into — a mid-assert throw no longer
+  leaks, all fifteen chains deleted. Verdict-neutral.
 
 ### Fixed (shared — M3 Task 3.1, claude-glm round 31)
 

@@ -2881,6 +2881,14 @@ function wp_connectors_write_visibility_spans($masked, $offset)
      * header as-split — beside the seats that already rode the
      * fold (the signature consult's '\bfunction\b/i' one screen
      * down, the list() arm's /i, the do-while tail's stripos).
+     * (CORRECTED at round 33, glm33-1/glm33-3: the pattern was
+     * only half the seat — the arm DISPATCH below classified each
+     * match by its last byte case-sensitively, so case-variant
+     * keywords still misrouted (the uppercase DO laundering a
+     * trailing WHILE write), and the as-split's lazy capture
+     * burned a quadratic search over whitespace-run headers; both
+     * closed at their seats, the dispatch reading the FOLDED tail
+     * byte and the split a quantifier-free masked-slice find.)
      */
     if (! preg_match_all('/\b(?i:while|for|foreach)\s*\(|\b(?i:do)\s*\{|\b(?i:do)\b(?!\s*\{)|\b(?i:function)\b/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
         return $spans;
