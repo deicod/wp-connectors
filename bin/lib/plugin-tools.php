@@ -2604,7 +2604,15 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
  */
 function wp_connectors_include_runtime_segments($statement)
 {
-    $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($statement)), " \t\n\r();");
+    /*
+     * t31-glm29-2: the strip owns both terminator spellings — a close
+     * tag ends the statement exactly like the ';' PHP implies for it,
+     * so the close-tag tail must not ride the argument (a
+     * plain-variable close-tag-terminated require would otherwise fall
+     * off the variable arm and phantom-flag as unanchored where its
+     * ';' twin resolves clean).
+     */
+    $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($statement)), " \t\n\r();?>");
     /*
      * glm29-3: an INTERPOLATED double-quoted literal stays visible.
      * Blanking every quoted string to '' classified the whole
@@ -3459,7 +3467,8 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
  */
 function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $pluginDir, $masked)
 {
-    $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($include)), " \t\n\r();");
+    // t31-glm29-2: both terminator spellings — the include_runtime_segments() twin above.
+    $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($include)), " \t\n\r();?>");
 
     if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $argument)) {
         $assignments = wp_connectors_same_file_assignments($code, $masked, $argument, $offset);
@@ -4011,7 +4020,25 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              */
             $masked = null !== $views ? $views['masked'] : '';
 
-            if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*;/', $masked, $includes, PREG_OFFSET_CAPTURE)) {
+            /*
+             * t31-glm29-2 [R29-2, security:medium, driven fail-open]:
+             * the terminator is the ocr62-1 alternation — ';|?>' —
+             * never ';' alone. The literal-';' pattern made a
+             * close-tag-terminated include (PHP implies the semicolon
+             * at '?>') INVISIBLE to every gate riding this owner
+             * (driven: '<?php require dirname(__DIR__, 2) .
+             * "/outside.php" ?>' — php -l clean — answered 0
+             * violations where the ';' twin flags), and where a later
+             * ';' existed the greedy [^;]* GLUED across the close tag
+             * into unrelated code after it. The match is LAZY now and
+             * ends at whichever terminator comes FIRST — a '?>' ends
+             * the statement per PHP's implied-semicolon rule, so the
+             * glue cannot cross it. The masked view keeps the seat
+             * honest: a '?>' inside a quoted string or comment is
+             * blanked/stripped before this pattern ever sees it, so
+             * the alternation only ever matches a real close tag.
+             */
+            if (preg_match_all('/\b(?:require|include)(?:_once)?\b[^;]*?(?:;|\?>)/', $masked, $includes, PREG_OFFSET_CAPTURE)) {
                 foreach ($includes[0] as $include_match) {
                     $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
                     $quoted_literals = wp_connectors_quoted_literals($include[0]);
