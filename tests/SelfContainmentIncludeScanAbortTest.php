@@ -119,6 +119,7 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
 
         $plain_root = $this->root . '-plain';
         mkdir($plain_root, 0755, true);
+        $this->extra_roots[] = $plain_root;
         file_put_contents(
             $plain_root . '/plain.php',
             "<?php \$plain = 1;\n"
@@ -131,19 +132,18 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         } finally {
             ini_set('pcre.backtrack_limit', $host_limit);
         }
-        $this->extra_roots[] = $plain_root;
 
         // The control at the restored limit, on its own root (the
         // views cache keys the path it already answered): the same
         // include flags through the scan it just aborted on.
         $control = $this->root . '-control';
         mkdir($control, 0755, true);
+        $this->extra_roots[] = $control;
         file_put_contents(
             $control . '/fixture.php',
             '<?php require dirname(__DIR__, 2) ?>'
         );
         $this->assertNotEmpty(wp_connectors_self_containment_violations($control), 'The control flags at the host default — the abort above was the pinned limit, never the payload.');
-        $this->extra_roots[] = $control;
     }
 
     public function testTheGenuinelyLintCleanCompositeLaunderingPadFlags(): void
@@ -230,13 +230,13 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         // binding visible, the flag naming what $f depends on.
         $control = $this->root . '-control';
         mkdir($control, 0755, true);
+        $this->extra_roots[] = $control;
         file_put_contents(
             $control . '/fixture.php',
             '<?php $f = __DIR__ . "/safe.php"; foreach (' . str_repeat(';', 8192) . ') { } foreach ($evil as $f) { require $f; }'
         );
         $control_report = implode("\n", wp_connectors_self_containment_violations($control));
         $this->assertStringContainsString('variable $f depends on $evil with no resolvable same-file assignment', $control_report, 'At the restored limit the collector runs — the binding collected, the flag naming $evil (the normal-collection twin beside the refused-proof arm).');
-        $this->extra_roots[] = $control;
     }
 
     public function testAWhitespaceRunHeaderScansFast(): void
@@ -272,12 +272,12 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
 
         $boundary_root = $this->root . '-boundary';
         mkdir($boundary_root, 0755, true);
+        $this->extra_roots[] = $boundary_root;
         file_put_contents(
             $boundary_root . '/fixture.php',
             '<?php $map = array("a key with words" => __DIR__ . "/safe.php"); foreach ($map as $k => $f) { require $f; }'
         );
         $this->assertSame(array(), wp_connectors_self_containment_violations($boundary_root), 'The string-key key-value binding stays clean — the masked view blanks the key\'s contents and the real separator still splits.');
-        $this->extra_roots[] = $boundary_root;
     }
 
     public function testAnEmptyForeachSourceIsNotABinding(): void

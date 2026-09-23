@@ -101,6 +101,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
 
         $twin_root = $this->root . '-twin';
         mkdir($twin_root, 0755, true);
+        $this->extra_roots[] = $twin_root;
         file_put_contents($twin_root . '/fixture.php', $lowercase_twin);
         $twin_violations = wp_connectors_self_containment_violations($twin_root);
 
@@ -109,7 +110,6 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             implode("\n", $twin_violations),
             'The case variant and its lowercase twin answer byte-identical reports modulo the keyword spelling and the fixture roots the slug names — the widening touched the keyword tokens, never the derivations.'
         );
-        $this->extra_roots[] = $twin_root;
     }
 
     /**
@@ -130,6 +130,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
 
         $twin_root = $this->root . '-twin';
         mkdir($twin_root, 0755, true);
+        $this->extra_roots[] = $twin_root;
         file_put_contents($twin_root . '/fixture.php', strtolower($spelling) === $spelling ? $code : str_replace($spelling, strtolower($spelling), $code));
         $twin_violations = wp_connectors_self_containment_violations($twin_root);
 
@@ -138,7 +139,6 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             implode("\n", $twin_violations),
             'The case variant and its all-lowercase twin answer byte-identical reports modulo the fixture root the slug names — the fold touched the keyword tokens, never the proof machinery.'
         );
-        $this->extra_roots[] = $twin_root;
     }
 
     public function testACaseVariantForeachHeaderBindingIsCollected(): void
@@ -291,12 +291,12 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
 
         $twin_root = $this->root . '-twin';
         mkdir($twin_root, 0755, true);
+        $this->extra_roots[] = $twin_root;
         file_put_contents(
             $twin_root . '/fixture.php',
             '<?php interface I { function nb(); } $map = array(__DIR__ . "/safe.php"); foreach ($map as $f) { require $f; } $map[] = 1;'
         );
         $this->assertSame(array(), wp_connectors_self_containment_violations($twin_root), 'The function twin stays clean beside it.');
-        $this->extra_roots[] = $twin_root;
     }
 
     public function testACaseVariantDirAnchorScansClean(): void
@@ -325,12 +325,12 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
 
         $twin_root = $this->root . '-twin';
         mkdir($twin_root, 0755, true);
+        $this->extra_roots[] = $twin_root;
         file_put_contents(
             $twin_root . '/fixture.php',
             '<?PHP REQUIRE __DIR__ . "/sub/x.php";'
         );
         $this->assertSame(array(), wp_connectors_self_containment_violations($twin_root), 'The __DIR__ twin stays clean beside it.');
-        $this->extra_roots[] = $twin_root;
     }
 
     public function testACaseVariantDirnameAnswersItsTwinSReason(): void
@@ -353,6 +353,7 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
 
         $twin_root = $this->root . '-twin';
         mkdir($twin_root, 0755, true);
+        $this->extra_roots[] = $twin_root;
         file_put_contents(
             $twin_root . '/fixture.php',
             '<?php require dirname(__DIR__, 2) . "/outside.php";'
@@ -362,6 +363,5 @@ final class SelfContainmentCaseVariantIncludesTest extends TestCase
             implode("\n", wp_connectors_self_containment_violations($twin_root)),
             'DirName and dirname answer byte-identical reports modulo the fixture root and the keyword spelling the statement text carries — the consults fold, never disagree with their own twins.'
         );
-        $this->extra_roots[] = $twin_root;
     }
 }

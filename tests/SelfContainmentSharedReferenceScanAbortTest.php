@@ -175,11 +175,11 @@ final class SelfContainmentSharedReferenceScanAbortTest extends TestCase
         // reference flags through the scan the child refused.
         $control = $this->root . '-control';
         mkdir($control, 0755, true);
+        $this->extra_roots[] = $control;
         file_put_contents(
             $control . '/fixture.php',
             '<?php $x = "../shared/foo.php";'
         );
         $this->assertNotEmpty(wp_connectors_self_containment_violations($control), 'The control flags at the host default — the abort above was the pinned limit, never the payload.');
-        $this->extra_roots[] = $control;
     }
 }
