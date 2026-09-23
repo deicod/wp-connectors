@@ -4089,9 +4089,31 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * quadratic, and no limit left to exhaust there. An
              * abort an engine still answers is the LOUD refusal
              * below — FALSE names the file, never a clean pass.
+             *
+             * t31-glm31-2 [R31-C2, security:medium, driven fail-open,
+             * re-opened by the demonstrated-production-path rule]:
+             * the keyword arm spelled require/include byte-exact
+             * lowercase while PHP lexes these keywords
+             * case-insensitively (the sibling consult below already
+             * rides /i; both argument derivations too) — so '<?PHP
+             * REQUIRE dirname(__DIR__, 2) . "/outside.php";' and
+             * '<?php Include_Once …', both lint-clean, were INVISIBLE
+             * to every gate riding this owner (driven: 0 violations
+             * where the lowercase twin flags). The phpcs
+             * lowercase-keywords boundary gates the repo tree only;
+             * the artifact channel is a demonstrated production path
+             * php -l passes and phpcs never touches. The keywords
+             * match through SCOPED (?i:…) groups now, the ocr46-9
+             * idiom at this owner: the case fold lives on the
+             * keyword tokens alone (no /u, so ASCII folding only —
+             * no case-fold interaction with the byte classes of the
+             * body, which are case-free), and the spellings every
+             * case variant of require/require_once/include/
+             * include_once admits reach the same terminator-matched
+             * statement the lowercase spellings always did.
              */
             $includes = array();
-            $scanned = preg_match_all('/\b(?:require|include)(?:_once)?\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>)/', $masked, $includes, PREG_OFFSET_CAPTURE);
+            $scanned = preg_match_all('/\b(?i:require|include)(?i:_once)?\b[^;?]*+(?:\?(?!>)[^;?]*+)*+(?:;|\?>)/', $masked, $includes, PREG_OFFSET_CAPTURE);
             if (false === $scanned) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for includes — the self-containment scan aborted (PCRE: %s)',
