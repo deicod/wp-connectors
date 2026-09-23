@@ -6886,9 +6886,19 @@ FIXTURE;
         $this->assertStringContainsString('Do not edit here', $upper, 'An uppercase opener must carry the provenance banner.');
         $this->assertStringStartsWith("<?PHP\n\n/**", $upper, 'The banner follows the opener verbatim — the spelling is the source\'s own.');
 
-        // A BOM-prefixed opener: bannered after the tag, the BOM stays
-        // exactly where the source carried it.
-        $bom = WpConnectorsBuild::rewriteSharedNamespace("\xEF\xBB\xBF<?php\n" . $declaration . "\nclass A {}\n", 'OpenAiOauth', 'shared/src/Clock/A.php');
+        /*
+         * A BOM-prefixed opener: bannered after the tag, the BOM stays
+         * exactly where the source carried it. glm28-8 correction to
+         * the fixture: the leg once carried the namespace DECLARATION
+         * after the BOM — engine-fatal bytes in their own right (the
+         * BOM lexes as INLINE HTML, and any HTML before a file's first
+         * declaration is the engine's namespace-ordering fatal — php
+         * -l driven), so the statement-seen fence would rightly refuse
+         * what the leg never meant to bless. The banner mechanics the
+         * leg exists to pin are the OPENER's: a declare() head carries
+         * them identically with no declaration to order.
+         */
+        $bom = WpConnectorsBuild::rewriteSharedNamespace("\xEF\xBB\xBF<?php\ndeclare(strict_types=1);\n\nclass A {}\n", 'OpenAiOauth', 'shared/src/Clock/A.php');
         $this->assertStringContainsString('Do not edit here', $bom, 'A BOM-prefixed opener must carry the provenance banner.');
         $this->assertStringStartsWith("\xEF\xBB\xBF<?php\n\n/**", $bom, 'The BOM stays at the head, the banner follows the tag.');
 
@@ -8702,7 +8712,15 @@ FIXTURE;
      * braced blocks (named and global), a declaration interrupted by a
      * close tag, and the residual: a declaration-shaped keyword at a
      * boundary but not first in the file (a compile-time fatal, not a
-     * parse error) still rides, dev-time lint owns it.
+     * parse error) still rides, dev-time lint owns it — CLOSED at
+     * glm28-8: the residual's own re-open rule fired (the standalone
+     * build is the producer — the driven zip failed php -l while
+     * buildPlugin() returned its path at exit 0), the statement-seen
+     * tracking refuses the shape at this fence now, and the residual
+     * control below moved to the refusal side with the php
+     * -l-derived prelude controls beside it (both declare forms, the
+     * second declaration after code, the inline-HTML fatality —
+     * every shape driven against php -l before it pinned).
      */
     public function testABareNamespaceKeywordOutsideAUseStatementRefusesEveryIllegalShape(): void
     {
@@ -8722,13 +8740,31 @@ FIXTURE;
              * keyword's own named verdict.
              */
             'mode boundary between keyword and name' => "<?php\nnamespace ?> <p>hi</p> <?php Deicod\\WpConnectors\\Shared\\Clock;\n",
+            /*
+             * glm28-8: the ocr5-1 residual, closed by its own re-open
+             * rule — a declaration-shaped keyword at a boundary but
+             * NOT first in the file is the engine's compile fatal
+             * ('Namespace declaration statement has to be the very
+             * first statement or after any declare call in the
+             * script', php -l's own refusal — driven), and the
+             * standalone build shipped it at exit 0. The
+             * statement-seen tracking refuses the shape now.
+             */
+            'residual: declaration at a boundary, not first' => "<?php\n\$x = 1;\nnamespace Deicod;\ninterface LegalFixture\n{\n}\n",
+            /*
+             * The inline-HTML spelling of the same fatal (php -l
+             * driven): HTML before the first declaration is a
+             * statement to the engine, however the bytes read.
+             */
+            'residual: inline HTML before the first declaration' => "<?php ?> <p>hi</p> <?php\nnamespace Deicod;\ninterface LegalFixture\n{\n}\n",
         );
         foreach ($refusals as $label => $source) {
+            $expected_fragment = str_starts_with($label, 'residual:') ? 'follows a statement' : 'not a spelling PHP accepts';
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/IllegalKeyword.php'),
                 "A bare 'namespace' keyword in a never-legal shape must refuse the rewrite ({$label}).", \RuntimeException::class
             );
-            $this->assertStringContainsString('not a spelling PHP accepts', $refusal->getMessage(), "The refusal names the shape class ({$label}).");
+            $this->assertStringContainsString($expected_fragment, $refusal->getMessage(), "The refusal names the shape class ({$label}).");
             $this->assertStringContainsString('IllegalKeyword.php', $refusal->getMessage(), "The refusal names the file ({$label}).");
         }
 
@@ -8740,11 +8776,96 @@ FIXTURE;
             'declaration interrupted by a close tag' => "<?php\nnamespace Deicod ?> <?php\n\$x = 1;\n",
             'declaration after declare()' => "<?php\ndeclare(strict_types=1);\nnamespace Deicod;\ninterface LegalFixture\n{\n}\n",
             'second declaration after a use block' => "<?php\nnamespace A;\nuse RuntimeException;\nnamespace B;\ninterface LegalFixture\n{\n}\n",
-            'residual: declaration at a boundary, not first' => "<?php\n\$x = 1;\nnamespace Deicod;\ninterface LegalFixture\n{\n}\n",
+            /*
+             * glm28-8, the php -l-derived prelude controls: the BLOCK
+             * declare form is as legal before the first declaration as
+             * the semicolon form (driven: 'declare(ticks=1) { $y = 2; }
+             * namespace Foo;' lints clean), and a SECOND declaration
+             * after code rides core's own segment rule (each unbraced
+             * declaration opens its own segment — driven) — the
+             * statement-seen tracking ends at the FIRST declaration.
+             */
+            'declaration after a BLOCK declare' => "<?php\ndeclare(ticks=1) { \$y = 2; }\nnamespace Deicod;\ninterface LegalFixture\n{\n}\n",
+            'second declaration after code' => "<?php\nnamespace A;\n\$x = 1;\nnamespace Deicod;\ninterface LegalFixture\n{\n}\n",
         );
         foreach ($controls as $label => $source) {
             $rewritten = WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/LegalKeyword.php');
             $this->assertStringContainsString('Do not edit here', $rewritten ?: '', "The legal spelling rides the whole seam — banner, rewrite, postcondition ({$label}).");
+        }
+    }
+
+    /**
+     * glm28-8: the ocr5-1 residual closed END-TO-END, by its own
+     * re-open rule ("re-open only with a producer for the fatal class
+     * inside the build pipeline") — the standalone `php bin/build.php`
+     * IS the producer: a shared source carrying a statement before its
+     * namespace declaration passes the collector's declaration fence
+     * (the declaration exists, under the tree root), rides the embed
+     * rewrite, and the driven shape at HEAD shipped the zip AT EXIT 0
+     * while the artifact itself failed php -l over the engine's
+     * compile fatal ('Namespace declaration statement has to be the
+     * very first statement or after any declare call in the script').
+     * The composer check's @lint roots over shared/ are the second
+     * net (a repo-side catch the standalone build never runs); the
+     * builder owns its artifact whole, so the rewrite now refuses the
+     * fatal spelling at the source, naming the file and line.
+     */
+    public function testAStatementBeforeTheNamespaceDeclarationRefusesTheBuildNotFatalBytesAtExit0(): void
+    {
+        /*
+         * The driven proof of the fatal class first (the finding's own
+         * evidence): php -l refuses the planted bytes on this very
+         * engine. The exec-capability guard (the ocr20-5 doctrine).
+         */
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the php -l proof legs and the inspect control cannot run (the refusal leg would still pass; named here, never silently half-run).');
+        }
+        $fatal_source = "<?php\n\$x = 1;\nnamespace Deicod\\WpConnectors\\Shared;\ninterface StmtBeforeNs {}\n";
+        $probe = self::scratchPath('stmt-before-ns.php');
+        $this->assertNotFalse(file_put_contents($probe, $fatal_source), 'staging: the fatal probe must write — a staging failure fails as staging, never as the refusal verdict.');
+        try {
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($probe) . ' 2>&1', $output, $exit);
+            $this->assertNotSame(0, $exit, 'php -l refuses the statement-before-namespace bytes — the engine\'s own compile fatal, the class the zip must never carry: ' . implode("\n", $output));
+            $this->assertStringContainsString('very first statement', implode("\n", $output), 'The fatal is the named namespace-ordering class, not some other parse error.');
+        } finally {
+            @unlink($probe);
+        }
+
+        $scratch = self::scratchPath('stmt-before-ns');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        mkdir($scratch . '/shared/src', 0755, true);
+        mkdir($scratch . '/dist', 0755, true);
+        mkdir($scratch . '/plugin', 0755, true);
+        $this->assertNotFalse(file_put_contents($scratch . '/shared/src/StmtBeforeNs.php', $fatal_source), 'staging: the fatal shared source must write — a staging failure fails as staging, never as the refusal verdict.');
+        $this->assertNotFalse(file_put_contents($scratch . '/shared/src/CleanHead.php', "<?php\ndeclare(strict_types=1);\n\nnamespace Deicod\\WpConnectors\\Shared;\ninterface CleanHead {}\n"), 'staging: the clean twin must write beside it.');
+        $this->copyFixturePlugin($scratch . '/plugin/example-connector');
+        $this->assertNotFalse(file_put_contents($scratch . '/plugin/example-connector/build.json', "{\"embed_shared\": true}\n"), 'staging: the embed configuration must write.');
+
+        try {
+            try {
+                WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+                $this->fail('A shared tree carrying a statement before its namespace declaration must REFUSE the build — red at HEAD: buildPlugin() returned the zip path at exit 0 over bytes php -l refuses.');
+            } catch (RuntimeException $refusal) {
+                $this->assertStringContainsString('follows a statement', $refusal->getMessage(), 'The refusal names the statement-before-namespace class.');
+                $this->assertStringContainsString('StmtBeforeNs.php', $refusal->getMessage(), 'The refusal names the offending shared source.');
+                $this->assertStringContainsString('line 3', $refusal->getMessage(), 'The refusal names the declaration\'s line.');
+            }
+
+            // Control: the declare-first twin of the same tree builds green —
+            // the refusal owns exactly the statement-before-first-declaration
+            // class, never the embed leg or the tree.
+            unlink($scratch . '/shared/src/StmtBeforeNs.php');
+            $zipPath = WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist');
+            $this->assertIsString($zipPath, 'The declare-first twin builds unchanged.');
+            $this->assertContains('example-connector/src/Shared/CleanHead.php', $this->zipEntryNames($zipPath), 'The clean shared source still ships through the embed.');
+            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/.inspect-stmt-before-ns'), 'And inspects green — one verdict, the fatal class gone at the source.');
+            unlink($zipPath);
+        } finally {
+            WpHarness::releaseScratch($scratch);
         }
     }
 

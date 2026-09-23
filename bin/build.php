@@ -863,12 +863,61 @@ final class WpConnectorsBuild
         $group_depth = 0;
         $context = array();
         $offset = 0;
+        /*
+         * glm28-8: STATEMENT-SEEN tracking over the FIRST namespace
+         * declaration — the ocr5-1 residual's own re-open rule fired
+         * ("re-open only with a producer for the fatal class inside
+         * build pipeline"): the standalone `php bin/build.php` IS the
+         * producer (driven end-to-end — a shared source carrying
+         * `$x = 1; namespace …;` passes the collector's declaration
+         * fence, rides the rewrite at exit 0, and the built zip FAILS
+         * php -l over the engine's own compile fatal, "Namespace
+         * declaration statement has to be the very first statement
+         * or after any declare call in the script"). The engine's
+         * rule, derived against php -l over the four shapes (all
+         * driven): a statement OR inline HTML before the first
+         * declaration fatals; a declare() call (semicolon or BLOCK
+         * form) before it does not; a SECOND declaration after code
+         * does not (each unbraced declaration opens its own segment).
+         * The prelude ends at the first declaration — nothing after
+         * it is tracked, the later declarations core serves.
+         */
+        $saw_statement = false;
+        $saw_namespace = false;
+        $declare_until = null;
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[ $i ];
             $id = is_array($token) ? $token[0] : null;
             $text = is_array($token) ? $token[1] : $token;
             $token_offset = $offset;
             $offset += strlen($text);
+
+            if (! $saw_namespace) {
+                if (null !== $declare_until) {
+                    if ($i <= $declare_until) {
+                        continue;
+                    }
+                    $declare_until = null;
+                }
+                if (T_DECLARE === $id) {
+                    /*
+                     * The bounded swallow (both legal prelude forms —
+                     * `declare(...);` and `declare(...) { … }`): an
+                     * unboundable declare shape marks a statement
+                     * instead, refusing nothing the engine serves
+                     * (the bounded forms are the only legal prelude
+                     * shapes php -l accepts before the declaration).
+                     */
+                    $declare_until = self::topLevelDeclareEndIndex($tokens, $i);
+                    if (null === $declare_until) {
+                        $saw_statement = true;
+                    }
+                    continue;
+                }
+                if (T_NAMESPACE !== $id && (null === $id || ! in_array($id, array( T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_OPEN_TAG, T_CLOSE_TAG, T_OPEN_TAG_WITH_ECHO ), true))) {
+                    $saw_statement = true;
+                }
+            }
 
             if (T_USE === $id) {
                 // The closure-use fence rides its ONE owner — the
@@ -970,7 +1019,13 @@ final class WpConnectorsBuild
                  * keyword at a boundary but not first in the file
                  * (`$x = 1; namespace Foo;` — a compile-time fatal,
                  * not a parse error) rides; refusing it needs
-                 * statement-seen tracking, dev-time lint owns it.
+                 * statement-seen tracking, dev-time lint owns it —
+                 * CLOSED at glm28-8: the ocr5-1 residual's own
+                 * re-open rule fired (the standalone build IS the
+                 * producer; the driven zip failed php -l at exit 0),
+                 * and the statement-seen tracking now refuses the
+                 * shape in this very walk (the prelude block at the
+                 * loop head and the refusal inside the boundary arm).
                  *
                  * OCR round 7 (t31-ocr7-3): the follower must be
                  * CODE-ADJACENT — the r5-9 widening crossed mode
@@ -1022,6 +1077,23 @@ final class WpConnectorsBuild
                         || ';' === $previous_token || '{' === $previous_token || '}' === $previous_token
                         || T_OPEN_TAG === $previous_id || T_CLOSE_TAG === $previous_id;
                     if ($at_boundary) {
+                        /*
+                         * glm28-8: the statement-before-namespace
+                         * refusal — the fence's own allowed shape
+                         * (a declaration at a boundary) still fatals
+                         * when a STATEMENT preceded the file's first
+                         * declaration, and the standalone build is
+                         * the producer the ocr5-1 residual named: the
+                         * zip would ship fatal bytes at exit 0 (php
+                         * -l refuses the engine's compile fatal).
+                         * The composer check's @lint roots catch it
+                         * as the SECOND net; the builder owns its
+                         * artifact whole at the source.
+                         */
+                        if ($saw_statement) {
+                            throw new RuntimeException("build: the namespace declaration on line " . (is_array($token) ? (int) ($token[2] ?? 0) : 0) . " in {$sourceVersion} follows a statement — the engine fatals over any statement before the file's first declaration ('Namespace declaration statement has to be the very first statement or after any declare call in the script', php -l's own refusal) and the zip would ship fatal bytes at exit 0; the builder owns its artifact whole, so the rewrite refuses the fatal spelling rather than shipping it; move the declaration to the top of the file (a declare() call may precede it)");
+                        }
+                        $saw_namespace = true;
                         continue;
                     }
                 }
@@ -1904,6 +1976,85 @@ final class WpConnectorsBuild
      * @param int                                             $at     Index of the '{' token.
      * @return bool True when the brace opens a namespace block.
      */
+    /**
+     * The index of a top-level declare() construct's LAST token — the
+     * ';' of the directive form or the matching '}' of the block form
+     * (glm28-8, the statement-seen prelude's bounded swallow; both
+     * forms driven against php -l as the legal shapes a file may
+     * carry before its first namespace declaration). Null when the
+     * shape cannot be bounded (no '(' head, an unterminated paren or
+     * brace walk, or a tail that is neither ';' nor '{') — the caller
+     * treats the token as a statement, refusing nothing bounded-legal.
+     *
+     * @param array $tokens The token stream.
+     * @param int   $at     The T_DECLARE index.
+     * @return int|null The index of the construct's last token.
+     */
+    private static function topLevelDeclareEndIndex(array $tokens, $at)
+    {
+        $count = count($tokens);
+        $is_trivia = static function ( $probe_id ) {
+            return T_WHITESPACE === $probe_id || T_COMMENT === $probe_id || T_DOC_COMMENT === $probe_id;
+        };
+        $text_at = static function ( $index ) use ( $tokens ) {
+            return is_array( $tokens[ $index ] ) ? $tokens[ $index ][1] : $tokens[ $index ];
+        };
+
+        // The head: the next code token must be the '('.
+        $i = $at + 1;
+        while ( $i < $count && $is_trivia( is_array( $tokens[ $i ] ) ? $tokens[ $i ][0] : null ) ) {
+            ++$i;
+        }
+        if ( $i >= $count || '(' !== $text_at( $i ) ) {
+            return null;
+        }
+        $depth = 0;
+        for ( ; $i < $count; ++$i ) {
+            if ( '(' === $text_at( $i ) ) {
+                ++$depth;
+                continue;
+            }
+            if ( ')' === $text_at( $i ) ) {
+                --$depth;
+                if ( 0 === $depth ) {
+                    break;
+                }
+            }
+        }
+        if ( $i >= $count ) {
+            return null;
+        }
+        // The tail: ';' or a braced block.
+        $j = $i + 1;
+        while ( $j < $count && $is_trivia( is_array( $tokens[ $j ] ) ? $tokens[ $j ][0] : null ) ) {
+            ++$j;
+        }
+        if ( $j >= $count ) {
+            return null;
+        }
+        if ( ';' === $text_at( $j ) ) {
+            return $j;
+        }
+        if ( '{' !== $text_at( $j ) ) {
+            return null;
+        }
+        $brace = 0;
+        for ( ; $j < $count; ++$j ) {
+            if ( '{' === $text_at( $j ) ) {
+                ++$brace;
+                continue;
+            }
+            if ( '}' === $text_at( $j ) ) {
+                --$brace;
+                if ( 0 === $brace ) {
+                    return $j;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private static function braceOpensNamespaceBlock(array $tokens, $at)
     {
         $previous = wp_connectors_previous_code_token_index($tokens, $at - 1);
