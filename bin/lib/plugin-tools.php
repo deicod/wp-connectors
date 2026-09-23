@@ -1888,18 +1888,27 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * (wp_connectors_name_references_from_tokens()); the text-lens
      * loop below reuses the same array.
      *
-     * glm28-13: the pass itself rides the ONE token provider
-     * (wp_connectors_token_stream(), glm27-9) — the bare
-     * token_get_all() here was the one caller off the owner, a
-     * GUARANTEED memo miss for every source the collector's fence,
-     * the rewriter, or the postcondition already tokenized in the
-     * same process (the detector runs three times per shared file in
-     * the build's own postcondition flow, each call re-paying the
-     * tokenize the memo existed to answer). The stream is an array —
-     * this walk's copy detaches on write, the cached stream never
-     * mutated through it.
+     * glm28-13, REFUTED IN VERIFICATION — this seat KEEPS its own
+     * bare tokenize, standalone-context justified: the round's
+     * candidate routed this call through the ONE token provider
+     * (wp_connectors_token_stream(), glm27-9), and the driven
+     * verification REFUTED the route-through — the detector's
+     * postcondition consumers run it over the REWRITTEN bytes of
+     * every build (unique content per scratch tree), so the route
+     * filled the provider's bounded-FIFO memo with single-use
+     * streams toward its 4 MB retention, and the suite — knife-edge
+     * at the 128M CLI limit beside the 24 MB views memo and the
+     * recorded census-blip headroom the 4 MB bound was itself sized
+     * against (glm27-9's own correction history) — FATALED with an
+     * Allowed-memory-size OOM inside the unused-import views battery
+     * at a deterministic seed (1790136878: red with the routing,
+     * green at HEAD, both re-driven), a worse failure than the
+     * double-tokenize it closed (a per-call CPU cost, never a
+     * verdict or a suite run). The refutation is recorded at the
+     * ledger; re-open only with a memory-budget change that gives
+     * the memo room the suite does not sit knife-edge under.
      */
-    $tokens = wp_connectors_token_stream($source);
+    $tokens = token_get_all($source);
 
     $references = array();
     /*
