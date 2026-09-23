@@ -455,6 +455,34 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringContainsString('depends on $f built from unresolvable runtime segments', implode("\n", wp_connectors_self_containment_violations($control)), 'The parse-valid twin keeps its own runtime-segment reason — the guard refuses only the reduces-to-nothing spellings.');
     }
 
+    public function testAnUnclosableLoopHeaderBoundsToEof(): void
+    {
+        /*
+         * R37-4 (security:medium, driven fail-open — the ONE seat
+         * that UNDER-bounded): an unclosable while/for/foreach
+         * header once 'continued' with NO span, so a post-include
+         * write inside the unbounded loop read 'not visible in any
+         * span' and the include proved clean on the pre-include
+         * assignment alone — contradicting the function's own
+         * docblock ('a wider region can only refuse more proofs,
+         * never launder one'). The arm over-approximates to EOF
+         * now, the sibling arms' policy. THE FIXTURE IS
+         * DELIBERATELY NOT LINT-CLEAN (php -l refuses the unclosed
+         * paren), the pre-lint hostile-tree threat model the
+         * standing precedent.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            '<?php $f = __DIR__ . "/safe.php"; foreach ($evil as $f ( { require $f; $f = "/etc/passwd";'
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'An unclosable loop header bounds everything after it — the post-include write stays visible, the include never proving clean on the pre-include assignment alone (red at HEAD: 0 violations).');
+        $this->assertStringContainsString('variable $f resolves to a path', $report, 'The trailing write target joins the proof — the EOF over-approximation refusing, never laundering.');
+    }
+
     public function testTheScanOfATerminatorFreeMegabytePadStaysFast(): void
     {
         /*

@@ -3084,8 +3084,28 @@ function wp_connectors_write_visibility_spans($masked, $offset)
         // while/for/foreach: walk the header parens to the matching close.
         $header_close = wp_connectors_matching_paren_end($masked, $last);
 
+        /*
+         * t31-glm37-4 [R37-4, security:medium, driven fail-open —
+         * the ONE seat that UNDER-bounded]: an unclosable header
+         * once 'continued' (bounds NOTHING), so a post-include
+         * write inside the unbounded loop read 'not visible in any
+         * span' and the include proved clean on the pre-include
+         * assignment alone (driven: 'foreach ($evil as $f ( {
+         * require $f; $f = "/etc/passwd";' answered 0 violations
+         * where the balanced-header twin flags — the pre-lint
+         * hostile-tree threat model, the unclosed paren itself a
+         * parse error). The arm OVER-approximates to EOF now, the
+         * policy the sibling arms and the function's own docblock
+         * state ('a wider region can only refuse more proofs, never
+         * launder one' — glm18-7): an unclosable header means
+         * everything after it MAY be the loop body, so everything
+         * after it is visible.
+         */
         if (false === $header_close) {
-            continue; // A header we cannot close bounds nothing.
+            if ($offset >= $loop[1]) {
+                $spans[] = array($loop[1], $length - 1);
+            }
+            continue;
         }
         $j = $header_close + 1;
         while ($j < $length && ctype_space($masked[ $j ])) {
