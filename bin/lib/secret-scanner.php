@@ -1158,7 +1158,25 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                  * own memory-bound purpose (glm14-3/glm20-1).
                  */
                 $extension = strtolower($file->getExtension());
-                if ($extension !== '' && ! in_array($extension, array( 'php', 'phtml', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
+                /*
+                 * t31-glm38-2 [R38-2, security:medium, driven end-to-end]:
+                 * the walk's extension allowlist omitted html/htm/xhtml
+                 * while the SAME library's marker grammar
+                 * (wp_connectors_allow_marker_pattern, glm24-1) serves
+                 * exactly that family — a live credential embedded in an
+                 * HTML asset was never read: admin.html with a
+                 * github-token inside <script> shipped in the built zip
+                 * (collectFiles has no extension filter) and
+                 * inspect-artifact answered ACCEPTED exit 0 where the
+                 * byte-identical admin.svg answered REJECTED — the same
+                 * bytes judged purely by extension, the marker grammar's
+                 * own family never reaching its reader. The markup trio
+                 * joins the walk allowlist, the marker family and the
+                 * read set agreeing for the first time (the ledger's
+                 * generic allowlist residual: a driven producer, the bar
+                 * met).
+                 */
+                if ($extension !== '' && ! in_array($extension, array( 'php', 'phtml', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml', 'html', 'htm', 'xhtml' ), true)) {
                     continue;
                 }
                 if ($file->getSize() > 2 * 1024 * 1024) {

@@ -165,6 +165,42 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString($githubToken, $report);
     }
 
+    public function testTheMarkupHtmlFamilyIsScannedForCredentials()
+    {
+        /*
+         * t31-glm38-2 [R38-2, security:medium, driven end-to-end]: the
+         * walk's extension allowlist omitted html/htm/xhtml while the
+         * same library's marker grammar serves exactly that family — a
+         * live credential embedded in an HTML asset was never read,
+         * admin.html shipping ACCEPTED where the byte-identical
+         * admin.svg was REJECTED (the same bytes judged purely by
+         * extension, the driven producer the ledger's generic
+         * allowlist residual names). The trio joins the walk
+         * allowlist: every markup spelling answers the finding.
+         */
+        $githubToken = 'ghp_' . bin2hex(random_bytes(18));
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-html');
+        try {
+            $this->assertTrue(mkdir($tempDir, 0755, true), "staging: {$tempDir} must create.");
+            foreach (array( 'admin.html', 'admin.htm', 'admin.xhtml', 'admin.svg' ) as $asset) {
+                $this->assertNotFalse(
+                    file_put_contents($tempDir . '/' . $asset, "<script>var k = \"{$githubToken}\";</script>\n"),
+                    "staging: {$tempDir}/{$asset} must write."
+                );
+            }
+
+            $findings = wp_connectors_scan_paths(array( $tempDir ));
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+
+        $report = implode("\n", $findings);
+        foreach (array( 'admin.html', 'admin.htm', 'admin.xhtml', 'admin.svg' ) as $asset) {
+            $this->assertStringContainsString($asset . ':1 github-token', $report, "The credential in {$asset} is read — the markup family and the marker grammar agree for the first time (red at HEAD: the html trio absent).");
+        }
+        $this->assertStringNotContainsString($githubToken, $report, 'Findings never echo the secret itself.');
+    }
+
     /**
      * glm14-2: a failed read is a finding, never a laundered empty scan.
      */
