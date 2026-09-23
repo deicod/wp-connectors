@@ -2287,6 +2287,46 @@ CHILD;
         $this->assertSame(array(), $findings, 'Repository sources must stay secret-free: ' . implode("\n", $findings));
     }
 
+    /**
+     * glm28-1: a PCRE abort over the pattern walk is the LOUD refusal,
+     * never clean — `=== 0` once let the FALSE return (match limit
+     * exhausted) fall into the match loop over an empty $matches and
+     * answer zero findings for the aborting pattern, so a live token
+     * later on the same line went unflagged (the fail-open direction;
+     * the unpadded control flags). DERIVATION NOTE, recorded: the
+     * ten flat patterns AUTO-POSSESSIFY on this PCRE2 engine — every
+     * crafted pad (the round's own 'A'-pad premise included) was
+     * probed and none aborts at any realistic limit, failed starts
+     * and successful matches alike staying off the match counter —
+     * so the drive rides the PINNED-LIMIT idiom the suite's abort
+     * pins already ride (SharedOAuthContractsHttpTest's PCRE pin):
+     * at the floor limit 1 ANY match attempt aborts, the one
+     * deterministic injection this engine offers, the limit restored
+     * on every exit path.
+     */
+    public function testAPcreAbortOverThePatternWalkRefusesLoudlyNeverClean()
+    {
+        $key = 'sk-ant-' . str_repeat('a1B2', 10) . 'fixture';
+        $host_limit = (string) ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', '1');
+        try {
+            $findings = wp_connectors_scan_string("<?php\n\$k = '{$key}';\n", 'abort.php');
+            $this->assertCount(1, $findings, 'The aborting pattern walk answers exactly the one refusal line — red at HEAD it answered ZERO findings over the same live-shaped key (the fail-open).');
+            $this->assertStringContainsString('the secret-pattern walk aborted (PCRE:', $findings[0], 'The refusal rides the walk\'s own loud vocabulary with the engine\'s diagnostic.');
+            $this->assertStringContainsString('the secret scan cannot run', $findings[0], 'The refusal names the scan, the glm14-2 shape.');
+
+            // Clean lines stay clean at the same pinned limit: a line no
+            // pattern candidate lives on never starts a match attempt,
+            // so the floor limit never fires.
+            $this->assertSame(array(), wp_connectors_scan_string("<?php\n\$plain = 1;\n", 'abort.php'), 'A candidate-free payload keeps its clean verdict under the pinned floor — the refusal is the abort, never the size.');
+        } finally {
+            ini_set('pcre.backtrack_limit', $host_limit);
+        }
+
+        // The unpadded control at the restored limit: the same key flags.
+        $this->assertNotSame(array(), wp_connectors_scan_string($key . "\n", 'abort.php'), 'The control flags at the host default — the abort above was the pinned limit, never the payload.');
+    }
+
     public function testLiveTestEnvironmentVariablesAreOptInOnly()
     {
         // The documented opt-in variables (docs/TESTING.md) must never be set

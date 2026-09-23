@@ -813,7 +813,28 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
         $prose_marker = null;
         $code_marker = null;
         foreach ($patterns as $name => $pattern) {
-            if (preg_match_all($pattern[0], $line, $matches, PREG_OFFSET_CAPTURE) === 0) {
+            /*
+             * glm28-1: an abort is never clean. `=== 0` let a FALSE
+             * return (a PCRE abort — backtrack/match limit exhausted)
+             * fall into the match loop over an EMPTY $matches and
+             * answer zero findings for the pattern — the abort-as-
+             * reject straggler this walk's siblings already close
+             * (plugin-tools.php:2031's lens guard, the glm36-8 rule).
+             * The abort converts to the LOUD refusal in the walk's
+             * own vocabulary: the whole payload refuses, never a
+             * verdict reading clean over bytes the walk could not
+             * test. (Derivation note, recorded at the driven pin:
+             * the ten flat patterns auto-possessify on this PCRE2
+             * engine — no craftable line was found that aborts at
+             * any realistic limit — so the regression rides the
+             * pinned-limit idiom the suite's abort pins already
+             * ride, the floor where ANY match attempt aborts.)
+             */
+            $hits = preg_match_all($pattern[0], $line, $matches, PREG_OFFSET_CAPTURE);
+            if (false === $hits) {
+                return array( sprintf('%s: the secret-pattern walk aborted (PCRE: %s) — the secret scan cannot run', $label, preg_last_error_msg()) );
+            }
+            if (0 === $hits) {
                 continue;
             }
             foreach ($matches[0] as $match) {
