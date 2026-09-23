@@ -6,6 +6,168 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 28)
+
+Fourteenth claude-glm pass: 15 findings, all verified. DRIVER
+ADJUDICATION: ALL 15 ACCEPTED — #2 riding the glm15 refutation's own
+re-open rule (premise falsified against the pinned pluggable.php, the
+live Zai consumer the driven spelling), #7 closing the glm14 arity
+deferral with its first driven evidence, #8 closing the ocr5-1
+residual by its own re-open rule (the standalone build is the
+producer). Fifteen numbered commits t31-glm28-1..15 — with #13's
+route-through REFUTED IN VERIFICATION by the full-check drive (a
+deterministic-seed OOM in the unused-import views battery over the
+token memo's retention; green at HEAD, re-driven both ways — the
+refutation landed as t31-glm28-13r beside the original commit, the
+seat keeping its bare tokenize with the standalone justification
+recorded) — the full offline check green after every commit (four
+first-check runs carrying the recorded seed-dependent census-refusal
+blip, every re-run green at the settled counts, round 27's own
+protocol), no push. The round's shape: the scanner's PCRE-abort
+straggler closed fail-safe; the check_admin_referer die-contract with
+the glm15 refutation corrected; the glm14 arity deferral and the
+ocr5-1 build residual closed by their own rules; the URL message
+quartet completed (the non-digit-led port region and the parse-false
+bracket tail); four core-parity stubs (wp_nonce_url, add_query_arg's
+false-value idiom + remove_query_arg, esc_url's allowed protocols,
+sanitize_email's gates); two pooled walks (~4.9 s of every check
+retired at the engine's spawn floor); the clock guard; and the
+quote-style unescape owner. Suite 1894 → 1905 tests, 48116 → 48192
+assertions, 3 skipped unchanged (every delta measured from output).
+
+- **A PCRE abort over the scanner's pattern walk refuses loudly
+  (t31-glm28-1, security:low; bin/lib/secret-scanner.php,
+  tests/SecureFixturesTest.php)** — `preg_match_all() === 0` read a
+  FALSE return (match limit exhausted) as the zero-findings arm, the
+  abort falling into the match loop over an EMPTY `$matches`; the
+  abort converts to the walk's own loud refusal, never a clean
+  verdict over bytes the walk could not test. Derivation recorded:
+  the ten flat patterns auto-possessify on this PCRE2 engine (the
+  round's 200 KB 'A'-pad premise probed against every pattern — no
+  craftable abort at any realistic limit), so the drive rides the
+  pinned-limit idiom at the floor where any match attempt aborts.
+- **check_admin_referer rides core's die-contract
+  (t31-glm28-2, bug:medium; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php, tests/Zai/ZaiSettingsTest.php,
+  docs/review/REFUTATION_LEDGER.md)** — the glm15 refutation's
+  premise ('dies only when the nonce is absent') falsified against
+  the pin: core dies on ANY failed verification through wp_nonce_ays
+  (); the stub recorded doing_it_wrong and CONTINUED, and the live
+  Zai leg asserted post-conditions that only ran because the die
+  never fired. The seat spells core's shape now (a new wp_nonce_ays
+  stub carrying core's generic arm, the one die vocabulary's
+  emulation boundary, the referer escape dropped with the boundary
+  recorded); the glm15 entry carries the in-place CORRECTED pointer.
+- **wp_nonce_url delegates to the fragment-correct add_query_arg
+  (t31-glm28-3, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — the hand-glued separator put
+  the nonce INSIDE the fragment on a fragment-bearing URL; core's
+  own shape rides the delegation plus the '&amp;' input un-escape
+  and esc_html() wrap, byte-for-byte the pin.
+- **add_query_arg unsets false-valued params; remove_query_arg ships
+  (t31-glm28-4, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — a FALSE param answered
+  'key=0' through http_build_query() where core unsets (the remove
+  channel's own idiom), and remove_query_arg did not exist while the
+  architecture gate's allowed vocabulary names it; the merge unsets
+  false-strict and the sibling ships in core's shape (the array form
+  and the REQUEST_URI default included).
+- **esc_url preserves wp_allowed_protocols members
+  (t31-glm28-5, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php)** — the http(s)-only probe
+  answered '' over mailto:/tel:/ftp: (a connector's support link
+  green-testing an empty href); the scheme rides a documented
+  allowed set (the minimal honest one for the stub's consumers,
+  core's wider list the recorded divergence), a disallowed scheme
+  still stripping.
+- **sanitize_email rides core's gates (t31-glm28-6, bug:low;
+  tests/harness/wp-stubs.php, tests/FoundationHarnessTest.php)** —
+  the bare FILTER_SANITIZE_EMAIL passthrough let
+  'bogus@@example..com' through where core answers ''; the six gates
+  spell core verbatim (the doubled-period run REMOVED whole, never
+  collapsed — driven), each riding core's own 'sanitize_email'
+  filter arm with its context string.
+- **apply_filters passes the arity verbatim
+  (t31-glm28-7, bug:low; tests/harness/wp-stubs.php,
+  tests/FoundationHarnessTest.php, docs/review/REFUTATION_LEDGER.md)**
+  — the max(1, ...) clamp passed one arg to a 0-arity callback (an
+  ArgumentCountError in production for a registration core serves
+  with zero); the glm14 deferral closed with its first driven
+  evidence, the slice riding WP_Hook::apply_filters's own call
+  shape.
+- **The builder refuses statement-before-namespace
+  (t31-glm28-8, bug:medium; bin/build.php,
+  tests/BuildArtifactsTest.php, docs/review/REFUTATION_LEDGER.md)**
+  — the ocr5-1 residual's own re-open rule fired: the standalone
+  build IS the producer, the driven shape shipping fatal bytes at
+  exit 0 while the built zip failed php -l. Statement-seen tracking
+  rides the rewriter's own token walk (the engine's rule derived
+  against php -l over every shape: a statement or inline HTML
+  before the first declaration fatals — the BOM included; both
+  declare forms legal; a second declaration after code legal), the
+  refusal naming the file and line, the @lint roots the second net.
+- **A non-digit-led port region on a failed parse wears the port
+  sentence (t31-glm28-9, bug:low; shared/src/Http/Url.php,
+  tests/SharedOAuthContractsHttpTest.php)** — ':-80/' wore the
+  generic scheme/host sentence while its ':+80/' and ': 80/' twins
+  answered the digits sentence through the raw screen, one malformed
+  class two verdicts; the digit-led requirement drops, every
+  digit-led arm keeping its precedence verbatim.
+- **The parse-false glued bracket tail wears the bracket sentence
+  (t31-glm28-10, bug:low; shared/src/Http/Url.php,
+  tests/SharedOAuthContractsHttpTest.php)** — '[::1]8080/' wore the
+  generic sentence while '[::1]x/' answered the glued-bracket
+  sentence, inverting the success path's bracket-first precedence;
+  the raw screen's own glued-tail check rides the entry screen over
+  the split owner's strrpos anchor ('a]:b]:70000' keeps its range
+  verdict), the sentence hoisted to the one const both screens
+  share.
+- **The lint walk rides the pooled fleet (t31-glm28-11,
+  efficiency:medium; bin/lint-php.php)** — the serial one-engine-
+  per-file loop spent 6.60 s of every check over the 177 sources;
+  one xargs -0 -n2 -P8 fleet lints them with per-index verdict
+  files (the trailing echo absorbing php -l's exit-255 refusals,
+  glm21-15's idiom), a missing verdict the gate's own loud failure.
+  Measured 6.60 s → 3.72 s — the honest 1.8x on this 4-core host,
+  the ceiling the engine's own spawn cost (P8/P16 identical, the
+  glm21-15 finding reproduced).
+- **The inspector's syntax walk rides the pooled fleet
+  (t31-glm28-12, efficiency:medium; bin/inspect-artifact.php)** —
+  2.35 s of a 2.50 s inspection was spawn cost over the extracted
+  tree; the walk collects and one fleet lints (the verdict sentence
+  byte-identical, the fence's partial-results behavior preserved).
+  Measured 2.41 s → 1.41 s over the real zai zip; the
+  third-consumer hoist threshold named at both pooled seats.
+- **The family detector's token route REFUTED IN VERIFICATION
+  (t31-glm28-13 + t31-glm28-13r, efficiency; bin/lib/plugin-tools.php,
+  docs/review/REFUTATION_LEDGER.md)** — the routing onto the ONE
+  token provider was driven green at the seam and REFUTED by the
+  full check: the detector's postcondition consumers run it over
+  every build's REWRITTEN bytes (unique content per scratch tree),
+  filling the provider's 4 MB bounded-FIFO memo with single-use
+  streams until the suite — knife-edge at the 128M CLI limit beside
+  the views memo's 24 MB — OOMed inside the unused-import retention
+  battery at a deterministic seed (red with the routing, green at
+  HEAD, both re-driven). The seat keeps its bare tokenize with the
+  standalone justification documented in place; re-open only with a
+  memory-budget change.
+- **advanceTime rejects negative advances (t31-glm28-14, bug:low;
+  tests/harness/WpHarness.php, tests/FoundationHarnessTest.php)** —
+  the seat silently rewound the frozen clock where the sibling
+  DeterministicClock::advanceBy() refuses rewinds by doctrine; the
+  refusal is unconditional (frozen or live — the sign error is the
+  defect wherever the clock stands).
+- **quoted_literals computes runtime values through the
+  quote-style-aware owner (t31-glm28-15, bug:low;
+  bin/lib/plugin-tools.php, tests/SelfContainmentEscapedQuoteTest.php)**
+  — the blind callback decoded `\"`/`\'` alike, returning values PHP
+  never computes (a single-quoted `\"` decoded where the backslash
+  IS the value) while the correct owner sat unused; the pair rides
+  the owner (the quote byte keeping the interpolation predicate's
+  contract), the double-quoted arm computing the full escape table —
+  the 57,649-spelling sweep finding zero fail-open flips, and the
+  hex-spelled dot pair now computing the traversal it spells.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 27)
 
 Thirteenth claude-glm pass: 15 findings at cap; 12 stand, #9
