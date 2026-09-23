@@ -4637,10 +4637,33 @@ function wp_connectors_autoloader_violations($pluginDir)
         $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
     }
     $expectedPrefix = 'Deicod\\WpConnectors\\' . wp_connectors_namespace_suffix_from_slug($slug) . '\\';
-    // Autoloaders typically write the prefix as a single-quoted literal with
-    // escaped backslashes; normalize before matching.
-    $normalized = str_replace('\\\\', '\\', $code);
-    if (strpos($normalized, $expectedPrefix) === false) {
+    /*
+     * t31-glm37-2 [R37-2, security:medium, driven fail-open — the
+     * glm15-2 string-data doctrine never swept to this seat]: the
+     * prefix probe ran a raw strpos over comment-stripped but
+     * STRING-BEARING source, so the expected prefix riding as a
+     * SUBSTRING of any string literal satisfied the gate — a
+     * hostile zip's src/autoload.php binding a FOREIGN prefix with
+     * $note = 'expected Deicod\WpConnectors\Zai\ binding' passed
+     * green (driven: 0 violations where the byte-identical file
+     * with the literal's text changed flags), a plugin that
+     * autoloads none of its classes shipping through every gate.
+     * The prefix must ride CODE bytes (the masked view, string
+     * contents blanked — a concatenated or heredoc-composed
+     * spelling) OR stand as a quoted literal whose DECODED VALUE
+     * EQUALS the prefix (the canonical spelling — containment in a
+     * longer literal is prose, never a binding; equality is).
+     */
+    $masked = wp_connectors_mask_string_contents($source);
+    $normalized = str_replace('\\\\', '\\', $masked);
+    $prefix_bound = strpos($normalized, $expectedPrefix) !== false;
+    foreach (wp_connectors_quoted_literals($source) as $literal_pair) {
+        if (str_replace('\\\\', '\\', $literal_pair[1]) === $expectedPrefix) {
+            $prefix_bound = true;
+            break;
+        }
+    }
+    if (! $prefix_bound) {
         $violations[] = sprintf(
             '%s: src/autoload.php must bind PSR-4 prefix %s (derived from the plugin slug).',
             $slug,
