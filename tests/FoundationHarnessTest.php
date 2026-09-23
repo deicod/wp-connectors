@@ -2693,6 +2693,24 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertTrue(current_user_can('manage_options'));
     }
 
+    /**
+     * glm27-7: plugins_url() derives the plugin's own FOLDER from
+     * the $plugin argument — core prefixes dirname(plugin_basename(
+     * $plugin)) (link-template.php, pinned 7.1.1), skipped only for
+     * a plugin in the plugins root ('.'). The stub ignored the
+     * argument entirely, addressing the plugins ROOT whatever file
+     * named the plugin (driven red at HEAD: the folder segment
+     * missing).
+     */
+    public function testPluginsUrlCarriesThePluginsOwnFolderSegment()
+    {
+        $main = ABSPATH . 'wp-content/plugins/glm27-plugin/main.php';
+        $this->assertSame('https://example.test/wp-content/plugins/glm27-plugin/assets/x.js', plugins_url('assets/x.js', $main), 'The $plugin argument derives the folder — core\'s dirname(plugin_basename()) (red at HEAD: the plugins root, the argument ignored).');
+        $this->assertSame('https://example.test/wp-content/plugins/glm27-plugin/', plugin_dir_url($main), 'plugin_dir_url() composes over the same derivation, its trailing slash intact.');
+        $this->assertSame('https://example.test/wp-content/plugins/assets/x.js', plugins_url('assets/x.js', ABSPATH . 'wp-content/plugins/root.php'), 'A plugin in the plugins ROOT carries no folder segment — core\'s own \'.\' skip.');
+        $this->assertSame('https://example.test/wp-content/plugins', plugins_url(), 'The empty path answers the bare plugins URL — core\'s non-empty-string guard, no trailing slash.');
+    }
+
     public function testAdminRefererChecksNonce()
     {
         $this->asAdministrator();

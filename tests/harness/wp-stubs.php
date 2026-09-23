@@ -2318,7 +2318,33 @@ function current_time($type = 'U', $gmt = false)
 
 function plugins_url($path = '', $plugin = '')
 {
-    return 'https://example.test/wp-content/plugins/' . ltrim((string) $path, '/');
+    /*
+     * glm27-7: core's own folder derivation (link-template.php,
+     * pinned 7.1.1) — the $plugin argument names the plugin's own
+     * main file and the URL carries its folder segment: dirname(
+     * plugin_basename( $plugin )), skipped only for a plugin sitting
+     * in the plugins ROOT ('.' — no segment to carry). The stub
+     * ignored the argument entirely, so plugins_url('assets/x.js',
+     * __FILE__) addressed the plugins root instead of the plugin's
+     * own folder (driven). Core's guards ride verbatim: the
+     * mu-plugins arm is not modeled (the harness defines no
+     * WPMU_PLUGIN_DIR), set_url_scheme() is the fixed https host,
+     * and the path append rides core's own non-empty-string guard
+     * ('' answers the bare plugins URL, no trailing slash — core's
+     * own spelling).
+     */
+    $url = 'https://example.test/wp-content/plugins';
+    if ('' !== $plugin && is_string($plugin)) {
+        $folder = dirname(plugin_basename(wp_normalize_path($plugin)));
+        if ('.' !== $folder) {
+            $url .= '/' . ltrim($folder, '/');
+        }
+    }
+    if ($path && is_string($path)) {
+        $url .= '/' . ltrim((string) $path, '/');
+    }
+
+    return apply_filters('plugins_url', $url, $path, $plugin);
 }
 
 function plugin_basename($file)
