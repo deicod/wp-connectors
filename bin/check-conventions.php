@@ -88,7 +88,11 @@ if (wp_connectors_cli_entry(__FILE__)) {
         $connectors_partial = 0;
         $plugin_failures += wp_connectors_unused_import_violations($repoRoot . '/connectors', $connectors_partial);
     } catch (UnexpectedValueException $e) {
-        fwrite(STDERR, "conventions: FAIL connectors: unreadable subdirectory — the unused-import scan aborted ({$e->getMessage()}).\n");
+        // t31-glm43-6 [R43-10]: glm42-2's sweep claim ('the two
+        // walk-abort prints') silently missed THIS one — the
+        // replacement's indent never matched and the shared/src
+        // twin alone landed; the record's r26-8 correction.
+        fwrite(STDERR, 'conventions: FAIL connectors: unreadable subdirectory — the unused-import scan aborted (' . wp_connectors_printable($e->getMessage()) . ").\n");
         /*
          * The PARTIAL count rides the abort's own FAIL (OCR round 43,
          * t31-ocr43-8): the abort once discarded every violation
@@ -244,9 +248,9 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                  * former rtrim.
                  */
                 fwrite(STDERR, wp_connectors_printable(sprintf(
-                    "conventions: FAIL %s: unreadable file — the unused-import scan cannot run.\n",
+                    "conventions: FAIL %s: unreadable file — the unused-import scan cannot run.",
                     substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1)
-                )));
+                )) . "\n");
                 ++$violations;
                 continue;
             }
@@ -525,10 +529,10 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 }
 
                 fwrite(STDERR, wp_connectors_printable(sprintf(
-                    "conventions: FAIL %s: unused import '%s' — the short name appears nowhere else in the file.\n",
+                    "conventions: FAIL %s: unused import '%s' — the short name appears nowhere else in the file.",
                     substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
                     $qualified
-                )));
+                )) . "\n");
                 ++$violations;
             }
 
@@ -603,10 +607,10 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                         ? substr($member_import['qualified'], 1)
                         : $member_import['qualified'];
                     fwrite(STDERR, wp_connectors_printable(sprintf(
-                        "conventions: FAIL %s: unused import '%s' (comma-list member) — the short name appears nowhere else in the file.\n",
+                        "conventions: FAIL %s: unused import '%s' (comma-list member) — the short name appears nowhere else in the file.",
                         substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
                         $comma_display
-                    )));
+                    )) . "\n");
                     ++$violations;
                 }
             }
@@ -666,10 +670,10 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                     }
 
                     fwrite(STDERR, wp_connectors_printable(sprintf(
-                        "conventions: FAIL %s: unused import '%s' (group-use member) — the short name appears nowhere else in the file.\n",
+                        "conventions: FAIL %s: unused import '%s' (group-use member) — the short name appears nowhere else in the file.",
                         substr($file->getPathname(), strlen(rtrim($root, '/\\')) + 1),
                         $member_import['qualified']
-                    )));
+                    )) . "\n");
                     ++$violations;
                 }
             }
