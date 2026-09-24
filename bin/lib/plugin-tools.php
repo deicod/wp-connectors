@@ -3047,11 +3047,16 @@ function wp_connectors_write_visibility_spans($masked, $offset, $reference_captu
      * else-arm takes an expression; after a close tag the keyword
      * bytes are inline HTML the tokenizer already blanked).
      */
-    if (! preg_match_all('/(?<!(?i:const)\s)(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:while|for|foreach)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\(|(?<!(?i:const)\s)(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?<!(?i:function)\s)(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\{|(?<!(?i:const)\s)(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?<!(?i:function)\s)(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])(?!\s*\{)|(?<!(?i:const)\s)(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:function)(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
+    if (! preg_match_all('/(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:while|for|foreach)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\(|(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\{|(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])(?!\s*\{)|(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:function)(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
         return $spans;
     }
 
     foreach ($loops[0] as $loop) {
+        // t31-glm45-6 [R45-5]: the spacing-proof position filter — the
+        // R44-4 fixed-length guards walked past by two spaces or a comment.
+        if (! wp_connectors_keyword_at_statement_position($masked, $loop[1])) {
+            continue;
+        }
         $construct = $loop[0];
         $last = $loop[1] + strlen($construct) - 1; // Position of '(' or '{', or the keyword's last letter.
         /*
@@ -4616,6 +4621,20 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * continue a name, the ocr59-2/ocr60-1 census the sibling
              * probes already spell.
              */
+            /*
+             * t31-glm45-6 [R45-4, driven false flags — the R44-4
+             * census never swept to the include owner]: the keyword
+             * arm matched the semi-reserved keywords as METHOD and
+             * CONSTANT names — a declared
+             * 'public function require(string $file): void' (the
+             * tail grammar swallowing the method body),
+             * '$obj->require(...)' and 'Foo::include(...)' calls,
+             * and 'const REQUIRE' declarations — minting phantom
+             * include statements that false-refused benign plugins
+             * at every gate. The left class refuses the glue bytes
+             * and the const/function-declaration contexts, the
+             * loop detector's own doctrine at this seat.
+             */
             $scanned = preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:require|include)(?i:_once)?(?![' . WP_CONNECTORS_LABEL_BYTES . '])' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $includes, PREG_OFFSET_CAPTURE);
             if (false === $scanned) {
                 $violations[] = sprintf(
@@ -4626,6 +4645,11 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                 );
             } elseif ($scanned) {
                 foreach ($includes[0] as $include_match) {
+                    // t31-glm45-6 [R45-5, the same filter at this seat]: the
+                    // spacing-proof position judgment the loop detector rides.
+                    if (! wp_connectors_keyword_at_statement_position($masked, $include_match[1])) {
+                        continue;
+                    }
                     $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
                     $quoted_literals = wp_connectors_quoted_literals($include[0]);
                     if ($quoted_literals !== array()) {
@@ -5231,6 +5255,54 @@ function wp_connectors_autoloader_violations($pluginDir)
  * @param string $path File path or name (only the tail is judged).
  * @return bool True when the name ends in '.php' or '.phtml' in any case.
  */
+/**
+ * Whether a keyword match at an offset sits at STATEMENT/CALL position
+ * — never inside a NAME USAGE (t31-glm45-6, R45-5).
+ *
+ * The R44-4 guards spelled the const/function-declaration contexts and
+ * the glue bytes as fixed-length regex lookarounds, but any spacing
+ * beyond exactly one byte — two spaces, a comment (stripped to
+ * same-length spaces on the views these seats walk), a newline+indent,
+ * spaces around the '::'/'->' operators — walks PAST the fixed window
+ * and re-mints the phantom (driven: eight spacing shapes re-opening
+ * glm44-4's closed class wholesale). The judgment walks the view's own
+ * bytes backward: skip the whitespace run, then refuse the name-usage
+ * glue (':' '>' the namespace separator '$') and the const/function
+ * declaration keywords ending the preceding identifier run — any
+ * spacing, any comment, the byte class the ONE label owner spells.
+ *
+ * @param string $view   The view the match offsets come from (masked or stripped — both blank comments to whitespace).
+ * @param int    $offset The keyword match's byte offset.
+ * @return bool True at statement/call position; false inside a name usage or declaration.
+ */
+function wp_connectors_keyword_at_statement_position($view, $offset)
+{
+    $at = $offset - 1;
+    while ($at >= 0 && (' ' === $view[ $at ] || "\t" === $view[ $at ] || "\n" === $view[ $at ] || "\r" === $view[ $at ])) {
+        --$at;
+    }
+    if ($at < 0) {
+        return true;
+    }
+    $byte = $view[ $at ];
+    if (':' === $byte || '>' === $byte || '\\' === $byte || '$' === $byte) {
+        return false;
+    }
+    $run_end = $at;
+    $run_start = $at;
+    while ($run_start >= 0 && 1 === preg_match('/\A[' . WP_CONNECTORS_LABEL_BYTES . ']/', $view[ $run_start ])) {
+        --$run_start;
+    }
+    $word = wp_connectors_ascii_lower((string) substr($view, $run_start + 1, $run_end - $run_start));
+    if ('const' === $word || 'function' === $word) {
+        return false;
+    }
+
+    return true;
+}
+
+
+
 function wp_connectors_is_php_source($path)
 {
     $lowered = wp_connectors_ascii_lower((string) $path);

@@ -443,6 +443,40 @@ final class SelfContainmentLoopWritesTest extends TestCase
 
         file_put_contents($this->root . '/vars.php', "<?php\n\$f = __DIR__ . '/safe.txt';\nwhile (true) { require \$f; \$f = '/tmp/outside.php'; }\n");
         $this->assertNotEmpty(wp_connectors_self_containment_violations($this->root), 'The real while loop still admits its in-loop write — the guards exclude only name-usage contexts, never a real statement keyword.');
+
+        /*
+         * t31-glm45-6 [R45-5 — glm44-4's fixed-length guards walked
+         * past by non-canonical spacing]: two spaces, a comment
+         * (blanked to same-length spaces on the masked view), a
+         * newline+indent, and spaces around the '::'/'->' operators
+         * each re-minted the phantom braceless-do/function span
+         * (driven: eight shapes re-opening glm44-4's closed class
+         * wholesale). The judgment walks the view's own bytes
+         * backward — the spacing-proof position filter at the loop
+         * detector and the include owner alike.
+         */
+        foreach (array(
+            'const double-spaced' => "<?php\nclass Flag { const  DO = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag::DO) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'const comment-spaced' => "<?php\nclass Flag { const /* x */ DO = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag::DO) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'const newline-spaced' => "<?php\nclass Flag { const\n  DO = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag::DO) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'function double-spaced' => "<?php\nclass R { public function  do(\$t) { return \$t; } }\n\$r = new R();\n\$path = __DIR__ . '/safe.txt';\nif (\$r->do('s')) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'spaces around ::' => "<?php\nclass Flag { const FLAG = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag :: FLAG) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'spaces around ->' => "<?php\nclass R { public function do(\$t) { return \$t; } }\n\$r = new R();\n\$path = __DIR__ . '/safe.txt';\nif (\$r -> do('s')) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+        ) as $spacing_name => $spacing_source) {
+            file_put_contents($this->root . '/vars.php', $spacing_source);
+            $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), "The {$spacing_name} shape mints no phantom span (red at HEAD: the admitted-write flag).");
+        }
+
+        /*
+         * t31-glm45-6 [R45-4 — the include owner's keyword arm matched
+         * the semi-reserved keywords as method and constant names]:
+         * a declared 'public function require(...)', a '$obj->require'
+         * / 'Foo::include' call, and a 'const REQUIRE' declaration
+         * minted phantom include statements — the R44-4 census never
+         * swept to this seat. The position filter rides here too.
+         */
+        file_put_contents($this->root . '/vars.php', "<?php\nclass Loader { public function require(string \$file): void { echo \$file; } }\n\$l = new Loader();\n\$path = __DIR__ . '/safe.txt';\n\$l->require(\$path);\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A require() method and its call mint no include statement (red at HEAD: the phantom).');
         @unlink($this->root . '/vars.php');
     }
 }
