@@ -1056,6 +1056,20 @@ function wp_connectors_mention_outside_statement($source, $short, $statement_off
             }
         }
     }
+    /*
+     * t31-glm45-9 [R45-8, driven — glm45-2's own edge]: the empty
+     * short (a group-use/comma member ending in a backslash, the
+     * shape guard admitting 'B\') answered NOT-mentioned where the
+     * old inline pattern matched everywhere — the single arm guards
+     * the empty short at its seat (line 494), the member arms
+     * (588/668) did not. The single arm's own guard rides the
+     * helper now: an empty short is not a name, the member arms'
+     * 'unused import' FAIL for the shape unreachable (@lint owns
+     * the unparseable file, the scanner-neutral boundary).
+     */
+    if ('' === $short) {
+        return true;
+    }
     $lowered = wp_connectors_ascii_lower($short);
     if (! isset($memo_buckets[ $lowered ])) {
         return false;
