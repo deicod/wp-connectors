@@ -6,6 +6,57 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 50)
+
+Thirty-sixth claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first; the convergence round ordered — still not
+zero, every accepted correctness finding in the round-49 commits'
+own machinery): the define name compare's case-insensitive prefix
+match binding prefix-sharing and case-variant constant names, the
+decoy consult's seven further gaps, the decode helper's CRLF opener
+and double-quote heredoc arm, the scanner's unanchored run exemption
+and placeholder-word regression, and the mask's percent-encoded
+delimiters. Five fix commits t31-glm50-1..5 plus the docs close,
+the full offline check green after every commit. One finding dropped
+as ledger-covered (the closure parameter-binding channel, glm18's
+recorded boundary). Suite 1979 → 1980 tests, 48593 → 48616
+assertions, 3 skipped unchanged.
+
+- **The define name compare is full-length equality
+  (t31-glm50-1, driven fail-open; bin/lib/plugin-tools.php)** —
+  define('MYPLUG_VERSION2', …) and the case-variant spellings
+  bound at zero violations while executing fatals on the unbound
+  constant; constants are case-sensitive on the floor.
+
+- **The decoy consult's seven further gaps (t31-glm50-2, driven;
+  bin/lib/plugin-tools.php)** — the '::class' phantom frame (the
+  lookahead reading the wrong way, the ubiquitous idiom laundering
+  every later decoy), the relative qualified callee, the type-led
+  group use, the function-in-method declaration, the same-name
+  braced blocks, the comment-blind walk, the use-statement phantom
+  declaration, and the block-scoped imports — one second
+  restructure, the 3000-define hostile shape at 9.3ms with the
+  md5 memo.
+
+- **The decode helper's CRLF opener and quote arm (t31-glm50-3,
+  driven false refusals; bin/lib/plugin-tools.php)** — a CRLF
+  pair is ONE terminator (the round-49 regression), and only the
+  single-quoted label is a nowdoc; the double-quoted heredoc's
+  escapes decode through the one quote-style owner.
+
+- **The sequential-filler arm replaces the unanchored run
+  exemption (t31-glm50-4, driven through the real CLI; bin/lib/
+  secret-scanner.php)** — non-sequential entropy around a run ships
+  live again at both seats, the placeholder words api/key/here
+  join the dictionary, and the pinned sequential-filler body rides
+  the new ascending-slice arm.
+
+- **The mask matches the percent-encoded delimiters (t31-glm50-5,
+  driven; shared/src/Support/SecretMask.php)** — the RFC 6749
+  redirect_uri carrying its callback query percent-encoded inside
+  the outer query leaked four of a nine-character code's
+  characters; '%3F'/'%23'/'%3D' judge beside the literal bytes.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 49)
 
 Thirty-fifth claude-glm pass (/code-review max over the FULL branch
