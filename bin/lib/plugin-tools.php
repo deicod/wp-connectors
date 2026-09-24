@@ -2132,6 +2132,22 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * stays honest either way). An abort is a finding, never a pass.
      */
     $text_lens = function (string $kind, string $text, int $offset) use ($patterns, $push_text_finding): void {
+        /*
+         * t31-glm49-7 [R49-13, pre-measured — the glm45-1 prescreen
+         * doctrine never swept to this seat]: every pattern in the
+         * battery requires the vendor STEM ('Deicod', /i — the three
+         * spellings verified at the seat), so a view not carrying it
+         * case-insensitively matches nothing and the up-to-six PCRE
+         * runs skip wholesale (5.2ms -> 1.0ms per detector sweep over
+         * the shared/src tree, ~80% — the detector running per source
+         * in every build postcondition and repeatedly in the
+         * architecture batteries). Sound by construction: stripos is
+         * byte-wise for the ASCII needle, the stem absent means no
+         * pattern's first required literal can match.
+         */
+        if (false === stripos($text, 'deicod') && false === stripos(str_replace('\\\\', '\\', $text), 'deicod')) {
+            return;
+        }
         foreach (array( $text, str_replace('\\\\', '\\', $text) ) as $view) {
             foreach ($patterns as $pattern) {
                 $hit = array();
