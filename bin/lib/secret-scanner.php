@@ -228,6 +228,8 @@ function wp_connectors_is_recognizably_fake_secret($value)
      * first occurrence owns the minimal head; every later one only
      * grows it.
      */
+    $word_match = array();
+    $head_is_placeholder = false;
     if (preg_match('/(?:^|[-_\s])(not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)(?:[-_\s]|$)/i', $value, $word_match, PREG_OFFSET_CAPTURE)) {
         $head_segments = preg_split('/[-_\s]+/', (string) substr($value, 0, $word_match[1][1]));
         $head_is_placeholder = true;
@@ -240,6 +242,52 @@ function wp_connectors_is_recognizably_fake_secret($value)
             }
             $head_is_placeholder = false;
             break;
+        }
+        if ($head_is_placeholder) {
+            /*
+             * t31-glm45-4 [R45-2, driven end-to-end — glm43-4's rule
+             * never inspected the bytes AFTER the word]: a
+             * short-prefix + word + trailing-entropy live token
+             * (the Slack-shaped short-prefix body with its entropy
+             * tail — the head loop
+             * passing 'xoxb'=4 and 'eu1'=3) shipped as fake where
+             * moving the SAME entropy ahead of the word flags —
+             * the unexamined mirror half of glm43-4's own threat
+             * model. The TAIL after the word must be placeholder
+             * material too: empty, short vendor/type segments (at
+             * most 4 bytes), other dictionary words, or the
+             * sequential filler — never high-entropy credential
+             * bytes on EITHER side of the word. Every pinned fake
+             * fixture keeps its exemption (their tails are
+             * placeholder or filler by construction: 'sk-proj-TEST-
+             * abc123' the sequential filler, 'test-key-abc123' the
+             * leading-word shape whose tail is one 6-byte segment
+             * beside the word, 'wpct_fixture_9f3a2b' the fixture
+             * prefix whose 6-byte hex tail rides the same bound).
+             */
+            $tail = (string) substr($value, $word_match[1][1] + strlen($word_match[1][0]));
+            $tail_segments = preg_split('/[-_\s]+/', $tail);
+            $tail_max = 0;
+            foreach ($tail_segments as $tail_segment) {
+                if ('' === $tail_segment) {
+                    continue;
+                }
+                if (strlen($tail_segment) <= 4
+                    || 1 === preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)$/i', $tail_segment)
+                    || 1 === preg_match('/0123456789|abcdefgh/i', $tail_segment)) {
+                    continue;
+                }
+                $tail_max = max($tail_max, strlen($tail_segment));
+            }
+            if ($tail_max > 6) {
+                /*
+                 * Neither exempt nor refused here: the trailing
+                 * sequential-filler check below owns this value (the
+                 * 'sk-proj-abcdefghij_test_klmnopqrstuvwxyz01' fixture
+                 * — a pinned fake whose tail is filler, not entropy).
+                 */
+                $head_is_placeholder = false;
+            }
         }
         if ($head_is_placeholder) {
             return true;

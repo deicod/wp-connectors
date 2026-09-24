@@ -1501,6 +1501,17 @@ final class SecureFixturesTest extends WpConnectorsTestCase
             $this->assertFalse(wp_connectors_is_recognizably_fake_secret($value), "The {$name} shape is live — entropy ahead of the word names it (red at HEAD: exempted).");
         }
 
+        /*
+         * t31-glm45-4 (R45-2, driven end-to-end — glm43-4's rule
+         * never inspected the bytes AFTER the word): a short-prefix +
+         * word + trailing-entropy live token shipped as fake where
+         * the same entropy ahead of the word flags. The TAIL after
+         * the word must be placeholder material too — never
+         * high-entropy credential bytes on EITHER side.
+         */
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'eu1' . '-test-' . '9f3k9q2m4p5o6i7u8'), 'Entropy AFTER the word names the live body too — the mirror half of the head rule (red at HEAD: exempted).');
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('sk-' . 'eu1' . '-test-' . '9f3k9q2m4p5o6i7u8x2'), 'The api-key family carries the same tail-entropy shape.');
+
         $fake = array(
             'vendor example head' => 'sk-proj-TEST-abc123',
             'whole-value words' => 'YOUR_API_KEY',
