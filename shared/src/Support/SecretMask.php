@@ -440,14 +440,31 @@ final class SecretMask {
 		 * after the last '=' beyond it — or after the delimiter
 		 * itself when no '=' follows: a short trailing run the bare
 		 * mask, a long one keeping the tail.
+		 *
+		 * t31-glm50-5 [R50-10, driven — the percent-encoded
+		 * delimiters]: the boundary recognized only the LITERAL
+		 * '?'/'#'/'=' bytes, so an OAuth redirect_uri carrying its
+		 * own callback QUERY percent-encoded inside the outer query
+		 * ('…redirect_uri=https%3A%2F%2Fclient.example%2Fcb%3Fcode
+		 * %3DBCJK-3502' — the RFC 6749 authorization-request shape
+		 * the Location channel actually carries) defeated the
+		 * final-parameter judgment and leaked four of the code's
+		 * nine characters, the '%23'-spelled fragment and the
+		 * '%3D'-spelled assignment the same. The delimiters are
+		 * matched in their percent-encoded spellings too,
+		 * case-insensitively — the run after the last
+		 * delimiter-equivalent judging exactly as the literal one.
 		 */
-		$query_at  = strrpos( $value, '?' );
-		$frag_at   = strrpos( $value, '#' );
-		$tail_open = max( (int) $query_at, (int) $frag_at );
-		if ( false !== $query_at || false !== $frag_at ) {
+
+		$query_at  = max( (int) strrpos( $value, '?' ), (int) strripos( $value, '%3f' ) );
+		$frag_at   = max( (int) strrpos( $value, '#' ), (int) strripos( $value, '%23' ) );
+		$tail_open = max( $query_at, $frag_at );
+		$has_open  = false !== strrpos( $value, '?' ) || false !== strripos( $value, '%3f' ) || false !== strrpos( $value, '#' ) || false !== strripos( $value, '%23' );
+		if ( $has_open ) {
 			$credential_at = $tail_open;
-			$assignment_at = strrpos( $value, '=' );
-			if ( false !== $assignment_at && $assignment_at > $tail_open ) {
+			$assignment_at = max( (int) strrpos( $value, '=' ), (int) strripos( $value, '%3d' ) );
+			$has_assign    = false !== strrpos( $value, '=' ) || false !== strripos( $value, '%3d' );
+			if ( $has_assign && $assignment_at > $tail_open ) {
 				$credential_at = $assignment_at;
 			}
 			if ( self::count_characters( substr( $value, $credential_at + 1 ) ) <= self::MIN_LENGTH_FOR_VISIBLE_TAIL ) {

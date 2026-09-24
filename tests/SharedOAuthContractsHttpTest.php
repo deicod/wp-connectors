@@ -3150,6 +3150,21 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('https://client.example/cb#code=BCJK-3502'), 'A short code embedded in the FRAGMENT renders the bare mask — the implicit-flow spelling judged the same as the query one (red at HEAD: …3502).');
         $this->assertSame('…', SecretMask::mask('https://client.example/cb?BCJK-3502'), 'An equals-less final parameter renders the bare mask — the run after the delimiter judges when no \'=\' follows (red at HEAD: …3502).');
         $this->assertSame('…7710', SecretMask::mask('https://x.example/cb#access_token=' . 'ghp_' . '16C7e42F292c6912E7710'), 'A LONG fragment parameter keeps the correlation tail.');
+
+        /*
+         * t31-glm50-5 (R50-10, driven — the percent-encoded
+         * delimiters): the boundary recognized only the literal
+         * '?'/'#'/'=' bytes, so an OAuth redirect_uri carrying its
+         * own callback query percent-encoded inside the outer query
+         * (the RFC 6749 authorization-request shape the Location
+         * channel actually carries) defeated the final-parameter
+         * judgment and leaked four of the code's nine characters.
+         * The delimiters match their percent-encoded spellings too.
+         */
+        $this->assertSame('…', SecretMask::mask('https://sso.example/authorize?client_id=abc123def456&redirect_uri=https%3A%2F%2Fclient.example%2Fcb%3Fcode%3DBCJK-3502'), 'A short code inside a percent-encoded callback query renders the bare mask — the OAuth redirect_uri shape (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('https://client.example/cb%23code%3DBCJK-3502'), 'The percent-encoded fragment spelling judges the same.');
+        $this->assertSame('…', SecretMask::mask('https://client.example/cb%3Fcode%3DBCJK-3502'), 'The percent-encoded query spelling judges the same.');
+        $this->assertSame('…7710', SecretMask::mask('https://x.example/cb%3Faccess_token%3D' . 'ghp_' . '16C7e42F292c6912E7710'), 'A LONG percent-encoded parameter keeps the correlation tail.');
     }
 
     /**
