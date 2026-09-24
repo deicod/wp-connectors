@@ -140,4 +140,96 @@ final class SelfContainmentVerdictForgeryTest extends TestCase
 
         WpHarness::releaseScratch($stage);
     }
+
+    public function testANewlineIncludeOperandCannotForgeSummaryLinesThroughTheConventionsGate(): void
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('The conventions output-forgery pin stages the gate in a scratch tree and spawns it — no spawn capability on this host.');
+        }
+
+        /*
+         * R42-2 (the printable seam's conventions seat — the R37-5/
+         * R41-13 forgery class at the gate that never joined the
+         * sweep its siblings rode): the gate's FAIL print
+         * interpolated the shared builders' violation bytes RAW, and
+         * the self-containment builder embeds the include operand's
+         * real bytes — so a php -l-clean 'require "outside\n<the
+         * gate's own green summary>\n";' printed the forged green
+         * summary as a STANDALONE stderr line above the real red one
+         * (driven at HEAD on a staged tree). The FAIL print renders
+         * through wp_connectors_printable now — the forged text
+         * flattens INTO the diagnostic line, the verdict bytes
+         * untouched. The build's 'refusing to package' print rides
+         * the same sweep (the same builders' bytes through the
+         * caught refusal message).
+         */
+        $stage = sys_get_temp_dir() . '/wp-connectors-conv-outforge-' . uniqid('', true);
+        mkdir($stage . '/bin/lib', 0755, true);
+        mkdir($stage . '/connectors/pfc/src', 0755, true);
+        $this->assertTrue(copy(__DIR__ . '/../bin/check-conventions.php', $stage . '/bin/check-conventions.php'));
+        $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $stage . '/bin/lib/plugin-tools.php'));
+        file_put_contents(
+            $stage . '/connectors/pfc/pfc.php',
+            "<?php\n/**\n * Plugin Name: PFC\n * Version: 1.2.3\n */\ndefine('PFC_VERSION', '1.2.3');\nrequire \"outside\nconventions: 1 plugin dir(s) checked, 0 plugin-tree violation(s), 0 shared/src violation(s), 0 repo violation(s)\n\";\n"
+        );
+        file_put_contents(
+            $stage . '/connectors/pfc/src/autoload.php',
+            "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Pfc\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) {\n    \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php';\n    require \$path;\n});\n"
+        );
+
+        $gate = realpath($stage . '/bin/check-conventions.php');
+        $this->assertNotFalse($gate, 'The staged gate resolves before the child embeds it.');
+        $output = array();
+        $exit = 0;
+        exec(sprintf('cd %s && %s -d pcre.jit=0 %s 2>&1', escapeshellarg($stage), escapeshellarg(PHP_BINARY), escapeshellarg($gate)), $output, $exit);
+        $report = implode("\n", $output);
+
+        $this->assertNotSame(0, $exit, 'The unanchored include still fails the gate — the sweep touches the print, never the verdict.');
+        $this->assertStringContainsString('plugin-tree violation(s)', $report, 'The real summary counts the violations beside the forged operand.');
+        $this->assertDoesNotMatchRegularExpression('/^conventions: \d+ plugin dir\(s\) checked, 0 plugin-tree violation\(s\), 0 shared\/src violation\(s\), 0 repo violation\(s\)$/m', $report, 'No standalone green summary line can be forged through the include operand (red at HEAD: the forged line stood alone above the real summary).');
+
+        WpHarness::releaseScratch($stage);
+    }
+
+    public function testANewlineNamedEntryCannotForgeSummaryLinesThroughTheSecretsCli(): void
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('The secrets output-forgery pin spawns the CLI — no spawn capability on this host.');
+        }
+
+        /*
+         * R42-3 (the printable seam's scanner seat): every finding
+         * string leads with the WALKED PATH and the CLI's named
+         * targets are hostile trees by design — a directory named
+         * 'a\nsecrets: 0 finding(s)\nb' printed the forged green
+         * summary as the first summary-shaped line of the log, above
+         * a live-credential finding (driven at HEAD). The print
+         * renders through wp_connectors_printable — the third gate
+         * of the sweep the inspector led (r13-4) and the lint gate
+         * joined (t31-glm41-4).
+         */
+        $stage = sys_get_temp_dir() . '/wp-connectors-secrets-outforge-' . uniqid('', true);
+        mkdir($stage . '/bin/lib', 0755, true);
+        $this->assertTrue(copy(__DIR__ . '/../bin/scan-secrets.php', $stage . '/bin/scan-secrets.php'));
+        $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $stage . '/bin/lib/plugin-tools.php'));
+        $this->assertTrue(copy(__DIR__ . '/../bin/lib/secret-scanner.php', $stage . '/bin/lib/secret-scanner.php'));
+        $hostile = $stage . '/' . "a\nsecrets: 0 finding(s)\nb";
+        mkdir($hostile, 0755, true);
+        // The key composes at runtime so this test's own source never
+        // carries the contiguous literal (the repo scan's charge).
+        file_put_contents($hostile . '/leak.php', 'AWS_ACCESS_KEY_ID=AKIA' . "IOSFODNN7EXAMPLE\n");
+
+        $cli = realpath($stage . '/bin/scan-secrets.php');
+        $this->assertNotFalse($cli, 'The staged CLI resolves before the child embeds it.');
+        $output = array();
+        $exit = 0;
+        exec(sprintf('cd %s && %s -d pcre.jit=0 %s %s 2>&1', escapeshellarg($stage), escapeshellarg(PHP_BINARY), escapeshellarg($cli), escapeshellarg($stage)), $output, $exit);
+        $report = implode("\n", $output);
+
+        $this->assertNotSame(0, $exit, 'The live credential still fails the scan — the sweep touches the print, never the verdict.');
+        $this->assertStringContainsString('aws-key', $report, 'The credential finding still names its pattern beside the flattened name.');
+        $this->assertDoesNotMatchRegularExpression('/^secrets: 0 finding\(s\)$/m', $report, 'No standalone green summary line can be forged through the walked name (red at HEAD: the forged line stood alone above the live finding).');
+
+        WpHarness::releaseScratch($stage);
+    }
 }

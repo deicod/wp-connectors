@@ -4424,7 +4424,10 @@ if (wp_connectors_cli_entry(__FILE__)) {
             // blank sha256= at exit 0.
             echo 'build: ' . basename($zipPath) . ' sha256=' . WpConnectorsBuild::publishedChecksum($zipPath) . "\n";
         } catch (RuntimeException $e) {
-            fwrite(STDERR, $e->getMessage() . "\n");
+            // t31-glm42-2 [R42-2]: the refusal messages embed the shared
+            // builders' violation bytes (include operands, landed paths) —
+            // swept through the ONE printable owner like every gate print.
+            fwrite(STDERR, wp_connectors_printable($e->getMessage()) . "\n");
             $failed = true;
         }
     }

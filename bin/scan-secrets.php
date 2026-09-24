@@ -43,7 +43,19 @@ if (wp_connectors_cli_entry(__FILE__)) {
 
     $findings = wp_connectors_scan_paths($targets);
     foreach ($findings as $finding) {
-        fwrite(STDERR, 'secrets: FAIL ' . $finding . "\n");
+        /*
+         * t31-glm42-2 [R42-3, the printable seam's third gate]: every
+         * finding string leads with the WALKED PATH (the CLI's named
+         * targets are hostile trees by design — the scan-before-lint
+         * threat model is this gate's own), so a newline inside a
+         * walked name forges standalone summary lines into the log
+         * (driven: a directory 'a\nsecrets: 0 finding(s)\nb' printing
+         * the forged green line above a live-credential finding).
+         * The print rides the ONE printable owner — the inspector's
+         * render and the lint gate joined in r13-4/glm41-4; this
+         * gate completes the sweep.
+         */
+        fwrite(STDERR, 'secrets: FAIL ' . wp_connectors_printable($finding) . "\n");
     }
 
     printf("secrets: %d finding(s)\n", count($findings));
