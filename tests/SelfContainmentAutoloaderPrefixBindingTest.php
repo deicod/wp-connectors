@@ -313,4 +313,36 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         $canonical = "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) {\n    \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php';\n    require \$path;\n});\n";
         $this->assertSame(array(), $this->autoloadWith($canonical), 'The canonical quoted prefix literal still binds — a real T_CONSTANT_ENCAPSED_STRING whose decoded value equals the prefix.');
     }
+
+    public function testAVariableToVariableChainCarriesTheVendorOperandToTheChannel(): void
+    {
+        /*
+         * R44-1 (security:medium, driven fail-open versus master —
+         * glm43-1's resolution one dataflow hop short): the judgment
+         * read only the resolved assignment's OWN text, so a
+         * variable-to-variable chain — the explicit '$lib = $paths;
+         * require $lib;' or the foreach value binding the collector
+         * mints — carried the vendor path to the channel with no
+         * flag where master refused (driven end-to-end through every
+         * gate, the review's master worktree drive). The resolution
+         * is TRANSITIVE now: a worklist over each assignment value's
+         * own variables, a seen-set closing cycles, every hop judged
+         * by the same standard.
+         */
+        $canonical = "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) { \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php'; require_once \$path; });\n";
+
+        $foreach_binding = $this->autoloadWith($canonical . "\$paths = array(__DIR__ . '/../vendor-pkg/lib.php');\nforeach (\$paths as \$lib) {\n    require \$lib;\n}\n");
+        $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $foreach_binding), 'The foreach value binding carries the vendor path — the synthetic mint the collector spells resolves transitively (red at HEAD: clean where master flags).');
+
+        $this->base .= '-chain';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $chain = $this->autoloadWith($canonical . "\$paths = __DIR__ . '/../vendor-pkg/lib.php';\n\$lib = \$paths;\nrequire \$lib;\n");
+        $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $chain), 'The explicit two-hop chain flags — the resolution recurses into the value own variables (red at HEAD: clean).');
+
+        $this->base .= '-cycle';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $cycle = $this->autoloadWith($canonical . "\$a = \$b;\n\$b = \$a;\n\$lib = __DIR__ . '/safe.php';\nrequire \$lib;\n");
+        $this->assertStringNotContainsString('must not reference composer or vendor', implode("\n", $cycle), 'A variable cycle over an anchored value stays clean — the seen-set closes the loop.');
+    }
+
 }

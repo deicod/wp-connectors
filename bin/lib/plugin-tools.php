@@ -4940,13 +4940,48 @@ function wp_connectors_autoloader_violations($pluginDir)
                      * write-visibility spans bounding which writes
                      * the channel can read.
                      */
+                    /*
+                     * t31-glm44-1 [R44-1, security:medium, driven
+                     * fail-open versus master — glm43-1's resolution
+                     * one dataflow hop short]: a variable-to-variable
+                     * chain ('$lib = $paths; require $lib;' — or the
+                     * foreach value binding 'foreach ($paths as $lib)
+                     * { require $lib; }', the synthetic mint the
+                     * binding collector already spells) carried the
+                     * vendor path to the channel with no flag because
+                     * the judgment read only the resolved assignment's
+                     * OWN text ('$lib = $paths;' names no vendor bytes)
+                     * and never recursed into '$paths'. The resolution
+                     * is TRANSITIVE now: a worklist of the assignment
+                     * value's own variables, a seen-set closing cycles
+                     * (the escape walk's own depth discipline), each
+                     * hop's assignments judged by the same standard —
+                     * the vendor path reaches the channel through any
+                     * chain of same-file writes the write-visibility
+                     * spans admit.
+                     */
                     $variable_names = array();
                     preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $statement_text, $variable_names);
-                    foreach ($variable_names[1] as $variable_name) {
-                        foreach (wp_connectors_same_file_assignments($code, $masked, '$' . $variable_name, $operand[1]) as $assignment_value) {
+                    $pending = array();
+                    foreach (array_reverse($variable_names[1]) as $variable_name) {
+                        $pending[] = array( '$' . $variable_name, $operand[1] );
+                    }
+                    $seen_variables = array();
+                    while ($pending !== array()) {
+                        $hop = array_pop($pending);
+                        if (isset($seen_variables[ $hop[0] ])) {
+                            continue;
+                        }
+                        $seen_variables[ $hop[0] ] = true;
+                        foreach (wp_connectors_same_file_assignments($code, $masked, $hop[0], $hop[1]) as $assignment_value) {
                             if (false !== stripos($assignment_value, 'vendor') || false !== stripos($assignment_value, 'composer')) {
                                 $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
                                 break 3;
+                            }
+                            $hop_names = array();
+                            preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $assignment_value, $hop_names);
+                            foreach (array_reverse($hop_names[1]) as $hop_name) {
+                                $pending[] = array( '$' . $hop_name, $hop[1] );
                             }
                         }
                     }
