@@ -377,4 +377,41 @@ final class SelfContainmentLoopWritesTest extends TestCase
             'No cut: the single span is the whole view (the tail span).'
         );
     }
+
+    public function testLabelByteLabelsAndDollarVariablesMintNoPhantomStatements(): void
+    {
+        /*
+         * R43-2+R43-3+R43-7 (driven false flags — the label-byte
+         * census unswept at three sibling families): the include
+         * scan's keyword arm kept PCRE's ASCII '\b', so
+         * '$require'/'$include' VARIABLE names minted PHANTOM include
+         * statements (four violations over two assignments, red at
+         * HEAD) and legal high-byte labels ('äinclude(') matched the
+         * same way; the loop detector's '\b' read 'grüwhile(' as a
+         * loop header arming a phantom braceless-body span; and the
+         * variable-shape regexes at four seats refused a legal
+         * high-byte variable ('$pfäd') its ASCII twin resolves clean.
+         * Every seat rides the LABEL byte class with the '$' guard —
+         * the ocr59-2/ocr60-1 census the sibling probes already
+         * spelled, the R37-6/R37-7 recorded inheritance claimed.
+         */
+        file_put_contents($this->root . '/vars.php', "<?php\n\$require = dirname(__DIR__) . '/notes.txt';\n\$include = 'hello.txt';\n\$file = \$require . \$include;\ninclude \$file;\n");
+        $vars = wp_connectors_self_containment_violations($this->root);
+        $this->assertCount(1, $vars, 'Only the REAL unanchored include remains — the variable names mint no phantom statements (red at HEAD: 4 violations).');
+        $this->assertStringContainsString('include $file', $vars[0], 'The surviving violation is the genuine unanchored include.');
+
+        file_put_contents($this->root . '/vars.php', "<?php\n\xC3\xA4include('hello.txt');\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A high-byte label glued to the keyword is one name — no include statement (red at HEAD: the phantom).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\n\$f = __DIR__ . '/safe.txt';\nif ( gr\xC3\xBCwhile( true ) ) { require \$f; }\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A high-byte label ending in a loop keyword is one name — no phantom loop span (red at HEAD: the admitted-write flag).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\n\$pf\xC3\xA4d = __DIR__ . '/x.php';\nrequire \$pf\xC3\xA4d;\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A legal high-byte variable resolves through the same proof its ASCII twin rides (red at HEAD: the shape-class refusal).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\nrequire dirname(__DIR__, 2) . '/outside.php';\n");
+        $escaped = wp_connectors_self_containment_violations($this->root);
+        $this->assertNotEmpty($escaped, 'The real escape still flags — the census excludes only name-glued bytes, never a real statement.');
+        @unlink($this->root . '/vars.php');
+    }
 }

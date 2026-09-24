@@ -3018,7 +3018,18 @@ function wp_connectors_write_visibility_spans($masked, $offset, $reference_captu
      * closed at their seats, the dispatch reading the FOLDED tail
      * byte and the split a quantifier-free masked-slice find.)
      */
-    if (! preg_match_all('/\b(?i:while|for|foreach)\s*\(|\b(?i:do)\s*\{|\b(?i:do)\b(?!\s*\{)|\b(?i:function)\b/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
+    /*
+     * t31-glm43-2 [R43-3, the same census one seat over]: the loop
+     * detector's keyword arms kept the ASCII '\b', so a legal
+     * high-byte label ending in while/for/foreach ('grüwhile(') was
+     * read as a loop header, the paren walk closing at an unrelated
+     * ')' and the braceless-body arm arming a PHANTOM span to EOF
+     * that admitted a post-include write and false-flagged benign
+     * plugins (driven; the '$do' variable the same hole — R37-7's
+     * recorded class). Every arm rides the label-class lookarounds
+     * with the '$' guard.
+     */
+    if (! preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:while|for|foreach)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\(|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\{|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])(?!\s*\{)|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:function)(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
         return $spans;
     }
 
@@ -3722,7 +3733,7 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
             if ($value_variable !== $variable) {
                 continue;
             }
-            if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $source)
+            if (preg_match('/^\$[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*$/', $source)
                 && ! wp_connectors_array_writes_recognized($masked, $source, $offset)) {
                 /*
                  * Verifier round on GLM10 #14: the map can be written in
@@ -3832,7 +3843,7 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
 
     $reasons = array();
     foreach ($segments as $segment) {
-        if (! preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $segment)) {
+        if (! preg_match('/^\$[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*$/', $segment)) {
             $reasons[] = 'combines the anchor with unresolvable runtime segments';
             continue;
         }
@@ -3905,7 +3916,7 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
     // t31-glm29-2: both terminator spellings — the include_runtime_segments() twin above.
     $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($include)), " \t\n\r();?>");
 
-    if (preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $argument)) {
+    if (preg_match('/^\$[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*$/', $argument)) {
         $assignments = wp_connectors_same_file_assignments($code, $masked, $argument, $offset);
         if ($assignments === array()) {
             return array( sprintf('variable %s has no resolvable same-file assignment', $argument) );
@@ -4000,7 +4011,7 @@ function wp_connectors_assignment_value_reasons($file, $code, $reason_variable, 
         return $reasons;
     }
 
-    if (0 === $depth && preg_match('/^\$[A-Za-z_][A-Za-z0-9_]*$/', $expression)) {
+    if (0 === $depth && preg_match('/^\$[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*$/', $expression)) {
         $inner_assignments = wp_connectors_same_file_assignments($code, $masked, $expression, $offset);
         if ($inner_assignments === array()) {
             return array( sprintf('variable %s depends on %s with no resolvable same-file assignment', $reason_variable, $expression) );
@@ -4573,7 +4584,21 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * input: an unterminated include is still an include.
              */
             // t31-glm41-1: the tail rides the ONE constant (see WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR).
-            $scanned = preg_match_all('/\b(?i:require|include)(?i:_once)?\b' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $includes, PREG_OFFSET_CAPTURE);
+            /*
+             * t31-glm43-2 [R43-2, the R37-6/R37-7 recorded inheritance
+             * claimed — the label-byte census at the include owner]:
+             * the keyword arm kept PCRE's ASCII '\b' both edges, so
+             * '$require'/'$include' VARIABLE names ('\b' holding
+             * between '$' and the letter) and legal high-byte labels
+             * ('äinclude(') matched as include statements, minting
+             * PHANTOM violations that refused benign plugins at every
+             * gate (driven: four phantoms over two variable
+             * assignments). Both edges ride the LABEL byte class with
+             * the '$' guard — an include must neither start nor
+             * continue a name, the ocr59-2/ocr60-1 census the sibling
+             * probes already spell.
+             */
+            $scanned = preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:require|include)(?i:_once)?(?![' . WP_CONNECTORS_LABEL_BYTES . '])' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $includes, PREG_OFFSET_CAPTURE);
             if (false === $scanned) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for includes — the self-containment scan aborted (PCRE: %s)',
