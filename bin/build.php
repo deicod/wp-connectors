@@ -2866,7 +2866,21 @@ final class WpConnectorsBuild
                     throw new RuntimeException(sprintf(
                         'plugin tree carries a symlink (%s -> %s) — the no-symlinks doctrine refuses the build instead of silently skipping a source that loads in development and misses the zip',
                         $file->getPathname(),
-                        (string) $file->getLinkTarget()
+                        /*
+                         * t31-glm51-6 [R51-14 — the ocr57-3 readlink
+                         * doctrine at this seat]: the read owns its
+                         * Throwable shapes exactly as bin/lint-php.php
+                         * does (t31-ocr57-3).
+                         */
+                        (function () use ($file) {
+                        try {
+                            $target = $file->getLinkTarget();
+                        } catch (RuntimeException $unreadable) {
+                            return '(unreadable target: ' . $unreadable->getMessage() . ')';
+                        }
+
+                        return false === $target ? '(unreadable target: readlink answered false)' : (string) $target;
+                    })()
                     ));
                 }
                 if (! $file->isFile()) {
@@ -4480,6 +4494,26 @@ if (wp_connectors_cli_entry(__FILE__)) {
             fwrite(STDERR, ('' !== $name && '-' === $name[0])
                 ? "build: unknown option {$name} (known options: --slug=<slug>, --fixture=<fixture-name>)\n"
                 : "build: unrecognized argument {$arg} (options ride --slug=<slug> / --fixture=<fixture-name>)\n");
+            exit(1);
+        }
+        /*
+         * t31-glm51-5 [R51-9, driven — the empty-'=' bypass]: getopt()
+         * DROPS an 'opt::' key entirely when its '='-value is empty, so
+         * '--slug=' passed the name loop (a known name) while the
+         * is_string loop never iterated (the key absent) and isset()
+         * stayed false — control falling to the glob-everything branch
+         * and SILENTLY REBUILDING AND RE-LANDING every connector's
+         * dist artifacts at exit 0 (driven in a full repo copy: dist
+         * zips, sidecars, and checksums rewritten), the exact class
+         * the adjacent block documents itself as refusing — an
+         * operator with an unexpanded variable (--slug=${SLUG}, SLUG
+         * empty) getting a full release-landing run. The empty-'='
+         * spelling answers the needs-its-value refusal: it is
+         * semantically the valueless invocation the space-separated
+         * form is refused for.
+         */
+        if ('--slug=' === $arg || '--fixture=' === $arg) {
+            fwrite(STDERR, "build: option {$name} needs its value in the {$name}=<value> spelling (an empty '='-value is the valueless invocation)\n");
             exit(1);
         }
     }

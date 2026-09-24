@@ -4826,10 +4826,22 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                     }
                 }
             }
-            if (stripos($code, 'vendor/autoload') !== false) {
+            /*
+             * t31-glm51-4 [R51-8, driven false refusal — the R40-5
+             * prose-immunity class never swept to this seat]: both
+             * scans judged the comment-stripped but STRING-BEARING
+             * $code, so the WORDS 'require' and 'composer' inside a
+             * benign prose literal ('self-contained: must not
+             * require composer…') minted 'references Composer at
+             * runtime' — the operand probe's masked-view
+             * re-confirmation (glm40-3/glm45-3) sitting one screen
+             * up. Both re-confirm on the MASKED view: prose blanks
+             * there, real code bytes stay.
+             */
+            if (stripos($code, 'vendor/autoload') !== false && stripos($masked, 'vendor/autoload') !== false) {
                 $violations[] = sprintf('%s: %s references vendor/autoload (no Composer at runtime).', $slug, $relative);
             }
-            if (preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $code) && stripos($code, 'composer') !== false) {
+            if (preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $code) && stripos($code, 'composer') !== false && stripos($masked, 'composer') !== false && preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $masked)) {
                 $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
             }
             /*
@@ -5985,7 +5997,25 @@ function wp_connectors_php_source_files($dir, ?array &$bytes = null)
                 throw new RuntimeException(sprintf(
                     'shared source tree carries a symlink (%s -> %s) — the no-symlinks doctrine refuses the walk instead of silently skipping a source that loads in development and misses the zip',
                     $file->getPathname(),
-                    (string) $file->getLinkTarget()
+                    /*
+                     * t31-glm51-6 [R51-14 — the ocr57-3 readlink
+                     * doctrine at the two seats the round-48 sweep
+                     * never reached]: the read owns its Throwable
+                     * shapes exactly as bin/lint-php.php does — a
+                     * RuntimeException (ESTALE mid-walk) degrades to
+                     * the named unreadable-target spelling, a false
+                     * return to the same, never an escape from the
+                     * refusal the walk already decided on.
+                     */
+                    (function () use ($file) {
+                        try {
+                            $target = $file->getLinkTarget();
+                        } catch (RuntimeException $unreadable) {
+                            return '(unreadable target: ' . $unreadable->getMessage() . ')';
+                        }
+
+                        return false === $target ? '(unreadable target: readlink answered false)' : (string) $target;
+                    })()
                 ));
             }
             if (! $file->isFile()) {

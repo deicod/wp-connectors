@@ -167,7 +167,7 @@ function wp_connectors_secret_patterns()
  * @param string $extension The payload's lowercased extension ('' when none).
  * @return string PCRE pattern matching the marker inside a comment.
  */
-function wp_connectors_allow_marker_pattern($extension = '')
+function wp_connectors_allow_marker_pattern($extension = '', $with_markup_arm = true)
 {
     /*
      * glm24-11: the line-comment opener class is ONE fragment — the
@@ -175,8 +175,28 @@ function wp_connectors_allow_marker_pattern($extension = '')
      * one-owner doctrine exists to close (a new opener spelling
      * added to one arm alone would split the grammar's own
      * vocabulary between the families).
+     *
+     * t31-glm51-7 [R51-3, driven fail-open — the markup arm on
+     * CODE bytes]: the $with_markup_arm flag drops the '<!--' arm
+     * for the CODE-view consult alone — on a masked code view
+     * '<!--' is PHP OPERATORS ('1 <!-- x --> + 2' lexes '<','!',
+     * T_DEC, kept verbatim by the masker), never an HTML comment
+     * (inline HTML — where the marker is real — blanks to spaces
+     * there, glm16-1), so the markup arm firing on code bytes is
+     * 'markers count only in REAL comments' (glm19-2) defeated at
+     * the one seat judging code; '$z = 1 <!-- secrets:allow --> +
+     * 2;' exempted a live credential beside it (driven through the
+     * real CLI, the token-driven proof showing the splice lexing
+     * as code tokens) with NO lint gate behind it in a .md payload
+     * — the scan-before-lint threat model. The prose consult keeps
+     * the markup arm: a payload whose whole comment grammar is HTML
+     * (the pure-HTML .php template of glm24-1, every .html) IS
+     * prose, its '<!--' a real comment there.
      */
     $line_comment_openers = '\/\/|#|\/\*|\*';
+    if (! $with_markup_arm) {
+        return '/(?:^|\s)(?:' . $line_comment_openers . ')\s*secrets:allow\b/';
+    }
     if (! in_array($extension, array( 'html', 'htm', 'xhtml', 'svg', 'xml', 'md', 'php', 'phtml' ), true)) {
         return '/(?:^|\s)(?:' . $line_comment_openers . '|<!--)\s*secrets:allow\b/';
     }
@@ -1294,7 +1314,7 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                 }
                 if ($in_code) {
                     if (null === $code_marker) {
-                        $code_marker = 1 === preg_match($allowMarker, $code_view);
+                        $code_marker = 1 === preg_match(wp_connectors_allow_marker_pattern($label_ext, false), $code_view);
                     }
                     if ($code_marker) {
                         continue;

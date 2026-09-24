@@ -1596,6 +1596,34 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         }
     }
 
+    public function testAMarkupSpliceOnCodeBytesExemptsNothing()
+    {
+        /*
+         * R51-3 (driven through the real CLI): the code-view consult
+         * honored the markup '<!--' arm on PHP CODE bytes — where
+         * '<!--' is operators ('<', '!', T_DEC; the masker keeps
+         * them verbatim; real inline-HTML markers blank to spaces
+         * there, glm16-1) — so '1 <!-- secrets:allow --> + 2;'
+         * exempted a live credential beside it, glm19-2's 'markers
+         * count only in REAL comments' defeated at the one seat
+         * judging the masked code view (a .md payload carries no
+         * lint gate behind it — the scan-before-lint threat model).
+         * The code consult rides the line-comment arms alone; the
+         * prose consult keeps the markup arm (the pure-HTML .php
+         * template of glm24-1 IS prose, its '<!--' a real comment).
+         */
+        $key = 'ghp_' . str_repeat('q', 30);
+        $findings = wp_connectors_scan_string("<?php \$k = \x27{$key}\x27; \$z = 1 <!-- secrets:allow --> + 2;\n", 'a.php', true);
+        $this->assertNotEmpty($findings, 'An operator-spelled markup marker on code bytes exempts nothing (red at HEAD: 0 findings).');
+        $this->assertSame(array(), wp_connectors_scan_string("<?php \$k = \x27{$key}\x27; // secrets:allow\n", 'b.php', true), 'The line-comment marker keeps its exemption.');
+        $this->assertSame(array(), wp_connectors_scan_string("<?php \$k = \x27{$key}\x27; # secrets:allow\n", 'c.php', true), 'The hash marker keeps its exemption.');
+        $this->assertSame(
+            array(),
+            wp_connectors_scan_string("<input value=\"{$key}\"><!-- secrets:allow -->\n", 'template.php'),
+            'The pure-HTML .php template keeps its exemption — the prose consult keeps the markup arm (glm24-1 unchanged).'
+        );
+    }
+
     public function testMarkerInsideAHeredocBodyExemptsNothing()
     {
         /*

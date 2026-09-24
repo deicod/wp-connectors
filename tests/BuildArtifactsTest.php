@@ -3006,6 +3006,25 @@ FIXTURE;
         $this->assertStringNotContainsString('connectors-beta-demo-1.0.0.zip', $report, 'Exactly the one asked-for connector is built.');
         $this->assertFileDoesNotExist($repo . '/dist/connectors-beta-demo-1.0.0.zip');
 
+        /*
+         * t31-glm51-5 (R51-9, driven in a full repo copy): the
+         * EMPTY-'=' spelling bypassed both loops — getopt() drops an
+         * 'opt::' key entirely when its '='-value is empty, so the
+         * name loop passed ('--slug' a known name), the is_string
+         * loop never iterated (the key absent), isset() stayed
+         * false, and control fell to the glob-everything branch,
+         * silently rebuilding and re-landing EVERY connector's dist
+         * artifacts at exit 0 — the same valueless invocation the
+         * space-separated form (c) is refused for.
+         */
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --slug= 2>&1', $output, $exit);
+        $report = implode("\n", $output);
+        $this->assertSame(1, $exit, "The empty-'=' spelling must refuse, never fall through to build-everything:\n{$report}");
+        $this->assertStringContainsString('needs its value', $report, "The refusal names the valueless invocation (red at HEAD: exit 0 having built every connector).");
+        $this->assertFileDoesNotExist($repo . '/dist/connectors-beta-demo-1.0.0.zip', 'Nothing MORE is built on the refused invocation (leg b already landed alpha).');
+
         // (c) The space-separated value form refuses naming the real cause —
         // getopt binds no value without '=' (it answers false).
         $output = array();
