@@ -3081,6 +3081,12 @@ function wp_connectors_write_visibility_spans($masked, $offset, $reference_captu
      * statement keyword never continues a name usage (the ternary
      * else-arm takes an expression; after a close tag the keyword
      * bytes are inline HTML the tokenizer already blanked).
+     * (CORRECTED at t31-glm47-1: the glue-byte class this block
+     * recorded is GONE from the collector — it pre-answered the
+     * byte-pair helper's judgments and failed OPEN on the tight
+     * spellings; the class is label+'$' alone, the helper owning
+     * every pair judgment, the glm47-1 block below carrying the
+     * current spelling.)
      */
     /*
      * t31-glm47-1 [R47-1, driven fail-open - the collector still
@@ -4707,9 +4713,12 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * '$obj->require(...)' and 'Foo::include(...)' calls,
              * and 'const REQUIRE' declarations — minting phantom
              * include statements that false-refused benign plugins
-             * at every gate. The left class refuses the glue bytes
-             * and the const/function-declaration contexts, the
-             * loop detector's own doctrine at this seat.
+             * at every gate. The left class refuses the label and
+             * '$' bytes, the position consult judging every glue
+             * pair (the loop detector's own doctrine at this seat;
+             * CORRECTED at t31-glm47-1 — the class once carried the
+             * ':' '>' separator glue bytes itself, pre-answering the
+             * helper's pair judgments).
              */
             $scanned = preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:require|include)(?i:_once)?(?![' . WP_CONNECTORS_LABEL_BYTES . '])' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $includes, PREG_OFFSET_CAPTURE);
             if (false === $scanned) {
@@ -5315,9 +5324,11 @@ function wp_connectors_autoloader_violations($pluginDir)
  * and re-mints the phantom (driven: eight spacing shapes re-opening
  * glm44-4's closed class wholesale). The judgment walks the view's own
  * bytes backward: skip the whitespace run, then refuse the name-usage
- * glue (':' '>' the namespace separator '$') and the const/function
- * declaration keywords ending the preceding identifier run — any
- * spacing, any comment, the byte class the ONE label owner spells.
+ * glue as BYTE PAIRS ('>' only after '-' — the '->'/'?->' operators,
+ * ':' only after ':' — '::'; a lone colon or arrow-tail a statement
+ * position, glm46-1) beside the '$' and const/function declaration
+ * keywords ending the preceding identifier run — any spacing, any
+ * comment, the byte class the ONE label owner spells.
  *
  * @param string $view   The view the match offsets come from — must carry comments as WHITESPACE (the stripped view; the masked view over raw keeps comments verbatim and the walk would land on the comment's own bytes — t31-glm47-2).
  * @param int    $offset The keyword match's byte offset.
@@ -6587,9 +6598,12 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
     // '$registry->define('MYPLUG_VERSION', ...)' (a decoy class's
     // method, php -l clean) satisfied the must-define arm with no
     // constant defined — the plugin fataling at runtime on the bare
-    // constant reference. The class refuses the ':' '>' '$' and
-    // namespace-separator glue bytes too (R44-4's loop-detector
-    // doctrine at this seat).
+    // constant reference. (CORRECTED at t31-glm47-2: the class this
+    // block recorded — ':' '>' '$' separator glue bytes — was the
+    // collector PRE-ANSWERING the byte-pair helper's judgments; the
+    // class is label+'$' alone, the helper owning every pair
+    // judgment, the glm47-2 block below carrying the current
+    // spelling.)
     /*
      * t31-glm46-2+R46-4 [driven — the seat's two remaining gaps]:
      * (1) the fixed-length lookbehind was spacing-blind, one space
@@ -6603,20 +6617,26 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * false 'must define constant' refusal — the value rides the
      * per-quote alternation (each arm allowing the OTHER quote
      * byte and escaped bytes of its own), decoded through the ONE
-     * quote-style-aware unescape owner.
+     * quote-style-aware unescape owner. (CORRECTED at
+     * t31-glm47-2: the per-quote alternation this half records was
+     * replaced by the WHOLE-EXPRESSION capture composing
+     * wp_connectors_quoted_literal_grammar() with the join — no
+     * second hand-spelled grammar at the seat — widened further at
+     * t31-glm48-6 to the b/B prefix, the wrapping parens, and the
+     * heredoc/nowdoc arm.)
      */
-		/*
-		 * t31-glm47-2 [R47-4+R47-9, driven - the define collector's own
-		 * lookbehind pre-filtered the byte-pair helper: tight
-		 * 'case 1:define(...)', '$g ?:define(...)', and "'k' =>define(...)"
-		 * minted false must-define refusals where their spaced twins
-		 * bind (all php -l clean, driven) - the glm46-1 byte-pair
-		 * doctrine never reached the COLLECTOR, and the escaped
-		 * backslash of the old class was an accident (the comment
-		 * claiming a separator refusal the bytes never spelled). The
-		 * class reduces to label+'$' - the helper (with its separator
-		 * flag) owning every pair judgment.
-		 */
+    /*
+     * t31-glm47-2 [R47-4+R47-9, driven — the define collector's own
+     * lookbehind pre-filtered the byte-pair helper: tight
+     * 'case 1:define(...)', '$g ?:define(...)', and "'k' =>define(...)"
+     * minted false must-define refusals where their spaced twins
+     * bind (all php -l clean, driven) — the glm46-1 byte-pair
+     * doctrine never reached the COLLECTOR, and the escaped
+     * backslash of the old class was an accident (the comment
+     * claiming a separator refusal the bytes never spelled). The
+     * class reduces to label+'$' — the helper (with its separator
+     * flag) owning every pair judgment.
+     */
 
     $wp_connectors_define_heredoc_value_arm = '(?s:<<<[ \t]*(?:\'?)([A-Za-z_' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)(?:\'?)(?:\r\n|\n|\r).*?(?:\r\n|\n|\r)[ \t]*\g{-1})';
     /*
