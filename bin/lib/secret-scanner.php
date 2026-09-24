@@ -958,6 +958,36 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
          */
         $prose_marker = null;
         $code_marker = null;
+        /*
+         * t31-glm45-1 [R44-7, the driver-ordered pre-measured claim
+         * — the round-44 review's 4.1x measurement]: the ten-pattern
+         * battery fired preg_match_all for EVERY line of every
+         * walked payload though ~98% of lines carry no candidate
+         * (the repo scan: 1.5M PCRE invocations, 6 hit lines
+         * repo-wide). The native PRESCREEN is a strict SUPERSET: a
+         * pattern whose literal anchor is absent from the line
+         * cannot match, so the battery runs only when one of the
+         * anchors fires — case-sensitive strpos for the nine
+         * case-locked literals (the patterns carry no /i), one
+         * stripos for the bearer arm (it does), and the dot for the
+         * zai hex-pair shape (conservative: any dot re-arms the
+         * battery, over-broad only in cost, never in verdict). The
+         * ABORT PIN survives by construction — its floor fixture's
+         * line carries the 'sk-' literal, the battery still runs
+         * and still aborts (glm28-1's own pinned-limit idiom).
+         */
+        if (false === strpos($line, 'gh')
+            && false === strpos($line, 'sk-')
+            && false === strpos($line, 'xai-')
+            && false === strpos($line, 'AKIA')
+            && false === strpos($line, 'AIza')
+            && false === strpos($line, 'xox')
+            && false === strpos($line, 'eyJ')
+            && false === strpos($line, '-----')
+            && false === strpos($line, '.')
+            && false === stripos($line, 'bearer')) {
+            continue;
+        }
         foreach ($patterns as $name => $pattern) {
             /*
              * glm28-1: an abort is never clean. `=== 0` let a FALSE
