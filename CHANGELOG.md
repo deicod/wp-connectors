@@ -6,6 +6,78 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 44)
+
+Thirtieth claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first): still not zero — 15 findings under the
+cap (6 correctness, 9 cleanup; the locale-fold family refuted by
+the review's own verifiers — `strtolower` is locale-independent
+since PHP 8.2, the repo's floor), the correctness yield dominated
+by the round-43 commits' own defects. DRIVER ADJUDICATION under
+the scope rule: six fix classes accepted (the second dataflow
+hop, the session-id glued twin and JSESSIONID, the reconciled
+double read, the semi-reserved phantom spans, the ASCII label
+straggler, the staging write-failure fallback); the scanner
+prescreen (measured 4.1x) and the mention-scan single-alternation
+(~35% of its seat) recorded as the next round's pre-measured
+cheap claims, seven cleanups beside them. Six fix commits
+t31-glm44-1..6 plus the docs close, the full offline check green
+after every commit. Suite 1962 → 1965 tests, 48476 → 48495
+assertions, 3 skipped unchanged.
+
+- **The variable-operand resolution is transitive
+  (t31-glm44-1, security:medium, driven fail-open versus master;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentAutoloaderPrefixBindingTest.php)** —
+  glm43-1 judged only the resolved assignment's own text, so
+  `$paths = array(__DIR__."/../vendor-pkg/lib.php"); foreach
+  ($paths as $lib) { require $lib; }` carried the vendor path to
+  the channel with no flag (inspect ACCEPTING where master
+  refuses). A worklist over each assignment value's own
+  variables, a seen-set closing cycles, every hop judged by the
+  same standard.
+
+- **The session-id member's glued twin and JSESSIONID join the
+  suffix class (t31-glm44-2, driven;
+  shared/src/Support/SecretMask.php,
+  tests/SharedOAuthContractsHttpTest.php)** — 'X-SessionId' and
+  'SessionId' rendered verbatim through all five render channels
+  (JSESSIONID and ASP.NET_SessionId are canonical glued
+  spellings of the same credential); 'sessionid' joins as the
+  flattened twin, JSESSIONID as its own member, the spanning
+  boundary intact.
+
+- **The autoloader gate's two reads reconcile
+  (t31-glm44-3, race-driven; bin/lib/plugin-tools.php)** — the
+  guarded read and the provider's read assembled verdicts over
+  bytes no single file contained (340/100000 zero-violation
+  verdicts for the hostile file under a rename cycler); a content
+  mismatch answers the loud mid-swap refusal, never a mixed-file
+  verdict.
+
+- **Semi-reserved keyword constants and methods mint no phantom
+  loop spans (t31-glm44-4, driven false flags;
+  bin/lib/plugin-tools.php, tests/SelfContainmentLoopWritesTest.php)**
+  — 'const DO = 1;' (the declaration the braceless-do guard
+  cannot see past) and 'function do($t)' armed phantom spans to
+  EOF that false-flagged benign plugins; every arm refuses the
+  const/function-declaration contexts and the name-usage glue
+  bytes, the real loops unchanged.
+
+- **A high-byte plugin directory builds
+  (t31-glm44-5, driven end-to-end; bin/build.php,
+  tests/BuildArtifactsTest.php)** — assertNamespaceSegment was
+  the lone ASCII straggler at a label-legality verdict; 'grün'
+  passed every pre-config gate and failed the build solely here
+  with the wrong-reason message. The judgment rides the one
+  label-byte owner.
+
+- **The lint staging's write failure falls back to the serial arm
+  (t31-glm44-6, shim-driven; bin/lint-php.php)** — a files.nul
+  write failure (ENOSPC on tmpfs) ran neither the fleet nor the
+  promised fallback, every lintable file a spurious
+  misattributed FAIL; the write failure falls back too.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 43)
 
 Twenty-ninth claude-glm pass (/code-review max over the FULL
