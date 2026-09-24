@@ -269,7 +269,20 @@ function wp_connectors_is_recognizably_fake_secret($value)
  */
 function wp_connectors_memory_limit_to_bytes($limit)
 {
-    if (1 !== preg_match('/\A(\d+)\s*([kmg]?)(?:b)?\z/i', trim((string) $limit), $m)) {
+    /*
+     * t31-glm43-5 [R43-9, driven fatal-without-verdict — the glm17-2
+     * census's own class]: a fractional spelling ('128.5M') the
+     * engine still ENFORCES (PHP 8.5 warns 'Invalid quantity',
+     * clamps to '128M', and honors the clamp) fell out of the
+     * integer-only grammar, answered PHP_INT_MAX, and DISABLED the
+     * census — a dense payload then fatalling at exit 255 with no
+     * verdict where the '-d memory_limit=128M' control answered the
+     * loud token-memory refusal (driven at HEAD). The grammar admits
+     * the fractional tail and floors to the integer part — the
+     * engine's own clamp semantics, and the conservative direction
+     * (a smaller parsed limit only refuses MORE).
+     */
+    if (1 !== preg_match('/\A(\d+)(?:\.\d+)?\s*([kmg]?)(?:b)?\z/i', trim((string) $limit), $m)) {
         return PHP_INT_MAX;
     }
     $count = (float) $m[1];

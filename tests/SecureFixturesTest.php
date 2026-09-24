@@ -2467,6 +2467,16 @@ CHILD;
         $this->assertSame(128 * 1024 * 1024, wp_connectors_memory_limit_to_bytes('128mb'), 'The unit folds case-insensitively with the optional b.');
         $this->assertSame(2 * 1024 * 1024 * 1024, wp_connectors_memory_limit_to_bytes('2G'));
         $this->assertSame(512 * 1024, wp_connectors_memory_limit_to_bytes('512K'));
+        /*
+         * R43-9 (driven fatal-without-verdict): a fractional spelling
+         * the engine still enforces (clamping '128.5M' to '128M')
+         * once fell out of the grammar and DISABLED the census — the
+         * dense payload fatalling at exit 255 with no verdict where
+         * the integer control answered the loud refusal. The grammar
+         * admits the fractional tail and floors to the engine's own
+         * clamp.
+         */
+        $this->assertSame(128 * 1024 * 1024, wp_connectors_memory_limit_to_bytes('128.5M'), "A fractional spelling parses to the engine clamp — never to a bound-off PHP_INT_MAX that disables the census.");
         $this->assertSame(1024, wp_connectors_memory_limit_to_bytes('1024'), 'A bare byte count parses.');
 
         // Over-width saturates — never a wrapped or cast-garbage count.
