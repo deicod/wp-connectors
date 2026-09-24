@@ -7351,6 +7351,30 @@ FIXTURE;
          * refusals), the interior empty member staying refused beside
          * its siblings above.
          */
+        /*
+         * t31-glm41-2 (R41-4, driven — glm40-4's strip was TRAILING-only):
+         * comment trivia is engine-legal in EVERY position of a group
+         * body (leading after '{', after a comma, mid-member before
+         * 'as' — all php -l clean on 8.5.10), and glm40-4's
+         * trailing-only strip refused the non-trailing spellings with
+         * messages claiming parse errors. The grammar accepts them now,
+         * pinned at the grammar's own seam by reflection — the plain
+         * vendor group's SEAT matching for the leading/after-comma
+         * spellings is a separate pre-existing question this round
+         * records rather than touches (the seat's pattern never
+         * matched those bodies even at HEAD).
+         */
+        $grammar_probe = new ReflectionMethod('WpConnectorsBuild', 'groupUseMemberGrammar');
+        foreach (array(
+            'leading trivia' => ' /* c */ Shared\\Clock',
+            'after-comma trivia' => 'Shared\\Clock /* c */',
+            'mid-member trivia before as' => 'Shared\\Clock /* c */ as Now',
+            'semicolon inside comment' => 'Shared\\Clock /* ; */',
+        ) as $name => $member) {
+            $parsed = $grammar_probe->invoke(null, $member, '{' . $member . '}', 0, 1, 'shared/src/TriviaStore.php');
+            $this->assertSame('Shared\\Clock', $parsed[1], sprintf('The %s spelling parses clean at the grammar — the member name reaching the leaf rewrite (red at HEAD: the grammar threw).', $name));
+        }
+
         $trailing_comma = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock,};\nclass TrailingStore\n{\n}\n", 'OpenAiOauth', 'shared/src/TrailingStore.php');
         $this->assertStringContainsString('use Deicod\\WpConnectors\\{OpenAiOauth\\Shared\\Clock};', $trailing_comma, 'The PHP 7.2+ trailing comma drops and the group rewrites clean — never a refusal over legal input (red at HEAD: the grammar threw).');
         $comment_member = WpConnectorsBuild::rewriteSharedNamespace("<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock /* c */, Shared\\Now};\nclass CommentStore\n{\n}\n", 'OpenAiOauth', 'shared/src/CommentStore.php');

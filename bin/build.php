@@ -495,7 +495,7 @@ final class WpConnectorsBuild
                         $body = (string) substr($brace_tail, (int) strpos($brace_tail, '{') + 1, -1);
                         $member_pieces = explode(',', $body);
                         // t31-glm40-4: a final trailing comma is legal PHP 7.2+ — dropped, never refused.
-                        if (count($member_pieces) > 1 && '' === trim((string) end($member_pieces))) {
+                        if (count($member_pieces) > 1 && '' === trim(self::stripMemberCommentTrivia((string) end($member_pieces)))) {
                             array_pop($member_pieces);
                         }
                         foreach ($member_pieces as $member_index => $member_piece) {
@@ -561,7 +561,7 @@ final class WpConnectorsBuild
                     $members = array();
                     $member_pieces = explode(',', $matches[3]);
                     // t31-glm40-4: a final trailing comma is legal PHP 7.2+ — dropped, never refused.
-                    if (count($member_pieces) > 1 && '' === trim((string) end($member_pieces))) {
+                    if (count($member_pieces) > 1 && '' === trim(self::stripMemberCommentTrivia((string) end($member_pieces)))) {
                         array_pop($member_pieces);
                     }
                     foreach ($member_pieces as $member_index => $member_piece) {
@@ -2368,6 +2368,21 @@ final class WpConnectorsBuild
      * @return list<string> The parsed member: [kind prefix, name, alias tail].
      * @throws RuntimeException When the member is a spelling the engine rejects.
      */
+    /**
+     * Strips comment trivia (block or line) from a group-use member piece —
+     * engine-legal in EVERY position of a group body (leading after '{' or a
+     * comma, mid-member before 'as', trailing after a trailing comma), php -l
+     * clean on 8.5.10 where glm40-4's trailing-only strip refused them with
+     * messages claiming parse errors (t31-glm41-2, R41-4). The reassembly
+     * rebuilds from the parsed pieces: the comments ride neither verdict nor
+     * output. Shared by the grammar head and both call sites' trailing-comma
+     * drop test (a comment-only final piece IS the legal trailing comma).
+     */
+    private static function stripMemberCommentTrivia($member)
+    {
+        return (string) preg_replace('/(?:\/\*\*?.*?\*\/|\/\/[^\n]*|#(?!\[)[^\n]*)/s', '', $member);
+    }
+
     private static function groupUseMemberGrammar($member, $body, $member_index, $piece_count, $sourceVersion)
     {
         /*
@@ -2382,7 +2397,19 @@ final class WpConnectorsBuild
          * the reassembly rebuilding from the parsed pieces, the
          * comment riding neither verdict nor output.
          */
-        $member = (string) preg_replace('/\s*(?:\/\*\*?.*?\*\/|\/\/[^\n]*|#(?!\[)[^\n]*)\s*$/s', '', $member);
+        /*
+         * t31-glm41-2 [R41-4, driven — glm40-4's strip was TRAILING-only]:
+         * comment trivia is engine-legal in EVERY position of a group
+         * body (leading after '{' or a comma, mid-member before 'as',
+         * trailing after a trailing comma — all php -l clean on
+         * 8.5.10, all refused with messages claiming parse errors),
+         * and ';' or '}' inside a comment truncated the family seat's
+         * own [^{}]* body match. The comment strips FIRST, anywhere
+         * in the member, the leading/trailing whitespace trimming
+         * beside it — the reassembly rebuilding from the parsed
+         * pieces, the comments riding neither verdict nor output.
+         */
+        $member = trim(self::stripMemberCommentTrivia($member));
         if ('' === $member) {
             $shape = '' === trim($body)
                 ? 'an empty brace body'
