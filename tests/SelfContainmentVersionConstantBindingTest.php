@@ -198,4 +198,36 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         $mismatch = $this->drive('mismatch3', "define('%s', '9.9.9', false);");
         $this->assertStringContainsString('does not match header Version', implode("\n", $mismatch), 'The three-argument mismatch twin keeps its own refusal — the value capture still the SECOND literal.');
     }
+
+    public function testMemberStaticAndNullsafeDefineCallsBindNothing(): void
+    {
+        /*
+         * R45-3 (driven — the member/static/nullsafe define
+         * laundering): the probe's left boundary refused only label
+         * bytes, so '$registry->define('MYPLUG_VERSION', ...)' (a
+         * decoy class's method, php -l clean) satisfied the
+         * must-define arm with no constant defined — the plugin
+         * fataling at runtime on the bare constant reference. The
+         * class refuses the ':' '>' '$' and namespace-separator glue
+         * bytes (R44-4's loop-detector doctrine at this seat).
+         */
+        $member = $this->drive('member', "<?php\nclass Registry { public function define(\$n, \$v) { return true; } }\n\$registry = new Registry();\n\$registry->define( '%s', '1.2.3' );\n");
+        $this->assertStringContainsString('must define constant', implode("\n", $member), 'A member-call define binds nothing — the method is not the construct (red at HEAD: clean).');
+
+        $this->root .= '-static';
+        @mkdir($this->root, 0755, true);
+        $static = $this->drive('static', "<?php\nclass Registry { public static function define(\$n, \$v) { return true; } }\nRegistry::define( '%s', '1.2.3' );\n");
+        $this->assertStringContainsString('must define constant', implode("\n", $static), 'A static define binds nothing (red at HEAD: clean).');
+
+        $this->root .= '-nullsafe';
+        @mkdir($this->root, 0755, true);
+        $nullsafe = $this->drive('nullsafe', "<?php\nclass Registry { public function define(\$n, \$v) { return true; } }\n\$registry = new Registry();\n\$registry?->define( '%s', '1.2.3' );\n");
+        $this->assertStringContainsString('must define constant', implode("\n", $nullsafe), 'A nullsafe define binds nothing (red at HEAD: clean).');
+
+        $this->root .= '-plain';
+        @mkdir($this->root, 0755, true);
+        $plain = $this->drive('plain', "define('%s', '1.2.3');");
+        $this->assertSame(array(), $plain, 'The plain spelling keeps its binding.');
+    }
+
 }

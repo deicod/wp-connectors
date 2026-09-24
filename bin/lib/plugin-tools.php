@@ -6148,7 +6148,15 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
     $code = wp_connectors_strip_comments($source);
     $masked = wp_connectors_mask_string_contents($source);
     $constantMatch = array();
-    if (preg_match_all('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+    // t31-glm45-5 [R45-3, driven — the member/static/nullsafe define
+    // laundering]: the left boundary refused only label bytes, so
+    // '$registry->define('MYPLUG_VERSION', ...)' (a decoy class's
+    // method, php -l clean) satisfied the must-define arm with no
+    // constant defined — the plugin fataling at runtime on the bare
+    // constant reference. The class refuses the ':' '>' '$' and
+    // namespace-separator glue bytes too (R44-4's loop-detector
+    // doctrine at this seat).
+    if (preg_match_all('/(?<![\\$:>' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
         foreach ($candidates[0] as $index => $candidate) {
             /*
              * t31-glm40-2 [R40-3, security:medium, driven fail-open —
