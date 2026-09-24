@@ -1805,7 +1805,20 @@ final class WpConnectorsBuild
      */
     private static function unownedUseImportSpellingClass($source, $reference_offset, $reference_name)
     {
+        /*
+         * t31-glm49-6 [R49-8, driven via reflection — the compile-warning
+         * capture's missed seat]: this walk tokenizes REWRITTEN PLUGIN
+         * BYTES (the rewrite's own output handed back for the
+         * postcondition), and the engine prints its un-handleable
+         * octal-overflow E_COMPILE_WARNING over php -l-clean escapes —
+         * glm48-7's sweep covered both bin/lib libraries and missed this
+         * bin/build.php seat, the raw Warning misattributing to the
+         * BUILD'S own file mid-rewrite. The output buffer
+         * capture-and-discards exactly as the lib seats.
+         */
+        ob_start();
         $tokens = token_get_all($source);
+        ob_end_clean();
         $count = count($tokens);
         $offset = 0;
         $in_use = false;
