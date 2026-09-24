@@ -483,6 +483,39 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringContainsString('variable $f resolves to a path', $report, 'The trailing write target joins the proof — the EOF over-approximation refusing, never laundering.');
     }
 
+    public function testTokenizingOctalOverflowEscapesPrintsNothing(): void
+    {
+        /*
+         * R48-12 (driven — the tokenize seats' raw
+         * E_COMPILE_WARNING): token_get_all() over a php -l-CLEAN
+         * out-of-range octal escape makes the engine print a
+         * 'Warning: Octal escape sequence overflow' line
+         * misattributed to the TOOL'S own file — an un-handleable
+         * compile warning (not on PHP's catchable list) that escaped
+         * the printable seam at every hostile-byte tokenize seat
+         * and, under the suite's strict-output regime, failed any
+         * in-process consumer tokenizing such bytes. Every seat
+         * captures-and-discards the engine's output around the call
+         * now: the warning is a diagnostic, never a verdict byte,
+         * and the tokens themselves are unaffected.
+         */
+        $source = "<?php\n\$x = \"a\\563b\";\nrequire __DIR__ . '/safe.php';\n";
+        file_put_contents($this->root . '/fixture.php', $source);
+        ob_start();
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $leaked = ob_get_clean();
+        $this->assertSame(array(), $violations, 'The anchored include proves clean over the escape-bearing bytes — the verdict unchanged by the capture.');
+
+        ob_start();
+        $stripped = wp_connectors_strip_comments($source);
+        $masked = wp_connectors_mask_string_contents($stripped);
+        $leaked .= ob_get_clean();
+
+        $this->assertSame('', $leaked, 'The engine\'s compile warning never escapes the tokenize seats (red at HEAD: two raw Warning lines misattributed to plugin-tools.php).');
+        $this->assertSame(strlen($source), strlen($stripped), 'The stripped view stays length-preserving over the escape-bearing bytes.');
+        $this->assertSame(strlen($source), strlen($masked), 'The masked view stays length-preserving over the escape-bearing bytes.');
+    }
+
     public function testAHighByteByReferenceClosureCaptureStillMintsTheWholeFileSpan(): void
     {
         /*

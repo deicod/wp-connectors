@@ -519,7 +519,10 @@ function wp_connectors_line_split($text)
 function wp_connectors_php_sample_regions($contents)
 {
     $regions = array();
+    // t31-glm48-7: the un-handleable compile warning capture rides every hostile-byte tokenize seat.
+    ob_start();
     $tokens = token_get_all($contents);
+    ob_end_clean();
     $at = 0;
     for ($i = 0, $n = count($tokens); $i < $n; ++$i) {
         $token = $tokens[ $i ];

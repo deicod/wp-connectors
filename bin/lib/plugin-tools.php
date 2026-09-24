@@ -107,7 +107,27 @@ const WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR = '[^;?]*+(?:\?(?!>)[^;?]*+)*+' . WP_
 function wp_connectors_strip_comments($source)
 {
     $stripped = '';
-    foreach (token_get_all($source) as $token) {
+    /*
+     * t31-glm48-7 [R48-12, driven — the tokenize seats' raw
+     * E_COMPILE_WARNING]: token_get_all() over a php -l-CLEAN
+     * out-of-range octal escape ('a\563b') makes the engine print
+     * 'Warning: Octal escape sequence overflow … in <this file> on
+     * line <this call>' — an un-handleable compile warning (not on
+     * PHP's catchable list, invisible to every error handler) whose
+     * bytes escaped the printable seam at BOTH tokenize seats,
+     * misattributing engine output to the tool's own file and, under
+     * the suite's strict-output regime, failing any in-process
+     * consumer that tokenizes hostile bytes ('Test code or tested
+     * code printed unexpected output'). The output buffer
+     * capture-and-discards around the call: the warning is a
+     * diagnostic, never a verdict byte, and the tokens themselves
+     * are unaffected (driven: the verdicts identical, the output
+     * empty).
+     */
+    ob_start();
+    $tokens = token_get_all($source);
+    ob_end_clean();
+    foreach ($tokens as $token) {
         $id = is_array($token) ? $token[0] : null;
         $text = is_array($token) ? $token[1] : $token;
 
@@ -196,7 +216,17 @@ function wp_connectors_mask_string_contents($code)
         return $out;
     };
 
-    foreach (token_get_all($code) as $token) {
+    /*
+     * t31-glm48-7 [R48-12, driven — the SECOND tokenize seat]: the
+     * masker's own token pass captures-and-discards the engine's
+     * un-handleable E_COMPILE_WARNING exactly as the strip seat
+     * above (the octal-overflow escape's warning misattributed to
+     * this file's own line, driven at both seats in one drive).
+     */
+    ob_start();
+    $mask_tokens = token_get_all($code);
+    ob_end_clean();
+    foreach ($mask_tokens as $token) {
         $id = is_array($token) ? $token[0] : null;
         $text = is_array($token) ? $token[1] : $token;
 
@@ -395,7 +425,9 @@ function wp_connectors_token_stream($source)
         return $streams[$key];
     }
 
+    ob_start();
     $tokens = token_get_all($source);
+    ob_end_clean();
     $entry_bytes = strlen($source);
     foreach ($tokens as $token) {
         $entry_bytes += strlen(is_array($token) ? $token[1] : $token);
@@ -1962,7 +1994,10 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
      * ledger; re-open only with a memory-budget change that gives
      * the memo room the suite does not sit knife-edge under.
      */
+    // t31-glm48-7: the un-handleable compile warning capture rides every hostile-byte tokenize seat.
+    ob_start();
     $tokens = token_get_all($source);
+    ob_end_clean();
 
     $references = array();
     /*
@@ -5040,7 +5075,9 @@ function wp_connectors_autoloader_violations($pluginDir)
          * vendor/composer being a vendor path by the same R39-3
          * doctrine the require-through-variable shape already rides).
          */
+        ob_start();
         $operand_tokens = token_get_all($source);
+        ob_end_clean();
         $channel_functions = array(
             'file_get_contents' => true, 'readfile' => true, 'shell_exec' => true, 'exec' => true,
             'system' => true, 'passthru' => true, 'popen' => true, 'proc_open' => true,
@@ -5239,7 +5276,10 @@ function wp_connectors_autoloader_violations($pluginDir)
      */
     $normalized = str_replace('\\\\', '\\', $masked);
     $prefix_bound = strpos($normalized, $expectedPrefix) !== false;
-    foreach (token_get_all($source) as $token) {
+    ob_start();
+    $family_tokens = token_get_all($source);
+    ob_end_clean();
+    foreach ($family_tokens as $token) {
         if (! is_array($token) || T_CONSTANT_ENCAPSED_STRING !== $token[0]) {
             continue;
         }
@@ -6405,7 +6445,9 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
      * (strings masked over the comment-stripped source) is the
      * ledger's own brace-safe composition.
      */
+    ob_start();
     $tokens = token_get_all($source);
+    ob_end_clean();
     $in_effect = wp_connectors_declaration_in_effect(wp_connectors_namespace_declaration_ledger($tokens, $source));
     $call_scope = $in_effect($call_offset);
     if (null === $call_scope) {
