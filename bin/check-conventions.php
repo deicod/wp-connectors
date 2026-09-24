@@ -491,9 +491,12 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                     ? $alias
                     : (false === $lastBackslash ? $qualified : substr($qualified, $lastBackslash + 1));
 
-                if ($short === '') {
-                    continue;
-                }
+                // t31-glm46-5 [R46-14, the r26-8 record class]: this
+                // seat-level empty-short guard is deleted — glm45-9
+                // moved the judgment to the ONE owner inside the
+                // helper, and the leftover copy read as load-bearing
+                // ('every arm answered at one owner' was false while
+                // it stood).
 
                 // Remove exactly the matched statement bytes at the
                 // captured offset (glm16-17: the removal must take ONE copy
