@@ -42,16 +42,12 @@ final class SelfContainmentInterpolationTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ((glob($this->root . '/sub/*') ?: array()) as $entry) {
-            @unlink($entry);
-        }
-        @rmdir($this->root . '/sub');
-        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_file($entry)) {
-                @unlink($entry);
-            }
-        }
-        @rmdir($this->root);
+        // t31-glm43-9 [R43-14 — the regrowing-hand-copy census miss]:
+        // glm42-6's record claimed 'the family's LAST two hand-rolled
+        // tearDowns' while this flat-walk spelling (skipping nested
+        // directories and locked entries) still stood — the owner
+        // rides every exit.
+        WpHarness::releaseScratch($this->root);
     }
 
     public function testTheRound29ReproLaunderingTraversalThroughInterpolationFlags(): void
