@@ -2897,8 +2897,21 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
             $this->assertStringNotContainsString('sess_DEADBEEFCAFE0123', $rendered, "The session identifier renders masked in the {$channel} channel.");
             $this->assertStringContainsString('req-58', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim.");
         }
-        foreach (array('x-session-idle', 'x-session-count') as $spelling) {
-            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — tails that are not 'session-id' are outside the class.");
+        /*
+         * t31-glm44-2 (R44-2 — glm43-8's member landed without its
+         * glued twin): every delimiter spelling masked while the
+         * equally legal 'X-SessionId'/'SessionId' rendered verbatim
+         * — JSESSIONID and ASP.NET_SessionId are canonical glued
+         * spellings of the same credential. 'sessionid' joins as the
+         * flattened twin, JSESSIONID as its own member (the Servlet
+         * spec's all-glued spelling, no delimiter to fold), the
+         * spanning boundary intact.
+         */
+        foreach (array('X-SessionId', 'SessionId', 'SESSIONID', 'x_sessionid', 'JSESSIONID', 'ASP.NET_SessionId') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' glued spelling rides the class (red at HEAD: unmasked).");
+        }
+        foreach (array('x-session-idle', 'x-session-count', 'jsessionidtracker') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — tails that are not the member and bytes spanning the boundary are outside the class.");
         }
 
         /*

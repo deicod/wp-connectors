@@ -378,12 +378,19 @@ final class SecretMask {
 	 * material on the response side (OWASP's session-management
 	 * guidance names the session identifier a secret; the file's own
 	 * prose calls the CSRF token 'the session credential').
-	 * 'session-id' rides the suffix class — the r24-4 curation bar met
+	 * 'session-id' rides the suffix class with its GLUED twin
+	 * 'sessionid' (t31-glm44-2, R44-2 — the sole multi-token member
+	 * that landed without one; JSESSIONID and ASP.NET_SessionId are
+	 * canonical glued spellings of the same credential; JSESSIONID
+	 * — the Servlet spec's own all-glued spelling, no delimiter to
+	 * fold — rides as its own member, the spanning boundary intact)
+	 * — the r24-4
+	 * curation bar met
 	 * the ocr57-2 way (the finding is the writer); the boundary
 	 * unchanged ('x-session-idle', 'x-session-count' — tails that are
 	 * not 'session-id' — stay verbatim).
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256', 'session-id' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256', 'session-id', 'sessionid', 'jsessionid' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
