@@ -230,4 +230,67 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         $this->assertSame(array(), $plain, 'The plain spelling keeps its binding.');
     }
 
+
+    public function testSpacedGlueLaunderingRefusesAndQuoteBearingValuesBind(): void
+    {
+        /*
+         * R46-2 (driven — the define probe's third seat was left on
+         * its spacing-blind lookbehind): one space around '->'/'::'
+         * laundered the gate — '$r -> define('MYPLUG_VERSION', ...)'
+         * answering 0 violations where the tight spelling refuses.
+         * The candidate loop consults the spacing-proof helper (the
+         * $allow_separator flag admitting the legal fully-qualified
+         * spelling).
+         *
+         * R46-4 (driven, the sweep's own drive): the value capture
+         * was quote-blind — a version literal carrying the other
+         * quote kind ('1.2'3' inside double quotes) or an escaped
+         * quote failed the pattern and minted the false
+         * 'must define constant' refusal. The value rides the
+         * per-quote alternation, decoded through the ONE
+         * quote-style-aware owner.
+         */
+        $spaced = $this->drive('spaced', "<?php\nclass Registry { public function define(\$n, \$v) { return true; } }\n\$r = new Registry();\n\$r -> define( '%s', '1.2.3' );\n");
+        $this->assertStringContainsString('must define constant', implode("\n", $spaced), 'One space around the arrow launders nothing — the spacing-proof helper owns this seat too (red at HEAD: clean).');
+
+        $this->root .= '-static';
+        @mkdir($this->root, 0755, true);
+        $static = $this->drive('static', "<?php\nclass Registry { public static function define(\$n, \$v) { return true; } }\nRegistry :: define( '%s', '1.2.3' );\n");
+        $this->assertStringContainsString('must define constant', implode("\n", $static), 'The spaced static spelling launders nothing either (red at HEAD: clean).');
+
+        $this->root .= '-fq';
+        @mkdir($this->root, 0755, true);
+        $fq = $this->drive('fq2', "\\define('%s', '1.2.3');");
+        $this->assertSame(array(), $fq, 'The fully-qualified spelling keeps its binding — the separator flag admitting the legal form.');
+    }
+
+    public function testQuoteBearingVersionValuesBind(): void
+    {
+        /*
+         * R46-4's benign half (driven at HEAD before the fix: the
+         * false 'must define constant' refusal): the other-quote
+         * literal and the escaped-quote literal, both php -l clean
+         * and executing fine, with matching headers.
+         */
+        $base = sys_get_temp_dir() . '/wp-connectors-version-quote-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        file_put_contents(
+            $base . '/myplug/myplug.php',
+            "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2'3\n */\ndefine( \"MYPLUG_VERSION\", \"1.2'3\" );\n"
+        );
+        $other = wp_connectors_version_constant_violations($base . '/myplug', array('version' => "1.2'3"), array($base . '/myplug/myplug.php'));
+        $this->assertSame(array(), $other, 'A version literal carrying the other quote kind inside double quotes binds (red at HEAD: the false refusal).');
+        WpHarness::releaseScratch($base);
+
+        $base = sys_get_temp_dir() . '/wp-connectors-version-esc-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        file_put_contents(
+            $base . '/myplug/myplug.php',
+            "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2'3\n */\ndefine( 'MYPLUG_VERSION', '1.2\\'3' );\n"
+        );
+        $escaped = wp_connectors_version_constant_violations($base . '/myplug', array('version' => "1.2'3"), array($base . '/myplug/myplug.php'));
+        $this->assertSame(array(), $escaped, 'The escaped-quote literal decodes through the quote-style owner and binds (red at HEAD: the false refusal).');
+        WpHarness::releaseScratch($base);
+    }
+
 }
