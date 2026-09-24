@@ -6387,50 +6387,6 @@ function wp_connectors_namespace_suffix_from_slug($slug)
 }
 
 /**
- * Checks the {SLUG}_VERSION constant matches the header Version.
- *
- * glm25-9: accepts the caller's pre-scanned main-file list (the
- * main_file_violations() idiom — rescanned when empty) — every CLI
- * caller already ran wp_connectors_find_main_plugin_files(), and the
- * rescan re-globbed the whole root and re-read every root .php's
- * head on every conventions/build/inspect run.
- *
- * @param string               $pluginDir Absolute plugin directory.
- * @param array<string,string> $headers   Parsed headers.
- * @param list<string>         $mainFiles Pre-scanned candidates from
- *                                        wp_connectors_find_main_plugin_files()
- *                                        (rescanned when empty).
- * @return list<string> Violation messages.
- */
-/**
- * Whether the unqualified define() call at an offset resolves to
- * something other than the global define at runtime — the NAMESPACE
- * DECOY (t31-glm48-2, R48-2, driven fail-open).
- *
- * PHP resolves an unqualified function call inside a namespace
- * against the namespace's own function FIRST, the global fallback
- * second — and a 'use function' IMPORT shadows the bare name at any
- * scope. Both channels mint a define-shaped call that binds no
- * constant: 'namespace E; function define($n,$v){} define("X","v");'
- * (php -l clean) fatals 'Undefined constant "E\X"' at runtime, and
- * 'use function Foo\define; define("X","v");' fatals identically —
- * while the gates green-lighted both (driven: 0 violations across
- * every arm). The call is judged against the file's own namespace
- * ledger (the ONE owner) and a brace-safe flat view.
- *
- * Benign shapes stay green: a bare 'namespace E; define(...)' (no
- * decoy anywhere) resolves through the global fallback and binds; a
- * global-scope 'function define(){}' redeclare is a load-time fatal
- * no gate owes a verdict for; an ALIASED import ('use function
- * Foo\define as d;') binds only 'd', the bare name resolving
- * normally; and the global SELF-IMPORT spellings ('use function
- * define;' / '\define') import the global itself.
- *
- * @param string $source The main-file source bytes.
- * @param int    $call_offset The define keyword's byte offset.
- * @return bool True when the call resolves to a decoy (the binding must refuse).
- */
-/**
  * Decodes one define-argument literal expression to its runtime
  * string (t31-glm49-5): the quoted pieces and heredoc/nowdoc blocks
  * walked IN ORDER (the concatenation owing its runtime order), the
@@ -6502,6 +6458,35 @@ function wp_connectors_decode_define_literal_expression($expression, $heredoc_ar
 
     return $decoded;
 }
+
+/**
+ * Whether the unqualified define() call at an offset resolves to
+ * something other than the global define at runtime — the NAMESPACE
+ * DECOY (t31-glm48-2, R48-2, driven fail-open).
+ *
+ * PHP resolves an unqualified function call inside a namespace
+ * against the namespace's own function FIRST, the global fallback
+ * second — and a 'use function' IMPORT shadows the bare name at any
+ * scope. Both channels mint a define-shaped call that binds no
+ * constant: 'namespace E; function define($n,$v){} define("X","v");'
+ * (php -l clean) fatals 'Undefined constant "E\X"' at runtime, and
+ * 'use function Foo\define; define("X","v");' fatals identically —
+ * while the gates green-lighted both (driven: 0 violations across
+ * every arm). The call is judged against the file's own namespace
+ * ledger (the ONE owner) and a brace-safe flat view.
+ *
+ * Benign shapes stay green: a bare 'namespace E; define(...)' (no
+ * decoy anywhere) resolves through the global fallback and binds; a
+ * global-scope 'function define(){}' redeclare is a load-time fatal
+ * no gate owes a verdict for; an ALIASED import ('use function
+ * Foo\define as d;') binds only 'd', the bare name resolving
+ * normally; and the global SELF-IMPORT spellings ('use function
+ * define;' / '\define') import the global itself.
+ *
+ * @param string $source The main-file source bytes.
+ * @param int    $call_offset The define keyword's byte offset.
+ * @return bool True when the call resolves to a decoy (the binding must refuse).
+ */
 
 function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
 {
@@ -6720,6 +6705,28 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
     return false;
 }
 
+/**
+ * Checks the {SLUG}_VERSION constant matches the header Version.
+ *
+ * glm25-9: accepts the caller's pre-scanned main-file list (the
+ * main_file_violations() idiom — rescanned when empty) — every CLI
+ * caller already ran wp_connectors_find_main_plugin_files(), and the
+ * rescan re-globbed the whole root and re-read every root .php's
+ * head on every conventions/build/inspect run.
+ *
+ * @param string               $pluginDir Absolute plugin directory.
+ * @param array<string,string> $headers   Parsed headers.
+ * @param list<string>         $mainFiles Pre-scanned candidates from
+ *                                        wp_connectors_find_main_plugin_files()
+ *                                        (rescanned when empty).
+ * @return list<string> Violation messages.
+ *
+ * t31-glm49-8 [R49-14 — the ocr40-4/R47-14/R48-14 class, the round's
+ * own insertion one function over]: glm48-2's decoy-helper insertion
+ * parked the helper between this docblock and its function — only
+ * the LAST docblock attaches, the gate shipping bare. Relocated to
+ * its function in the glm48-8 shape.
+ */
 function wp_connectors_version_constant_violations($pluginDir, array $headers, array $mainFiles = array())
 {
     $slug = basename(rtrim($pluginDir, '/'));
