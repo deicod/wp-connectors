@@ -4817,8 +4817,25 @@ function wp_connectors_autoloader_violations($pluginDir)
      * string data).
      */
     $views = wp_connectors_file_code_views($autoload);
-    $code = null !== $views ? $views['code'] : '';
-    $masked = null !== $views ? $views['masked'] : '';
+    /*
+     * t31-glm43-7 [R43-12, race-driven — the glm15-10 misattribution
+     * class at the provider edge]: the provider's SECOND read can
+     * fail after the guarded first read succeeded (the file vanishing
+     * between the two), and the null silently degraded to '' — the
+     * gate then answering 'must register a PSR-4 autoloader',
+     * 'exactly one', 'must bind the prefix' over bytes it never saw
+     * (race-driven: 101 such verdicts beside the honest unreadable
+     * outcomes over 4000 unlink-cycled calls). A null provider read
+     * answers the SAME loud unreadable refusal the first read owns —
+     * never content verdicts over unread bytes.
+     */
+    if (null === $views) {
+        $violations[] = sprintf('%s: src/autoload.php is unreadable — the autoloader check cannot run', $slug);
+
+        return $violations;
+    }
+    $code = $views['code'];
+    $masked = $views['masked'];
     $register_count = preg_match_all('/spl_autoload_register/i', $masked);
     if (false === $register_count || 0 === $register_count) {
         $violations[] = sprintf('%s: src/autoload.php must register a PSR-4 autoloader.', $slug);
