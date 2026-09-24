@@ -6,6 +6,79 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 47)
+
+Thirty-third claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first): still not zero — 15 findings, the five
+headline defects all in the last two rounds' own fixes (the
+collector-must-collect class both seats over, the helper's view
+mis-named, the define value's capture grammar). DRIVER ADJUDICATION
+under the scope rule: nine fix classes accepted (the loop collector's
+class reduction, the define seat's collector/view/value one-owner
+close, the statement-position helper's isset table, the IPv6
+serializer's 32-bit floor fix, three round-46-landing corrections,
+the harness query-separator pin, the fleet hoist the round-46
+records armed); the latent add_filter dedupe recorded as
+inheritance. Nine fix commits t31-glm47-1..9 plus the docs close,
+the full offline check green after every commit. Suite 1970 → 1972
+tests, 48532 → 48539 assertions, 3 skipped unchanged.
+
+- **The loop collector collects, the byte-pair helper judges
+  (t31-glm47-1, driven fail-open; bin/lib/plugin-tools.php)** —
+  the loop detector's regex lookbehind still refused the tight
+  ':' '>' bytes before the glm46-1 helper ever consulted, so
+  'case 1:while(...)' laundering shapes answered zero violations
+  where the spaced twins flag. The class reduces to label+'$',
+  the helper owning every pair judgment.
+
+- **The define probe's collector, view, and value grammar made
+  one-owner-true (t31-glm47-2, driven; bin/lib/plugin-tools.php,
+  tests/SelfContainmentVersionConstantBindingTest.php)** — the
+  collector's own lookbehind stopped pre-answering the helper
+  (tight case/elvis/arrow defines bind), the position consult
+  walks the comment-STRIPPED view (a '$r->/*c*/define(...)' call
+  launders nothing), and the whole value expression rides the ONE
+  quoted-literal grammar composed with the join — the pieces
+  decoded through the one quote-style owner and concatenated
+  (hex-escaped and concatenated values bind; the mismatch twin
+  prints the decoded value).
+
+- **The statement-position helper's label-run walk rides a
+  256-entry isset table (t31-glm47-3, measured; bin/lib/
+  plugin-tools.php)** — the table derived once per process from
+  the one label owner itself; 811ms → 201ms whole-call over the
+  landing bench, verdict-identical byte-for-byte over all 256
+  bytes.
+
+- **The IPv6 serializer's dotted-tail hextets no longer ride a
+  32-bit float (t31-glm47-4; shared/src/Http/Url.php)** —
+  inet_pton() + unpack('n2') replace the unsigned ip2long()
+  coercion feeding intdiv(), which TypeErrors on a float under
+  strict_types on the 32-bit floor the composer constraint
+  admits.
+
+- **Three round-46-landing corrections (t31-glm47-5/6/7;
+  shared/src/Http/Url.php)** — the dead duplicate $hex build
+  deleted, the stranded r12-8 docblock relocated to its function,
+  and the bracket computations gated on the bracket-bearing shape
+  (plain hostnames skip the whole block; the garbage inner-literal
+  slice gone).
+
+- **The harness add_query_arg() pins its query separator
+  (t31-glm47-8, driven; tests/harness/wp-stubs.php)** — the bare
+  http_build_query() consulted arg_separator.output; four pinned
+  assertions went red under the hostile ini. The separator pins
+  explicitly, the stub's output stable on every host.
+
+- **The pooled php -l fleet rides its ONE owner (t31-glm47-9;
+  bin/lib/plugin-tools.php, bin/lint-php.php,
+  bin/inspect-artifact.php)** — wp_connectors_pooled_php_lint_
+  verdicts() owns the whole fleet (pooled shape, both staging
+  fallbacks, the inner-shell scratch escape, the last-exit
+  verdict anchor, the cleanup), the ~140-line twin deleted (net
+  -75 lines), each gate keeping its own message vocabulary — and
+  each gate's serial and pooled arms now one rendering apiece.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 46)
 
 Thirty-second claude-glm pass (/code-review max over the FULL branch
