@@ -294,6 +294,56 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
     }
 
 
+    public function testANamespaceDecoyDefineBindsNothing(): void
+    {
+        /*
+         * R48-2 (driven fail-open — the namespace decoy): an
+         * unqualified define() call that runtime-resolves to
+         * something other than the global define binds NO constant —
+         * a same-namespace 'function define($n,$v){}' decoy (hoisted,
+         * php -l clean, 'Undefined constant "E\MYPLUG_VERSION"' at
+         * runtime, exit 255 driven) or an un-aliased 'use function
+         * Foo\define;' import (the same fatal) — both driven at ZERO
+         * violations across every gate arm while executing the plugin
+         * fatals. The candidate consults the file's own namespace
+         * ledger and a brace-safe flat view: the decoy function must
+         * sit at the scope's own top level (a method named define
+         * shadows nothing) and the SAME namespace scope as the call
+         * (a foreign block's decoy never resolves here), hoisting
+         * covered (the decoy may sit after the call). The benign
+         * twins keep their bindings: a bare 'namespace E;
+         * define(...)' rides the global fallback, an ALIASED import
+         * binds only its alias, and the global self-import imports
+         * the global itself.
+         */
+        $this->assertSame(array(), $this->drive('ns-nodecoy', "namespace E;\ndefine('%s', '1.2.3');"), 'A bare namespaced define rides the global fallback — the binding stands.');
+
+        $this->root .= '-decoy';
+        @mkdir($this->root, 0755, true);
+        $decoy = $this->drive('decoy', "namespace E;\nfunction define(\$n, \$v) {}\ndefine('%s', '1.2.3');");
+        $this->assertStringContainsString('must define constant', implode("\n", $decoy), 'A same-namespace decoy define() shadows the call — the constant is never bound (red at HEAD: green).');
+
+        $this->root .= '-braced';
+        @mkdir($this->root, 0755, true);
+        $braced = $this->drive('braced', "namespace E {\n function define(\$n, \$v) {}\n define('%s', '1.2.3');\n}");
+        $this->assertStringContainsString('must define constant', implode("\n", $braced), 'The braced-namespace decoy shadows the same way (the scope\'s top level is depth one inside the block).');
+
+        $this->root .= '-method';
+        @mkdir($this->root, 0755, true);
+        $method = $this->drive('method', "namespace E;\nclass R { function define(\$n, \$v) {} }\ndefine('%s', '1.2.3');");
+        $this->assertSame(array(), $method, 'A METHOD named define shadows nothing — the unqualified call still rides the fallback.');
+
+        $base = sys_get_temp_dir() . '/wp-connectors-version-import-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse function Foo\\\\define;\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n");
+        $import = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+        $this->assertStringContainsString('must define constant', implode("\n", $import), 'An un-aliased use-function import of a foreign define shadows the bare name (red at HEAD: green).');
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse function Foo\\\\define as d;\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n");
+        $aliased = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+        $this->assertSame(array(), $aliased, 'An ALIASED import binds only its alias — the bare define still binds the constant.');
+        WpHarness::releaseScratch($base);
+    }
+
     public function testTightGlueAndCommentGlueDefineShapes(): void
     {
         /*

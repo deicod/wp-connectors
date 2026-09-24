@@ -6330,6 +6330,110 @@ function wp_connectors_namespace_suffix_from_slug($slug)
  *                                        (rescanned when empty).
  * @return list<string> Violation messages.
  */
+/**
+ * Whether the unqualified define() call at an offset resolves to
+ * something other than the global define at runtime — the NAMESPACE
+ * DECOY (t31-glm48-2, R48-2, driven fail-open).
+ *
+ * PHP resolves an unqualified function call inside a namespace
+ * against the namespace's own function FIRST, the global fallback
+ * second — and a 'use function' IMPORT shadows the bare name at any
+ * scope. Both channels mint a define-shaped call that binds no
+ * constant: 'namespace E; function define($n,$v){} define("X","v");'
+ * (php -l clean) fatals 'Undefined constant "E\X"' at runtime, and
+ * 'use function Foo\define; define("X","v");' fatals identically —
+ * while the gates green-lighted both (driven: 0 violations across
+ * every arm). The call is judged against the file's own namespace
+ * ledger (the ONE owner) and a brace-safe flat view.
+ *
+ * Benign shapes stay green: a bare 'namespace E; define(...)' (no
+ * decoy anywhere) resolves through the global fallback and binds; a
+ * global-scope 'function define(){}' redeclare is a load-time fatal
+ * no gate owes a verdict for; an ALIASED import ('use function
+ * Foo\define as d;') binds only 'd', the bare name resolving
+ * normally; and the global SELF-IMPORT spellings ('use function
+ * define;' / '\define') import the global itself.
+ *
+ * @param string $source The main-file source bytes.
+ * @param int    $call_offset The define keyword's byte offset.
+ * @return bool True when the call resolves to a decoy (the binding must refuse).
+ */
+function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
+{
+    /*
+     * The IMPORT arm: an UN-aliased 'use function' whose imported
+     * name's final segment is 'define' shadows the bare name at any
+     * scope (file-wide over-approximation — imports are per
+     * namespace block, and refusing more is the safe direction).
+     * Judged over the comment-stripped view: a commented-out import
+     * binds nothing.
+     */
+    $code = wp_connectors_strip_comments($source);
+    $imports = array();
+    if (false !== preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?i:function)\s+([^;]+)/', $code, $imports, PREG_OFFSET_CAPTURE)) {
+        foreach ($imports[1] as $import_statement) {
+            foreach (explode(',', $import_statement[0]) as $imported) {
+                $imported = trim($imported);
+                $alias_split = preg_split('/\s+as\s+/i', $imported);
+                if (count($alias_split) > 1) {
+                    continue; // An alias binds only the alias — the bare name resolves normally.
+                }
+                $name = trim((string) $alias_split[0]);
+                $segments = explode('\\', $name);
+                $leaf = wp_connectors_ascii_lower((string) end($segments));
+                if ('define' !== $leaf) {
+                    continue;
+                }
+                if (count($segments) === 1) {
+                    continue; // The global self-import ('use function define;') — benign.
+                }
+                if (count($segments) === 2 && '' === $segments[0]) {
+                    continue; // The absolute self-import ('\define') — benign.
+                }
+
+                return true;
+            }
+        }
+    }
+
+    /*
+     * The DECLARATION arm: a top-level 'function define(' declared
+     * in the SAME namespace scope as the call. Function declarations
+     * hoist, so the decoy's position relative to the call does not
+     * matter; a NESTED declaration (a class method named define)
+     * shadows nothing and the depth check excludes it. The flat view
+     * (strings masked over the comment-stripped source) is the
+     * ledger's own brace-safe composition.
+     */
+    $tokens = token_get_all($source);
+    $in_effect = wp_connectors_declaration_in_effect(wp_connectors_namespace_declaration_ledger($tokens, $source));
+    $call_scope = $in_effect($call_offset);
+    if (null === $call_scope) {
+        return false; // Global scope: a global redeclare is a load-time fatal, never a decoy.
+    }
+    $flat = wp_connectors_mask_string_contents($code);
+    $declarations = array();
+    if (false === preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:function)\s+(?i:define)(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])\s*\(/', $flat, $declarations, PREG_OFFSET_CAPTURE)) {
+        return false; // A PCRE abort refuses the proof (glm36-8): no binding provable over unscanned bytes.
+    }
+    // A namespace block is never nested (the engine refuses it), so a
+    // braced scope's top level sits at depth 1 and an unbraced one at 0.
+    $reference_depth = null === $call_scope['expires'] ? 0 : 1;
+    foreach ($declarations[0] as $declaration) {
+        $at = $declaration[1];
+        $depth = substr_count((string) substr($flat, 0, $at), '{') - substr_count((string) substr($flat, 0, $at), '}');
+        if ($depth !== $reference_depth) {
+            continue; // A method or nested function shadows nothing at the unqualified call site.
+        }
+        $declaration_scope = $in_effect($at);
+        if (null !== $declaration_scope && $declaration_scope['offset'] === $call_scope['offset']) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function wp_connectors_version_constant_violations($pluginDir, array $headers, array $mainFiles = array())
 {
     $slug = basename(rtrim($pluginDir, '/'));
@@ -6499,6 +6603,24 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
              * the blanked run to the glue it owes.
              */
             if (0 === substr_compare($masked, 'define', $keyword_at, 6, true) && wp_connectors_keyword_at_statement_position($code, $keyword_at, true)) {
+                /*
+                 * t31-glm48-2 [R48-2, driven fail-open — the
+                 * namespace decoy]: an unqualified call that
+                 * runtime-resolves to something other than the
+                 * global define binds NO constant — a same-namespace
+                 * 'function define($n,$v){}' decoy (hoisted, php -l
+                 * clean, 'Undefined constant "E\X"' at runtime) or
+                 * an un-aliased 'use function Foo\define;' import —
+                 * both driven at 0 violations across every gate arm
+                 * while executing the plugin fatals. The candidate
+                 * skips: no binding here, the must-define arm owning
+                 * the verdict exactly like the no-define control
+                 * (the benign bare 'namespace E; define(...)' keeps
+                 * its global-fallback binding).
+                 */
+                if (wp_connectors_define_call_resolves_to_decoy($source, $keyword_at)) {
+                    continue;
+                }
                 /*
                  * t31-glm47-3 [driven - the ordered alternation's
                  * legacy quote-blind arm sat FIRST, so an
