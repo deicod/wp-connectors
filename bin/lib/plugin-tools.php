@@ -5304,39 +5304,6 @@ function wp_connectors_autoloader_violations($pluginDir)
 }
 
 /**
- * Whether a path names a PHP source, by extension, CASE-INSENSITIVELY
- * (review round t31-r4-9; the template class completed glm14-4).
- *
- * The ONE owner of the is-a-php-source judgment: PHP resolves includes
- * by any extension case ('.PHP' is as loadable as '.php'), so a
- * case-sensitive check made gates disagree — the sweep collected a
- * .PHP source (t31-r3-9) while the PSR-4 gate's basename($path, '.php')
- * never stripped the extension and the self-containment walker skipped
- * the file entirely. Every consumer that judges the extension rides
- * this predicate (the shared-source collector below, the PSR-4 gate's
- * type-name stem, the self-containment and unused-import walkers), so
- * collect, strip, and classify can never disagree again.
- *
- * glm14-4: the class is the ENGINE'S TEMPLATE EXTENSIONS — '.php' and
- * '.phtml', both case-insensitive — reopening the r6 ledger line
- * ("the scanner's extension allowlist misses .php5/.inc/.phtml in
- * every channel — do not re-flag without a real producer"): the
- * producer arrived (driven by the glm14 review, red at HEAD), a
- * 'form.phtml' entry with a parse error plus a live-shaped token
- * passing inspect-artifact ACCEPTED while the identical bytes as
- * 'form.php' were REJECTED — the '.php'-tail-only judgment exempted it
- * from the post-extraction php -l walk AND the secret scan's
- * extension allowlist, both channels at once. Widening the ONE owner
- * closes every channel at once (the near-source fold, the collectors,
- * the walkers) — the r6 line's own "in every channel" read as the
- * fix shape. '.php5'/'.php7'/'.inc' stay OUT until a driven producer
- * ships one (the r6 producer bar, restated; legacy distro configs
- * alone are not a producer).
- *
- * @param string $path File path or name (only the tail is judged).
- * @return bool True when the name ends in '.php' or '.phtml' in any case.
- */
-/**
  * Whether a keyword match at an offset sits at STATEMENT/CALL position
  * — never inside a NAME USAGE (t31-glm45-6, R45-5).
  *
@@ -5431,8 +5398,46 @@ function wp_connectors_keyword_at_statement_position($view, $offset, $allow_sepa
     return true;
 }
 
+/**
+ * Whether a path names a PHP source, by extension, CASE-INSENSITIVELY
+ * (review round t31-r4-9; the template class completed glm14-4).
+ *
+ * The ONE owner of the is-a-php-source judgment: PHP resolves includes
+ * by any extension case ('.PHP' is as loadable as '.php'), so a
+ * case-sensitive check made gates disagree — the sweep collected a
+ * .PHP source (t31-r3-9) while the PSR-4 gate's basename($path, '.php')
+ * never stripped the extension and the self-containment walker skipped
+ * the file entirely. Every consumer that judges the extension rides
+ * this predicate (the shared-source collector below, the PSR-4 gate's
+ * type-name stem, the self-containment and unused-import walkers), so
+ * collect, strip, and classify can never disagree again.
+ *
+ * glm14-4: the class is the ENGINE'S TEMPLATE EXTENSIONS — '.php' and
+ * '.phtml', both case-insensitive — reopening the r6 ledger line
+ * ("the scanner's extension allowlist misses .php5/.inc/.phtml in
+ * every channel — do not re-flag without a real producer"): the
+ * producer arrived (driven by the glm14 review, red at HEAD), a
+ * 'form.phtml' entry with a parse error plus a live-shaped token
+ * passing inspect-artifact ACCEPTED while the identical bytes as
+ * 'form.php' were REJECTED — the '.php'-tail-only judgment exempted it
+ * from the post-extraction php -l walk AND the secret scan's
+ * extension allowlist, both channels at once. Widening the ONE owner
+ * closes every channel at once (the near-source fold, the collectors,
+ * the walkers) — the r6 line's own "in every channel" read as the
+ * fix shape. '.php5'/'.php7'/'.inc' stay OUT until a driven producer
+ * ships one (the r6 producer bar, restated; legacy distro configs
+ * alone are not a producer).
+ *
+ * @param string $path File path or name (only the tail is judged).
+ * @return bool True when the name ends in '.php' or '.phtml' in any case.
+ */
 
-
+/*
+ * t31-glm48-8 [R48-14 — the R47-14 class, unswept at this seat]: glm45-6's
+ * helper insertion left this docblock stranded above the helper's own
+ * (only the LAST docblock attaches), is_php_source shipping bare — relocated
+ * to its function in the glm47-6 shape.
+ */
 function wp_connectors_is_php_source($path)
 {
     $lowered = wp_connectors_ascii_lower((string) $path);
