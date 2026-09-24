@@ -3047,7 +3047,18 @@ function wp_connectors_write_visibility_spans($masked, $offset, $reference_captu
      * else-arm takes an expression; after a close tag the keyword
      * bytes are inline HTML the tokenizer already blanked).
      */
-    if (! preg_match_all('/(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:while|for|foreach)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\(|(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\{|(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])(?!\s*\{)|(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:function)(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
+    /*
+     * t31-glm47-1 [R47-1, driven fail-open - the collector still
+     * pre-filtered the byte-pair helper's judgments: glm46-1 landed
+     * the pair logic in the helper but the REGEX lookbehind kept
+     * refusing tight ':' '>' first, so 'case 1:while(true){...}'
+     * (php -l clean) answered ZERO violations where the spaced twin
+     * flags - the tight elvis ':do' and arrow '=>foreach' the same
+     * (all driven). The class reduces to the include sibling's
+     * label+'$' refusal, the helper owning the pair judgment - the
+     * collector must COLLECT, never pre-answer.
+     */
+    if (! preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:while|for|foreach)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\(|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\{|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])(?!\s*\{)|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:function)(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
         return $spans;
     }
 
