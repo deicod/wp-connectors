@@ -7019,7 +7019,23 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
                  * value IS the constant.
                  */
                 $name_raw = wp_connectors_decode_define_literal_expression($candidates['dname'][ $index ][0], $wp_connectors_define_heredoc_value_arm);
-                if ($name_raw !== $constantName && 0 !== substr_compare($name_raw, $constantName, 0, strlen($constantName), true)) {
+                /*
+                 * t31-glm50-1 [R50-2, driven fail-open — the name compare
+                 * was a case-insensitive PREFIX match]: the round-49
+                 * spelling ('$name_raw !== $constantName && 0 !==
+                 * substr_compare(..., true)') short-circuits to BINDING
+                 * whenever the decoded name case-insensitively shares
+                 * the constant's PREFIX — 'MYPLUG_VERSION2',
+                 * 'myplug_version_extra', and 'myplug_version' each
+                 * satisfying the must-define gate at ZERO violations
+                 * (driven, php -l clean) while executing fatals
+                 * 'Undefined constant "MYPLUG_VERSION"' — constants
+                 * are CASE-SENSITIVE on the >=8.2 floor, the define()
+                 * third argument the only case-insensitive spelling
+                 * and one this grammar never admits. The compare is
+                 * FULL-LENGTH EQUALITY, case-sensitively.
+                 */
+                if ($name_raw !== $constantName) {
                     continue;
                 }
                 $value_raw = wp_connectors_decode_define_literal_expression($candidates['dvalue'][ $index ][0], $wp_connectors_define_heredoc_value_arm);

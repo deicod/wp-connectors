@@ -489,6 +489,31 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         WpHarness::releaseScratch($base);
     }
 
+    public function testTheNameCompareIsFullLengthAndCaseSensitive(): void
+    {
+        /*
+         * R50-2 (driven fail-open — the round-49 name compare was a
+         * case-insensitive PREFIX match): '$name_raw !== $constantName
+         * && 0 !== substr_compare(..., true)' short-circuits to
+         * BINDING whenever the decoded name case-insensitively shares
+         * the constant's prefix — 'MYPLUG_VERSION2',
+         * 'myplug_version_extra', and 'myplug_version' each satisfying
+         * the must-define gate at zero violations while executing
+         * fatals on the unbound constant (constants case-sensitive on
+         * the floor). The compare is full-length equality.
+         */
+        foreach (array(
+            'prefix-sharing' => "define( '%s2', '1.2.3' );",
+            'case-variant suffix' => "define( '%s_extra', '1.2.3' );",
+            'case-variant exact' => "define( strtolower('%s'), '1.2.3' );",
+        ) as $name => $body) {
+            $this->root .= '-n' . substr(md5($name), 0, 4);
+            @mkdir($this->root, 0755, true);
+            $v = $this->drive($name, $body);
+            $this->assertStringContainsString('must define constant', implode("\n", $v), "The {$name} spelling names a DIFFERENT constant — the gate refuses (red at HEAD: binds clean).");
+        }
+    }
+
     public function testTightGlueAndCommentGlueDefineShapes(): void
     {
         /*
