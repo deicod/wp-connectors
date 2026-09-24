@@ -164,4 +164,38 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         $mismatch = $this->drive('mismatch', "define('%s', '9.9.9');");
         $this->assertStringContainsString('does not match header Version', implode("\n", $mismatch), 'The value-mismatch refusal keeps its own verdict.');
     }
+
+    public function testTheThreeArgumentDefineSpellingBinds(): void
+    {
+        /*
+         * R41-5 (driven false refusal — the value-argument tail one
+         * byte short): the pattern required ')' IMMEDIATELY after
+         * the second quoted literal, so the three-argument spelling
+         * — define('X', '1.2.3', false), the documented
+         * case-insensitivity switch, php -l clean and executing
+         * diagnostic-free — answered 'must define constant' at HEAD
+         * on a well-formed plugin. The tail tolerates the optional
+         * third argument; the guarded idiom and the case variant
+         * ride the widened tail unchanged, and the VALUE capture
+         * still the second literal (the mismatch twin keeps its own
+         * refusal beside them).
+         */
+        $threeArg = $this->drive('threearg', "define('%s', '1.2.3', false);");
+        $this->assertSame(array(), $threeArg, 'The three-argument define binds — the case-insensitivity switch is not a missing constant (red at HEAD: the false must-define-constant refusal).');
+
+        $this->root .= '-guarded';
+        @mkdir($this->root, 0755, true);
+        $guarded = $this->drive('guarded', "if ( ! defined('%s') ) define('%s', '1.2.3', false);");
+        $this->assertSame(array(), $guarded, 'The guarded idiom carries the third argument clean — the R39-4 spelling rides the widened tail.');
+
+        $this->root .= '-upper3';
+        @mkdir($this->root, 0755, true);
+        $upper = $this->drive('upper3', "DEFINE('%s', '1.2.3', FALSE);");
+        $this->assertSame(array(), $upper, 'The case-insensitive keyword and FALSE argument bind — PHP folds both lexically.');
+
+        $this->root .= '-mismatch3';
+        @mkdir($this->root, 0755, true);
+        $mismatch = $this->drive('mismatch3', "define('%s', '9.9.9', false);");
+        $this->assertStringContainsString('does not match header Version', implode("\n", $mismatch), 'The three-argument mismatch twin keeps its own refusal — the value capture still the SECOND literal.');
+    }
 }

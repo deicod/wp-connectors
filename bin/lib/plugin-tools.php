@@ -5815,11 +5815,22 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * the laundering guard that makes anchoring unnecessary: a
      * comment or heredoc define never survives the second view, so
      * the anchor bought nothing the two views do not already own.
+     *
+     * t31-glm41-3 [R41-5, driven false refusal — the value-argument
+     * tail one byte short]: the pattern required ')' IMMEDIATELY
+     * after the second quoted literal, so the three-argument
+     * spelling — define('X', '1.2.3', false), the documented
+     * case-insensitivity switch, php -l clean and executing
+     * diagnostic-free — answered 'must define constant' at all three
+     * gates on a well-formed plugin. The tail tolerates the optional
+     * third argument after the value literal; the case-variant and
+     * guarded-idiom spellings ride unchanged, the value capture
+     * still the SECOND literal.
      */
     $code = wp_connectors_strip_comments($source);
     $masked = wp_connectors_mask_string_contents($source);
     $constantMatch = array();
-    if (preg_match_all('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
         foreach ($candidates[0] as $index => $candidate) {
             /*
              * t31-glm40-2 [R40-3, security:medium, driven fail-open —
