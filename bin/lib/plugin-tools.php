@@ -4834,6 +4834,25 @@ function wp_connectors_autoloader_violations($pluginDir)
 
         return $violations;
     }
+    /*
+     * t31-glm44-3 [R44-3, race-driven — glm43-7 owned only the NULL
+     * leg, not the mismatched-content leg]: the guarded $source read
+     * and the provider's own read are TWO reads, and a file swapped
+     * between them assembles a verdict over bytes no single file
+     * ever contained — the prefix-binding walk judging read 1 while
+     * the register/vendor arms judge read 2 (race-driven: an
+     * atomic-rename cycler alternating a prefix-literal carrier and
+     * a foreign-prefix autoloader answered 340/100000 ZERO-violation
+     * verdicts for the hostile file, the B-then-A mirror answering
+     * 3-violation counts neither stable file produces). The two
+     * reads RECONCILE: a content mismatch answers the same loud
+     * mid-swap refusal — never a verdict assembled from both files.
+     */
+    if ($views['source'] !== $source) {
+        $violations[] = sprintf('%s: src/autoload.php changed while the autoloader check ran — the two reads disagree, the check cannot judge a stable file', $slug);
+
+        return $violations;
+    }
     $code = $views['code'];
     $masked = $views['masked'];
     $register_count = preg_match_all('/spl_autoload_register/i', $masked);
