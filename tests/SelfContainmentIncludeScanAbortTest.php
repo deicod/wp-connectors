@@ -483,6 +483,36 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringContainsString('variable $f resolves to a path', $report, 'The trailing write target joins the proof — the EOF over-approximation refusing, never laundering.');
     }
 
+    public function testAHighByteByReferenceClosureCaptureStillMintsTheWholeFileSpan(): void
+    {
+        /*
+         * R48-1 (security:medium, driven fail-open — the write-
+         * visibility machinery's last ASCII '\b' census gap): the
+         * by-ref capture arm spelled PCRE's ASCII '\b' after the
+         * captured variable's name, and a high byte is a NON-word
+         * byte in byte mode — so a proof variable whose name ends in
+         * one (a LEGAL label byte since glm43-2) failed the trailing
+         * boundary and the whole-file span never minted: the php -l
+         * clean '$fé' spelling answered ZERO violations where the
+         * '$fr' twin flags, executing the outside path. The boundary
+         * rides the LABEL byte class (the r43-2 census's own idiom),
+         * the whole write-visibility family swept with it (the
+         * list()/square/foreach-value/array-helper/by-ref refusals
+         * and their plain-path twins — verdict-identical on every
+         * sibling shape, the sweep's differential).
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php \$in = __DIR__ . \"/inside.php\"; \$f\xc3\xa9 = \$in; \$go = function () use (&\$f\xc3\xa9) { require \$f\xc3\xa9; }; \$f\xc3\xa9 = __DIR__ . \"/../../outside.php\"; \$go();"
+        );
+
+        $violations = wp_connectors_self_containment_violations($this->root);
+        $report = implode("\n", $violations);
+
+        $this->assertNotEmpty($violations, 'A high-byte variable name is one label — the by-ref capture mints the whole-file span exactly like its ASCII twin (red at HEAD: 0 violations while execution requires the outside path).');
+        $this->assertStringContainsString('resolves to a path', $report, 'The post-definition write joins the proof over the high-byte name.');
+    }
+
     public function testAByReferenceClosureCaptureMakesEveryWriteVisible(): void
     {
         /*

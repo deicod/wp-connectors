@@ -3167,7 +3167,37 @@ function wp_connectors_write_visibility_spans($masked, $offset, $reference_captu
                  */
                 if ('' !== $reference_captured_variable) {
                     $header = (string) substr($masked, $loop[1], ($hit_eof ? $length : $body_open) - $loop[1]);
-                    if (1 === preg_match('/\b(?i:use)\s*\([^)]*&\s*' . preg_quote($reference_captured_variable, '/') . '\b/', $header)) {
+                    /*
+                     * t31-glm48-1 [R48-1, driven fail-open — the
+                     * write-visibility machinery's last ASCII '\b'
+                     * census gap]: the by-ref capture arm spelled
+                     * PCRE's ASCII '\b' at both edges, and a high
+                     * byte is a NON-word byte in byte mode — so a
+                     * proof variable whose name ends in one failed
+                     * the TRAILING boundary and the whole-file span
+                     * this arm exists to mint never minted (driven,
+                     * php -l clean: the high-byte spelling answering
+                     * ZERO violations where the ASCII twin flags —
+                     * the high bytes are LABEL bytes since glm43-2,
+                     * the census that never reached this machinery).
+                     * Every variable/keyword boundary edge in the
+                     * write-visibility family rides the LABEL byte
+                     * class now — the closure arm here, the list()/
+                     * square/foreach-value/array-helper/by-ref
+                     * refusals in array_writes_recognized(), their
+                     * plain-path twins in the span walk, the
+                     * signature consult's 'function', and the
+                     * foreach header's 'endforeach' lookahead (the
+                     * trailing edge's phantom-match direction — a
+                     * high-byte-glued label matching the ASCII '\b'
+                     * — fails CLOSED and was swept with the same
+                     * stroke). Inspected and left: the shared/
+                     * -reference seat's '\bshared/' (a PATH segment
+                     * boundary, not a label family, fail-closed
+                     * direction, the R37-8 recorded inheritance's
+                     * seat).
+                     */
+                    if (1 === preg_match('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s*\([^)]*&\s*' . preg_quote($reference_captured_variable, '/') . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])/', $header)) {
                         $spans[] = array(0, $length - 1);
                         continue;
                     }
@@ -3346,7 +3376,7 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * source read ('list($a) = $map') — over-approximate, the safe
      * direction.
      */
-    if (0 !== preg_match('/\blist\s*\([^;]*' . $quoted . '\b/i', $before)) {
+    if (0 !== preg_match('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])list\s*\([^;]*' . $quoted . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])/i', $before)) {
         return false;
     }
 
@@ -3371,7 +3401,7 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * by the map ('$rows[$map] = 1', a read of the map as index): a
      * documented over-approximation in the safe direction.
      */
-    if (0 !== preg_match('/\[[^;]*' . $quoted . '\b[^;]*\]\s*=(?![=>])/', $before)) {
+    if (0 !== preg_match('/\[[^;]*' . $quoted . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])[^;]*\]\s*=(?![=>])/', $before)) {
         return false;
     }
 
@@ -3387,7 +3417,7 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * trip it. The list() twin in the same position was already
      * refused above.
      */
-    if (0 !== preg_match('/(?i:foreach)\s*\([^;]*\b(?i:as)\b[^;()]*\[[^;()]*' . $quoted . '\b/', $before)) {
+    if (0 !== preg_match('/(?i:foreach)\s*\([^;]*(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:as)(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])[^;()]*\[[^;()]*' . $quoted . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])/', $before)) {
         return false;
     }
 
@@ -3405,7 +3435,7 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
     }
 
     // Array-write helpers.
-    if (0 !== preg_match('/(?:array_push|array_unshift|array_splice|unset)\s*\(\s*' . $quoted . '\b/i', $before)) {
+    if (0 !== preg_match('/(?:array_push|array_unshift|array_splice|unset)\s*\(\s*' . $quoted . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])/i', $before)) {
         return false;
     }
 
@@ -3417,12 +3447,12 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * reproduced laundering, pre-existing; the plain '= &' shape never
      * matched it).
      */
-    if (0 !== preg_match('/(?:=\s*&|\b(?i:as)\s*&)\s*' . $quoted . '\b/', $before)) {
+    if (0 !== preg_match('/(?:=\s*&|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:as)\s*&)\s*' . $quoted . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])/', $before)) {
         return false;
     }
 
     // An occurrence inside a function signature (a parameter default).
-    $signature_matches = preg_match_all('/\bfunction\b/i', $before, $functions, PREG_OFFSET_CAPTURE);
+    $signature_matches = preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])function(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])/i', $before, $functions, PREG_OFFSET_CAPTURE);
     if (false === $signature_matches) {
         return false; // A PCRE abort refuses the proof (glm36-8).
     }
@@ -3588,11 +3618,11 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
     $refused = preg_quote($variable, '/');
     foreach ($spans as $span) {
         $region = (string) substr($masked, $span[0], $span[1] - $span[0] + 1);
-        if (0 !== preg_match('/(?:=\s*&|\b(?i:as)\s*&)\s*' . $refused . '\b/', $region)
+        if (0 !== preg_match('/(?:=\s*&|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:as)\s*&)\s*' . $refused . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])/', $region)
             || 0 !== preg_match('/\$\$|\$\{/', $region)
-            || 0 !== preg_match('/\blist\s*\([^;]*' . $refused . '\b/i', $region)
-            || 0 !== preg_match('/\[[^;]*' . $refused . '\b[^;]*\]\s*=(?![=>])/', $region)
-            || 0 !== preg_match('/(?i:foreach)\s*\([^;]*\b(?i:as)\b[^;()]*\[[^;()]*' . $refused . '\b/', $region)) {
+            || 0 !== preg_match('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])list\s*\([^;]*' . $refused . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])/i', $region)
+            || 0 !== preg_match('/\[[^;]*' . $refused . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])[^;]*\]\s*=(?![=>])/', $region)
+            || 0 !== preg_match('/(?i:foreach)\s*\([^;]*(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:as)(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])[^;()]*\[[^;()]*' . $refused . '(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])/', $region)) {
             return array();
         }
     }
@@ -3672,7 +3702,7 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      * direction's recorded shape, the same class round 30's
      * residual list carries for the sibling seats.
      */
-    $foreach_scan = preg_match_all('/(?i:foreach)\s*\(((?:(?!(?i:endforeach)\b).)+?)\)\s*(?:\{|:)/s', $masked, $foreaches, PREG_OFFSET_CAPTURE);
+    $foreach_scan = preg_match_all('/(?i:foreach)\s*\(((?:(?!(?i:endforeach)(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])).)+?)\)\s*(?:\{|:)/s', $masked, $foreaches, PREG_OFFSET_CAPTURE);
     if (false === $foreach_scan) {
         return array();
     }
