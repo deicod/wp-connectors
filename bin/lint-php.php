@@ -272,7 +272,24 @@ if (wp_connectors_cli_entry(__FILE__)) {
                 foreach ($files as $index => $path) {
                     $pairs .= $index . "\0" . $path . "\0";
                 }
-                if (false !== file_put_contents($list, $pairs)) {
+                /*
+                 * t31-glm44-6 [R44-6, driven via a namespace shim —
+                 * the staging fallback's own gap]: only the mkdir
+                 * failure fell back to the serial arm; a files.nul
+                 * write failure (ENOSPC/EDQUOT on a tmpfs /tmp where
+                 * the directory entry fits but the kilobyte index
+                 * write does not) ran NEITHER the fleet NOR the
+                 * fallback — every lintable file a spurious FAIL
+                 * with the misattributed 'the batched engine never
+                 * answered' message (driven: a 5-file valid tree
+                 * answering 5 FAILs exit 1 where the mkdir-failure
+                 * control two lines up answers the same tree green
+                 * through the serial arm). The write failure falls
+                 * back too — the comment's own promise.
+                 */
+                if (false === file_put_contents($list, $pairs)) {
+                    $lint_serial();
+                } else {
                     $runner = sprintf(
                         '%1$s -l "$1" >"%2$s/$0.lint" 2>&1; echo "exit=$?" >>"%2$s/$0.lint"',
                         $php,
