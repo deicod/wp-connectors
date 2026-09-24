@@ -959,34 +959,6 @@ final class Url {
 	}
 
 	/**
-	 * Post-parse re-validation of the rebuilt authority (review round
-	 * t31-r12-8, the noted-class hardening that kills the class for
-	 * three lines).
-	 *
-	 * The whole-URL UTF-8 probe at entry guarantees the INPUT bytes;
-	 * this re-check guarantees the OUTPUT side — the parsed host plus
-	 * the case fold — never mangles them. The fold is AsciiFold's byte
-	 * table (t31-ocr1-4): identical in every locale BY CONSTRUCTION —
-	 * no engine mapping and no process locale to consult, so no
-	 * spelling reaches here mangled by the fold. The 8-bit-LC_CTYPE
-	 * mangler the screen guards against is real C-library behavior
-	 * (verified on this host: ctype_lower(0xE3) flips under a
-	 * manufactured tr_TR.ISO-8859-9 — ctype consults the live locale —
-	 * and glibc's tolower('I') maps to the dotless ı under the same
-	 * locale, the exact per-locale mapping class that would break a
-	 * byte if any fold ever consulted it), and any future
-	 * transformation between entry and the rebuilt authority meets the
-	 * abort-as-reject probe instead of flowing into the
-	 * json_encode-false log-drop class the r4-13 entry gate exists to
-	 * kill.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $authority The rebuilt (lowercased host[:port]) authority.
-	 * @return void
-	 * @throws InvalidArgumentException When the rebuilt authority is not valid UTF-8.
-	 */
-	/**
 	 * The WHATWG URL Standard's own IPv6 serialization of a validated
 	 * literal (t31-glm46-4): lowercase hex without leading zeros, the
 	 * first-longest run of two-or-more zero hextets compressed to '::'
@@ -1105,12 +1077,36 @@ final class Url {
 	}
 
 	/**
-	 * Guards the authority's UTF-8 validity after parsing (t31-r11-6):
-	 * a host the parse or the case fold mangled refuses loudly instead
-	 * of flowing into log lines whose json_encode then fails outright.
+	 * Post-parse re-validation of the rebuilt authority (review round
+	 * t31-r12-8, the noted-class hardening that kills the class for
+	 * three lines; the guard itself t31-r11-6, the docblock relocated
+	 * to its function at t31-glm47-6 — the glm46-4 landing had left it
+	 * stranded above the serializer's own): a host the parse or the
+	 * case fold mangled refuses loudly instead of flowing into log
+	 * lines whose json_encode then fails outright.
 	 *
-	 * @param string $authority The parsed authority bytes.
-	 * @throws InvalidArgumentException When the authority is no longer valid UTF-8.
+	 * The whole-URL UTF-8 probe at entry guarantees the INPUT bytes;
+	 * this re-check guarantees the OUTPUT side — the parsed host plus
+	 * the case fold — never mangles them. The fold is AsciiFold's byte
+	 * table (t31-ocr1-4): identical in every locale BY CONSTRUCTION —
+	 * no engine mapping and no process locale to consult, so no
+	 * spelling reaches here mangled by the fold. The 8-bit-LC_CTYPE
+	 * mangler the screen guards against is real C-library behavior
+	 * (verified on this host: ctype_lower(0xE3) flips under a
+	 * manufactured tr_TR.ISO-8859-9 — ctype consults the live locale —
+	 * and glibc's tolower('I') maps to the dotless ı under the same
+	 * locale, the exact per-locale mapping class that would break a
+	 * byte if any fold ever consulted it), and any future
+	 * transformation between entry and the rebuilt authority meets the
+	 * abort-as-reject probe instead of flowing into the
+	 * json_encode-false log-drop class the r4-13 entry gate exists to
+	 * kill.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $authority The rebuilt (lowercased host[:port]) authority.
+	 * @return void
+	 * @throws InvalidArgumentException When the rebuilt authority is not valid UTF-8.
 	 */
 	private static function assert_authority_still_valid_utf8( string $authority ): void {
 		if ( 1 !== preg_match( '//u', $authority ) ) {
