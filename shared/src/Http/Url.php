@@ -581,16 +581,37 @@ final class Url {
 		 * shape no client means to send, and the URL string and the
 		 * rebuilt authority must agree.
 		 */
-		$bracket_opens            = substr_count( $host_port, '[' );
-		$bracket_closes           = substr_count( $host_port, ']' );
-		$bracket_open             = strpos( $host_port, '[' );
-		$well_formed_bracket_pair = 1 === $bracket_opens
-			&& 1 === $bracket_closes
-			&& 0 === $bracket_open
-			&& false !== $bracket_end
-			&& $bracket_end > 1;
-		if ( ( $bracket_opens + $bracket_closes ) > 0 && ! $well_formed_bracket_pair ) {
-			throw new InvalidArgumentException( 'The URL authority may carry brackets only as one well-formed IP literal wrapping the whole host ("[::1]:443") — a "]" without its matching "[", a second bracket of either kind, an empty literal ("[]"), or brackets around part of the host ("a[b]") is a malformed authority parse_url() misreads (a raw "]" truncated "http://host:44x]/p" to port 44) while the URL string carries the raw text, and the two must agree.' );
+
+		/*
+		 * t31-glm47-7 [R47-15 — the bracket computations once ran
+		 * unconditionally]: every plain hostname paid the two
+		 * substr_count()s, the strpos, the pair fold, the serializer
+		 * probe over a GARBAGE slice (bracket_end false coercing to
+		 * 0: substr($host_port, 1, -1) over a bracket-free host),
+		 * every product then guarded away by the
+		 * $well_formed_bracket_pair arms below — work spent to
+		 * manufacture values only the bracket-bearing shape ever
+		 * reads. The whole computation rides ONE bracket-bearing
+		 * block: a host_port with neither bracket byte (the common
+		 * case every plain http(s) host carries) answers the arms'
+		 * own fold false and skips straight to the split consumers
+		 * below, which judge their own bracket_end answer.
+		 */
+		$well_formed_bracket_pair = false;
+		$inner_literal            = '';
+		if ( false !== strpbrk( $host_port, '[]' ) ) {
+			$bracket_opens            = substr_count( $host_port, '[' );
+			$bracket_closes           = substr_count( $host_port, ']' );
+			$bracket_open             = strpos( $host_port, '[' );
+			$well_formed_bracket_pair = 1 === $bracket_opens
+				&& 1 === $bracket_closes
+				&& 0 === $bracket_open
+				&& false !== $bracket_end
+				&& $bracket_end > 1;
+			if ( ! $well_formed_bracket_pair ) {
+				throw new InvalidArgumentException( 'The URL authority may carry brackets only as one well-formed IP literal wrapping the whole host ("[::1]:443") — a "]" without its matching "[", a second bracket of either kind, an empty literal ("[]"), or brackets around part of the host ("a[b]") is a malformed authority parse_url() misreads (a raw "]" truncated "http://host:44x]/p" to port 44) while the URL string carries the raw text, and the two must agree.' );
+			}
+			$inner_literal = (string) substr( $host_port, 1, (int) $bracket_end - 1 );
 		}
 
 		/*
@@ -607,7 +628,6 @@ final class Url {
 		 * looks like an IP literal refuses exactly like its malformed
 		 * siblings.
 		 */
-		$inner_literal = (string) substr( $host_port, 1, (int) $bracket_end - 1 );
 
 		/*
 		 * The ZONE-ID half of the content leg (OCR round 45,
@@ -652,9 +672,11 @@ final class Url {
 		 * (the pinned fold, the rebuilt authority lowercasing as
 		 * every host folds), the judgment case-insensitive.
 		 */
-		$canonical_ipv6 = self::canonical_ipv6_spelling( $inner_literal );
-		if ( $well_formed_bracket_pair && null !== $canonical_ipv6 && strtolower( $inner_literal ) !== $canonical_ipv6 ) {
-			throw new InvalidArgumentException( 'A bracketed host must use the canonical IPv6 spelling the URL Standard serializes ("[2001:db8::1]", "[::1]") - an uncompressed run ("[0:0:0:0:0:0:0:1]"), a dotted-quad tail ("[::ffff:1.2.3.4]"), or a leading-zero hextet ("[0001::]") names a host every WHATWG consumer re-serializes differently, and the URL string and the rebuilt authority must agree: write the serializer spelling the value as shown here.' );
+		if ( $well_formed_bracket_pair ) {
+			$canonical_ipv6 = self::canonical_ipv6_spelling( $inner_literal );
+			if ( null !== $canonical_ipv6 && strtolower( $inner_literal ) !== $canonical_ipv6 ) {
+				throw new InvalidArgumentException( 'A bracketed host must use the canonical IPv6 spelling the URL Standard serializes ("[2001:db8::1]", "[::1]") - an uncompressed run ("[0:0:0:0:0:0:0:1]"), a dotted-quad tail ("[::ffff:1.2.3.4]"), or a leading-zero hextet ("[0001::]") names a host every WHATWG consumer re-serializes differently, and the URL string and the rebuilt authority must agree: write the serializer spelling the value as shown here.' );
+			}
 		}
 
 		/*
