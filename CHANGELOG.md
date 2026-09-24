@@ -6,6 +6,82 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 48)
+
+Thirty-fourth claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first; the convergence round ordered — still not
+zero): three driven fail-opens in the gates (the write-visibility
+machinery's ASCII-'\b' laundering via high-byte variable names, the
+namespace-decoy define, the scanner's aggregate-entropy gap), the
+memory-limit grammar handed to the engine's own parser, the mask's
+embedded-credential tail, the define value's remaining legal
+spellings, the un-handleable compile warning at the tokenize seats,
+and two documentation corrections. Nine fix commits t31-glm48-1..9
+plus the docs close, the full offline check green after every
+commit. Five wp-stubs core divergences, the set-cookie2 catalog
+rows, and the define variable-callee leg recorded as inheritance.
+Suite 1972 → 1976 tests, 48539 → 48565 assertions, 3 skipped
+unchanged.
+
+- **The write-visibility machinery's variable boundaries ride the
+  LABEL byte class (t31-glm48-1, driven fail-open; bin/lib/
+  plugin-tools.php)** — the by-ref closure-capture arm's ASCII
+  '\b' failed on high-byte-final names, '$fé' laundering the
+  deferred-execution shape at zero violations where the '$fr' twin
+  flags. The closure arm, the destructuring/by-ref refusals and
+  their plain-path twins, the signature consult, and the foreach
+  header's lookahead swept in one stroke.
+
+- **A decoy define binds nothing (t31-glm48-2, driven fail-open;
+  bin/lib/plugin-tools.php)** — a same-namespace 'function
+  define(){}' or an un-aliased 'use function Foo\define;' shadows
+  the bare call at runtime (the plugin fatals on the constant) while
+  every gate stayed green. The seat consults the namespace ledger:
+  the import and declaration arms, the benign fallback/alias/
+  self-import/method shapes pinned green.
+
+- **The fake-secret tail's entropy budget is aggregate
+  (t31-glm48-3, driven through the real CLI; bin/lib/
+  secret-scanner.php)** — 35 chunked bytes in seven 5-byte segments
+  shipped as fake where the same bytes contiguous flag; the filler
+  anchor tightened to the head's with the pure sequential runs
+  staying filler.
+
+- **The memory-limit grammar is the engine's own
+  ini_parse_quantity() (t31-glm48-4; bin/lib/secret-scanner.php)**
+  — '128Mb' parses to 128 bytes by the engine and 128 mebibytes by
+  the hand grammar, the census overstating the enforced limit
+  ~1,000,000x on such hosts. The saturation arms unchanged; the
+  '128mb' unit pin superseded to the engine's verdict.
+
+- **The visible tail judges the embedded credential
+  (t31-glm48-5, driven; shared/src/Support/SecretMask.php)** — a
+  nine-character user code riding in a Location query rendered four
+  of its characters through every safe debug form; a query-shaped
+  value judges its final parameter now, long trailing tokens
+  keeping the correlation tail.
+
+- **The define value's legal spellings bind (t31-glm48-6, driven
+  false refusals; bin/lib/plugin-tools.php)** — the b/B-encoding
+  prefix, one parenthesizing, and heredoc/nowdoc values all minted
+  the false must-define refusal on working plugins; one shared
+  heredoc arm (relative backreference), the pieces decoding in
+  order. The variable-callee leg recorded as inheritance.
+
+- **The engine's compile warning never escapes a tokenize seat
+  (t31-glm48-7, driven; bin/lib/plugin-tools.php, bin/lib/
+  secret-scanner.php)** — token_get_all() over php -l-clean
+  octal-overflow escapes printed raw Warning lines misattributed
+  to the tool's own file, failing strict-output consumers; output
+  captured at both driven seats and every further hostile-byte
+  seat swept.
+
+- **Two documentation corrections (t31-glm48-8/9)** — the stranded
+  is_php_source docblock relocated (glm45-6's insertion; the
+  R47-14 class unswept at this seat), and five narration blocks
+  describing superseded code corrected in place (the r26-8 class
+  over rounds 44-47's own records).
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 47)
 
 Thirty-third claude-glm pass (/code-review max over the FULL branch
