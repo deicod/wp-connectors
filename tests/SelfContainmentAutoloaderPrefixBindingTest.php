@@ -246,6 +246,38 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         }
     }
 
+    public function testAVariableMediatedVendorOperandStillReferencesVendor(): void
+    {
+        /*
+         * R43-1 (security:medium, driven fail-open — the round's one
+         * regression versus master, driven end-to-end through every
+         * gate on the review's master worktree): the masked probe
+         * blanks the vendor path riding a quoted literal (the prose
+         * immunity) and the operand probe judged only the statement
+         * text at hand, so '$lib = __DIR__ .
+         * "/vendor/pkg/lib.php"; require $lib;' — php -l clean, the
+         * vendor file present inside the plugin root — answered 0
+         * violations where master's gate flagged. The statement's
+         * variable operands resolve through the SAME-FILE assignment
+         * machinery the escape walk rides, each resolved assignment
+         * value judged by the operand probe's own standard — an
+         * operand path is never prose, whatever its spelling.
+         */
+        $canonical = "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) { \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php'; require_once \$path; });\n";
+
+        $laundered = $this->autoloadWith($canonical . "\$lib = __DIR__ . '/../vendor/pkg/lib.php';\nrequire \$lib;\n");
+        $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $laundered), 'The vendor path reaching the channel through a VARIABLE still references vendor (red at HEAD: clean where master flags).');
+
+        $this->base .= '-eval';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $eval = $this->autoloadWith($canonical . "\$lib = __DIR__ . '/vendor/pkg/lib.php';\neval( file_get_contents( \$lib ) );\n");
+        $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $eval), 'The eval channel launders the same way — the resolution serves every operand channel.');
+
+        $this->base .= '-prose';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $prose = $this->autoloadWith($canonical . "\$note = 'vendor docs mention';\n");
+        $this->assertStringNotContainsString('must not reference composer or vendor', implode("\n", $prose), 'A prose note on a variable no channel reads stays clean — the resolution fires only for channel operands.');
+    }
     public function testQuoteShapedDataInANowdocBodyOrHtmlTailDoesNotBindThePrefix(): void
     {
         /*

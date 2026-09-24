@@ -4876,6 +4876,38 @@ function wp_connectors_autoloader_violations($pluginDir)
             foreach ($operand_statements[0] as $index => $operand) {
                 $statement_text = (string) substr($code, $operand[1], strlen($operand[0]));
                 if (false === stripos($statement_text, 'vendor') && false === stripos($statement_text, 'composer')) {
+                    /*
+                     * t31-glm43-1 [R43-1, security:medium, driven
+                     * fail-open — the variable-mediated spelling of
+                     * the operand channel]: the masked probe blanks
+                     * the vendor path riding a quoted literal (the
+                     * prose immunity) and the statement text at hand
+                     * names no path bytes, so '$lib = __DIR__ .
+                     * "/vendor/pkg/lib.php"; require $lib;' answered
+                     * 0 violations at every gate where master flagged
+                     * (driven end-to-end, the review's master
+                     * worktree drive) — the path reaches the channel
+                     * through a VARIABLE the statement never spells.
+                     * The statement's variable operands resolve
+                     * through the SAME-FILE assignment machinery the
+                     * escape walk rides, each resolved assignment
+                     * VALUE judged by this probe's own standard (an
+                     * operand path is never prose, whatever its
+                     * spelling — R39-3's doctrine at the dataflow
+                     * edge): the assignment's REAL bytes, the
+                     * write-visibility spans bounding which writes
+                     * the channel can read.
+                     */
+                    $variable_names = array();
+                    preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $statement_text, $variable_names);
+                    foreach ($variable_names[1] as $variable_name) {
+                        foreach (wp_connectors_same_file_assignments($code, $masked, '$' . $variable_name, $operand[1]) as $assignment_value) {
+                            if (false !== stripos($assignment_value, 'vendor') || false !== stripos($assignment_value, 'composer')) {
+                                $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
+                                break 3;
+                            }
+                        }
+                    }
                     continue;
                 }
                 // The keyword is the captured call name; prose words blank in the
