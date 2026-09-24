@@ -6659,7 +6659,24 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * quote-style owner's double-quote arm, the nowdoc body taken
      * verbatim (its own semantics: nothing resolves).
      */
-    if (preg_match_all('/(?<![\\$WP_CONNECTORS_LABEL_BYTES])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*(?:\(\s*)?((?:[bB]?\'(?:\\\\.|[^\'\\\\])*\'|[bB]?"(?:\\\\.|[^"\\\\])*"|' . $wp_connectors_define_heredoc_value_arm . ')(\s*\.\s*(?:[bB]?\'(?:\\\\.|[^\'\\\\])*\'|[bB]?"(?:\\\\.|[^"\\\\])*"|' . $wp_connectors_define_heredoc_value_arm . '))*)(?:\s*\))?\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+    /*
+     * t31-glm49-1 [R49-1, driven fail-open — the glm48-6 rewrite's
+     * own escaping accident, the R47-9 class one round later]: the
+     * rewrite embedded the constant NAME WP_CONNECTORS_LABEL_BYTES
+     * inside the single-quoted pattern string — single quotes do not
+     * interpolate, so the identifier-glue lookbehind class shrank to
+     * the literal letters {\ $ W P _ C O N E T S L A B Y}, reopening
+     * the R40-3 identifier-glued define laundering wholesale
+     * (driven, php -l clean: 'mydefine(' / 'tryDefine(' /
+     * 'a1define(' each answering ZERO violations where executing
+     * fatals 'Undefined constant', build publishing and inspect
+     * ACCEPTING — the suite's own R40-2 pin staying green only
+     * because the '_' of its 'my_define' fixture happens to be one
+     * of the surviving letters). The concatenation restored exactly
+     * as every sibling seat spells it (line 3102's loop collector
+     * the reference shape).
+     */
+    if (preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*(?:\(\s*)?((?:[bB]?\'(?:\\\\.|[^\'\\\\])*\'|[bB]?"(?:\\\\.|[^"\\\\])*"|' . $wp_connectors_define_heredoc_value_arm . ')(\s*\.\s*(?:[bB]?\'(?:\\\\.|[^\'\\\\])*\'|[bB]?"(?:\\\\.|[^"\\\\])*"|' . $wp_connectors_define_heredoc_value_arm . '))*)(?:\s*\))?\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
         foreach ($candidates[0] as $index => $candidate) {
             /*
              * t31-glm40-2 [R40-3, security:medium, driven fail-open —

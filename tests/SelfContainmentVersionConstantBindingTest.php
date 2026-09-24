@@ -294,6 +294,33 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
     }
 
 
+    public function testTheIdentifierGlueClassIsTheLabelOwnerNotTheLiteralLetters(): void
+    {
+        /*
+         * R49-1 (driven fail-open — the glm48-6 rewrite's own
+         * escaping accident, the R47-9 class one round later): the
+         * rewrite embedded the constant NAME
+         * WP_CONNECTORS_LABEL_BYTES inside the single-quoted pattern
+         * string — single quotes do not interpolate, so the
+         * identifier-glue lookbehind shrank to the literal letters
+         * of the constant's own name, and every identifier-glued
+         * call whose glue bytes fell outside those letters
+         * laundered the gate ('mydefine(' php -l clean, executing
+         * fatals, ZERO violations — build publishing and inspect
+         * ACCEPTING a plugin that dies at load, the R40-3 class
+         * wholesale). The round-40 pin stayed green only because
+         * the '_' of its 'my_define' fixture is one of the
+         * surviving letters — the pin now drives a letter-OUTSIDE
+         * spelling beside it.
+         */
+        foreach (array('mydefine', 'tryDefine', 'a1define') as $glued) {
+            $this->root .= '-glue-' . strtolower($glued);
+            @mkdir($this->root, 0755, true);
+            $refused = $this->drive($glued, "function {$glued}(\$n, \$v) {} {$glued}('%s', '1.2.3');");
+            $this->assertStringContainsString('must define constant', implode("\n", $refused), "The '{$glued}' identifier-glued call binds nothing — the glue class is the LABEL owner's, never the constant name's literal letters (red at HEAD: laundered).");
+        }
+    }
+
     public function testANamespaceDecoyDefineBindsNothing(): void
     {
         /*
