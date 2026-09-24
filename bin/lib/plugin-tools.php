@@ -3029,7 +3029,25 @@ function wp_connectors_write_visibility_spans($masked, $offset, $reference_captu
      * recorded class). Every arm rides the label-class lookarounds
      * with the '$' guard.
      */
-    if (! preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:while|for|foreach)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\(|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\{|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])(?!\s*\{)|(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:function)(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
+    /*
+     * t31-glm44-4 [R44-4, driven false flags - the loop detector
+     * matched a NAME-USAGE context]: the semi-reserved keywords are
+     * LEGAL constant and method names, so a class constant
+     * 'const DO = 1;' or a method 'function do($t)' matched the
+     * braceless-do/function arms (the braceless guard cannot see
+     * past the ')' of 'if (Flag::DO) {') and armed a PHANTOM span
+     * to EOF that admitted the post-include write and false-flagged
+     * benign plugins at every gate (driven: the Flag::DO shape
+     * flagging where the FLAG-named twin answers clean; the method
+     * and Other::FUNCTION shapes the same). Every arm refuses the
+     * const-declaration context, the do arms the function-
+     * declaration context too (a method NAME), and the left class
+     * gains the ':' '>' and namespace-separator glue bytes - a
+     * statement keyword never continues a name usage (the ternary
+     * else-arm takes an expression; after a close tag the keyword
+     * bytes are inline HTML the tokenizer already blanked).
+     */
+    if (! preg_match_all('/(?<!(?i:const)\s)(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:while|for|foreach)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\(|(?<!(?i:const)\s)(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?<!(?i:function)\s)(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])\s*\{|(?<!(?i:const)\s)(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?<!(?i:function)\s)(?i:do)(?![' . WP_CONNECTORS_LABEL_BYTES . '])(?!\s*\{)|(?<!(?i:const)\s)(?<![\\$:>\\\\' . WP_CONNECTORS_LABEL_BYTES . '])(?i:function)(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', $masked, $loops, PREG_OFFSET_CAPTURE)) {
         return $spans;
     }
 

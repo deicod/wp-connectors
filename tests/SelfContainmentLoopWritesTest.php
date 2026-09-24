@@ -414,4 +414,35 @@ final class SelfContainmentLoopWritesTest extends TestCase
         $this->assertNotEmpty($escaped, 'The real escape still flags — the census excludes only name-glued bytes, never a real statement.');
         @unlink($this->root . '/vars.php');
     }
+
+    public function testSemiReservedKeywordConstantsAndMethodsMintNoPhantomSpans(): void
+    {
+        /*
+         * R44-4 (driven false flags — the loop detector matched a
+         * NAME-USAGE context): the semi-reserved keywords are LEGAL
+         * constant and method names, so 'const DO = 1;' (the
+         * declaration — the braceless-do guard cannot see past the
+         * ')' of 'if (Flag::DO) {') and 'function do($t)' matched
+         * the loop arms and armed PHANTOM spans to EOF that admitted
+         * the post-include write and false-flagged benign plugins at
+         * every gate (red at HEAD: the Flag::DO shape flagging
+         * where the FLAG-named twin answers clean). Every arm
+         * refuses the const-declaration context, the do arms the
+         * function-declaration context too, and the left class the
+         * ':' '>' and namespace-separator glue bytes — a statement
+         * keyword never continues a name usage.
+         */
+        file_put_contents($this->root . '/vars.php', "<?php\nclass Flag { const DO = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag::DO) { require \$path; }\n\$path = '/tmp/outside.php';\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A semi-reserved constant name mints no phantom span (red at HEAD: the admitted-write flag).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\nclass Runner { public function do(\$t) { return \$t; } }\n\$r = new Runner();\n\$path = __DIR__ . '/safe.txt';\nif (\$r->do('scan')) { require \$path; }\n\$path = '/tmp/outside.php';\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A method named do() and its ->do( call mint nothing (red at HEAD: the phantom braceless-do span).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\nclass Other { const FUNCTION = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Other::FUNCTION) { require \$path; }\n\$path = '/tmp/outside.php';\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A FUNCTION-named constant mints nothing (red at HEAD: the phantom function span).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\n\$f = __DIR__ . '/safe.txt';\nwhile (true) { require \$f; \$f = '/tmp/outside.php'; }\n");
+        $this->assertNotEmpty(wp_connectors_self_containment_violations($this->root), 'The real while loop still admits its in-loop write — the guards exclude only name-usage contexts, never a real statement keyword.');
+        @unlink($this->root . '/vars.php');
+    }
 }
