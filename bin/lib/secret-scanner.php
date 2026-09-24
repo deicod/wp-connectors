@@ -379,24 +379,38 @@ function wp_connectors_payload_has_sample_open($contents)
  */
 function wp_connectors_line_split($text)
 {
+    /*
+     * t31-glm43-10 [R42-8, the driver-ordered pre-measured claim —
+     * the round-40→41→43 mechanic]: the HAND byte loop walked every
+     * payload byte in PHP (the scan's largest remaining single cost
+     * after round 41's cuts, measured by round 42's review at 5.08x
+     * broad / 5.60x scan-realistic). ONE native strcspn scan per line
+     * replaces the per-byte walk — the same terminator semantics by
+     * construction: CRLF ONE terminator (the two-byte arithmetic the
+     * loop spelled), the final tail ALWAYS appended (explode()'s own
+     * trailing-member shape, the empty ('', strlen) pair when the
+     * payload ends on a terminator), and the loop guard bounding the
+     * strcspn offset (a start past the end answers 0, never a
+     * negative span). BYTE-IDENTICAL — the round-42 differential
+     * (24 terminator edge shapes, 3000 seeded fuzz, 4359 repository
+     * files, ~79.9 MB) and this round's re-drive below.
+     */
     $lines = array();
     $length = strlen($text);
     $start = 0;
-    for ($i = 0; $i < $length; ++$i) {
-        $char = $text[ $i ];
-        if ("\n" === $char) {
-            $lines[] = array( (string) substr($text, $start, $i - $start), $start );
-            $start = $i + 1;
-        } elseif ("\r" === $char) {
-            $lines[] = array( (string) substr($text, $start, $i - $start), $start );
-            if ("\n" === ($text[ $i + 1 ] ?? '')) {
-                // The two-byte member: CRLF is ONE terminator, never
-                // two — consume the LF half with it.
-                ++$i;
-                $start = $i + 1;
-            } else {
-                $start = $i + 1;
-            }
+    while ($start < $length) {
+        $span = strcspn($text, "\r\n", $start);
+        $end = $start + $span;
+        if ($end >= $length) {
+            break;
+        }
+        $lines[] = array( (string) substr($text, $start, $span), $start );
+        if ("\r" === $text[ $end ] && "\n" === ($text[ $end + 1 ] ?? '')) {
+            // The two-byte member: CRLF is ONE terminator, never two —
+            // consume the LF half with it.
+            $start = $end + 2;
+        } else {
+            $start = $end + 1;
         }
     }
     $lines[] = array( (string) substr($text, $start), $start );
