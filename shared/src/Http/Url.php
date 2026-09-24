@@ -1093,11 +1093,14 @@ final class Url {
 				. '::' . implode( ':', array_slice( $hex, $best_at + $best_len ) );
 		}
 
-		$hex = array();
-		for ( $i = 0; $i < 8; ++$i ) {
-			$hex[] = dechex( $pieces[ $i ] );
-		}
-
+		/*
+		 * t31-glm47-5 [R47-13 — the glm46-4 landing's own dead seat]:
+		 * the uncompressed return rebuilt $hex a SECOND time, byte
+		 * identical to the build above (the compressed branch's own
+		 * source), the duplicate reading as though the branch had
+		 * consumed the array. It does not — array_slice() copies —
+		 * so the uncompressed spelling rides the ONE build.
+		 */
 		return implode( ':', $hex );
 	}
 
