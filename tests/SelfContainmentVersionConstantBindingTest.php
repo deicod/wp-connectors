@@ -514,6 +514,70 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         }
     }
 
+    public function testTheDecoyConsultsRound50Gaps(): void
+    {
+        /*
+         * R50-3+R50-4+R50-5+R50-6+R50-7+R50-8+R50-12+R50-13 (all
+         * driven at HEAD, php -l clean): the '::class' lookahead
+         * looked the WRONG WAY (the tokenizer mints 'Foo::class'
+         * with the '::' PRECEDING), every ordinary usage pushing a
+         * phantom class frame and every later decoy skipped as a
+         * method; a RELATIVE qualified callee ('Foo\define(')
+         * armed no branch and bound while executing fatals; the
+         * type-led mixed group use ('use Foo\{ function other as
+         * define };') never computed a bound name; a function
+         * declared inside a METHOD body is namespace-scoped once
+         * the method executes but was dropped as a 'method'; two
+         * braced blocks declaring the SAME namespace are one
+         * runtime namespace but the offset-identity scope match
+         * said otherwise; a comment between 'function' and the
+         * name broke the declaration walk; the pair inside a use
+         * statement minted a phantom declaration falsely refusing
+         * the working self-import; and a 'use function' in braced
+         * block A was file-global, falsely shadowing a bare define
+         * in block B.
+         */
+        $b = chr(92);
+        foreach (array(
+            '::class-then-decoy' => "namespace E;\n\$n = Foo::class;\nfunction define(\$n, \$v) {}\ndefine('%s', '1.2.3');",
+            'relative-qualified' => null,
+            'function-in-method' => "namespace E;\nclass Boot { public function boot() { function define(\$n, \$v) {} } }\ndefine('%s', '1.2.3');",
+            'same-name-blocks' => "namespace E { function define(\$n, \$v) {} }\nnamespace E { define('%s', '1.2.3'); }",
+            'comment-in-decl' => "namespace E;\nfunction /* c */ define(\$n, \$v) {}\ndefine('%s', '1.2.3');",
+        ) as $name => $body) {
+            if (null === $body) {
+                continue;
+            }
+            $this->root .= '-e' . substr(md5($name), 0, 4);
+            @mkdir($this->root, 0755, true);
+            $v = $this->drive($name, $body);
+            $this->assertStringContainsString('must define constant', implode("\n", $v), "The {$name} shape launders no more — the decoy resolves (red at HEAD: binds clean).");
+        }
+
+        $base = sys_get_temp_dir() . '/wp-connectors-version-r50-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        foreach (array(
+            'relative-qualified' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\nFoo{$b}define( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'type-led-group-use' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse Foo{$b}{ function other as define };\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'type-led-group-plain' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse Foo{$b}{ function define };\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+        ) as $name => $source) {
+            file_put_contents($base . '/myplug/myplug.php', $source);
+            $v = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+            $this->assertStringContainsString('must define constant', implode("\n", $v), "The {$name} shape launders no more (red at HEAD: binds clean).");
+        }
+        foreach (array(
+            'use-fn-define-in-ns' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\nuse function define;\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'group-alias-in-ns' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\nuse Foo{$b}{ function define as d2 };\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'import-block-a-define-b' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace A { use function Foo{$b}define; }\nnamespace B { define( 'MYPLUG_VERSION', '1.2.3' ); }\n",
+            'const-kind-group' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse Foo{$b}{ const define };\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'class-kind-plain-use' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse Foo{$b}define;\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+        ) as $name => $source) {
+            file_put_contents($base . '/myplug/myplug.php', $source);
+            $this->assertSame(array(), wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php')), "The {$name} shape binds — the false refusal dead (red at HEAD: must-define).");
+        }
+        WpHarness::releaseScratch($base);
+    }
+
     public function testTightGlueAndCommentGlueDefineShapes(): void
     {
         /*

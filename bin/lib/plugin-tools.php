@@ -6537,7 +6537,25 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
      * verdicts decide.
      */
     static $consult_cache = array();
-    $cache_key = md5($source);
+    /*
+     * t31-glm50-2 [the cap-cut MEASURED item, landed with the edit —
+     * the md5-per-candidate O(defines x filesize) regression]: the
+     * cache key hashed the WHOLE source on every consult — 28x
+     * measured over a 3000-define hostile file (one md5 per
+     * candidate, each O(filesize)) where the gate processes one
+     * main file at a time. A one-element source memo fronts the
+     * hash: the repeated candidate consults on the same file hit
+     * the identity compare, never the hash.
+     */
+    static $memo_source = null;
+    static $memo_key = null;
+    if ($source === $memo_source) {
+        $cache_key = $memo_key;
+    } else {
+        $cache_key = md5($source);
+        $memo_source = $source;
+        $memo_key = $cache_key;
+    }
     if (! isset($consult_cache[ $cache_key ])) {
         $code = wp_connectors_strip_comments($source);
         $flat = wp_connectors_mask_string_contents($code);
@@ -6546,22 +6564,36 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
         ob_end_clean();
         $in_effect = wp_connectors_declaration_in_effect(wp_connectors_namespace_declaration_ledger($tokens, $source));
 
-        $import_shadow = false;
+        /*
+         * t31-glm50-2 [R50-5+R50-13 — the import arm's two further
+         * gaps]: the head regex required 'use function' ADJACENCY,
+         * so the type-led mixed group use ('use Foo\\{ function
+         * other as define };') never computed a bound name and
+         * laundered — the regex captures every use statement's tail
+         * now and the item parse strips an optional leading
+         * function/const KIND keyword (statement-led or
+         * group-member-led; only function-kind members shadow, a
+         * plain 'use Foo\\define;' CLASS import never touching the
+         * function namespace). And the shadow verdict is no longer
+         * FILE-GLOBAL: a 'use function' inside a braced namespace
+         * block is scoped to that block, an import in block A never
+         * shadowing a bare define in block B — each shadow records
+         * its OFFSET, applied per call only when its ledger scope's
+         * NAME matches the call's and the import precedes the call.
+         */
+        $import_shadows = array();
         $imports = array();
-        if (false !== preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?i:function)\s+([^;]+)/', $flat, $imports, PREG_OFFSET_CAPTURE)) {
+        if (false !== preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+([^;]+)/', $flat, $imports, PREG_OFFSET_CAPTURE)) {
             foreach ($imports[1] as $import_statement) {
-                /*
-                 * A group-use body ('Foo\\{ define, other }') binds
-                 * each member under the group's prefix — the group
-                 * detected at STATEMENT level so the membership
-                 * persists across the comma split (the closing brace
-                 * rides only the last member), every member judged
-                 * on its own leaf, the prefix making any 'define'
-                 * member FOREIGN (the benign self-import spellings
-                 * carry no prefix by construction).
-                 */
-                $group_statement = false !== strpos($import_statement[0], '{');
-                foreach (explode(',', $import_statement[0]) as $imported) {
+                $statement_offset = $import_statement[1];
+                $statement_text = trim($import_statement[0]);
+                $group_statement = false !== strpos($statement_text, '{');
+                $statement_is_function = false;
+                if (1 === preg_match('/^(?i:function|const)\s+/s', $statement_text, $statement_kind)) {
+                    $statement_is_function = 0 === strcasecmp('function', trim($statement_kind[0]));
+                    $statement_text = trim((string) preg_replace('/^(?i:function|const)\s+/s', '', $statement_text));
+                }
+                foreach (explode(',', $statement_text) as $imported) {
                     $imported = trim($imported);
                     $group_member = $group_statement;
                     if ($group_statement) {
@@ -6569,6 +6601,16 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
                         $imported = false !== $brace_at
                             ? trim((string) substr($imported, $brace_at + 1), "{} \t")
                             : trim($imported, "{} \t");
+                        // A kind prefix inside the group body — the member
+                        // shadows only when it is function-kind.
+                        if (1 === preg_match('/^(?i:function|const)\s+/s', $imported, $member_kind)) {
+                            if (0 !== strcasecmp('function', trim($member_kind[0]))) {
+                                continue; // A const-kind member — the function namespace untouched.
+                            }
+                            $imported = trim((string) preg_replace('/^(?i:function)\s+/s', '', $imported));
+                        }
+                    } elseif (! $statement_is_function) {
+                        continue; // A plain class-kind use statement — the function namespace untouched.
                     }
                     $alias_split = preg_split('/\s+as\s+/i', $imported);
                     if ('' === trim((string) $alias_split[0])) {
@@ -6592,7 +6634,7 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
                         continue; // The absolute self-import ('\define') — benign.
                     }
                     if ('define' === $bound) {
-                        $import_shadow = true; // The bare name bound to a foreign function — the shadow.
+                        $import_shadows[] = $statement_offset; // The bare name bound to a foreign function — the shadow, at its seat.
                     }
                 }
             }
@@ -6603,12 +6645,34 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
         $offset = 0;
         $class_frames = array();
         $brace_depth = 0;
+        /*
+         * t31-glm50-2 [R50-12 — the use-statement fence]: the walk
+         * records any T_FUNCTION + 'define' pair with no fence, so
+         * the pair inside a use statement ('namespace E; use function
+         * define;') minted a phantom decoy declaration and FALSELY
+         * refused the working self-import — the fence rides the
+         * ledger's own owner (wp_connectors_use_opens_import) with
+         * its boundary twin, exactly the namespace ledger's walk.
+         */
+        $use_open = false;
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[ $i ];
             $id = is_array($token) ? $token[0] : null;
             $text = is_array($token) ? $token[1] : $token;
             $token_offset = $offset;
             $offset += strlen($text);
+            if ($use_open) {
+                if (wp_connectors_is_use_statement_boundary($token, $id)) {
+                    $use_open = false;
+                }
+
+                continue;
+            }
+            if (T_USE === $id) {
+                $use_open = wp_connectors_use_opens_import($tokens, $i);
+
+                continue;
+            }
             if (T_WHITESPACE === $id || T_COMMENT === $id || T_DOC_COMMENT === $id) {
                 continue;
             }
@@ -6626,13 +6690,25 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
                 continue;
             }
             if (T_CLASS === $id || T_TRAIT === $id || T_INTERFACE === $id || T_ENUM === $id) {
-                // A '::class' spelling is a constant, never a body opener.
-                $next_significant = $i + 1;
-                while ($next_significant < $count && T_WHITESPACE === ($tokens[ $next_significant ][0] ?? null)) {
-                    ++$next_significant;
+                /*
+                 * t31-glm50-2 [R50-3, driven fail-open — the '::class'
+                 * lookahead looked the WRONG WAY]: the tokenizer mints
+                 * 'Foo::class' as T_STRING, T_DOUBLE_COLON, T_CLASS —
+                 * the '::' PRECEDES — so the forward probe never saw
+                 * it and every ordinary '::class' usage pushed a
+                 * PHANTOM class frame, every later 'function define'
+                 * in the file skipped as a method and the decoy
+                 * laundered ('namespace E; $n = Foo::class; function
+                 * define(){} define(...)' at ZERO violations, the
+                 * ubiquitous idiom). The probe reads the PRECEDING
+                 * significant token.
+                 */
+                $previous_significant = $i - 1;
+                while ($previous_significant >= 0 && T_WHITESPACE === ($tokens[ $previous_significant ][0] ?? null)) {
+                    --$previous_significant;
                 }
-                if ($next_significant < $count && is_array($tokens[ $next_significant ]) && T_DOUBLE_COLON === $tokens[ $next_significant ][0]) {
-                    continue;
+                if ($previous_significant >= 0 && is_array($tokens[ $previous_significant ]) && T_DOUBLE_COLON === $tokens[ $previous_significant ][0]) {
+                    continue; // A '::class' spelling — a constant, never a body opener.
                 }
                 $class_frames[] = $brace_depth; // The frame opens at the NEXT '{', depth+1 there.
 
@@ -6644,9 +6720,16 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
             $name_index = $i + 1;
             while ($name_index < $count) {
                 $skip_id = $tokens[ $name_index ][0] ?? null;
-                // The reference ampersand rides whichever spelling the engine
-                // mints — the named tokens since 8.1, the plain byte before.
-                if (T_WHITESPACE === $skip_id || T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG === $skip_id || T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG === $skip_id || (is_string($tokens[ $name_index ]) && '&' === $tokens[ $name_index ])) {
+                /*
+                 * The reference ampersand rides whichever spelling the
+                 * engine mints (the named tokens since 8.1, the plain
+                 * byte before), and t31-glm50-2 [R50-8] adds the COMMENT
+                 * tokens — 'function <comment> define(' broke the walk at
+                 * the comment's own token and the declaration was never
+                 * recorded (the comment-blind-walk class at this seat,
+                 * driven).
+                 */
+                if (T_WHITESPACE === $skip_id || T_COMMENT === $skip_id || T_DOC_COMMENT === $skip_id || T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG === $skip_id || T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG === $skip_id || (is_string($tokens[ $name_index ]) && '&' === $tokens[ $name_index ])) {
                     ++$name_index;
 
                     continue;
@@ -6657,47 +6740,106 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
             if ($name_index >= $count || ! is_array($tokens[ $name_index ]) || T_STRING !== $tokens[ $name_index ][0] || 'define' !== wp_connectors_ascii_lower($tokens[ $name_index ][1])) {
                 continue;
             }
-            if (array() !== $class_frames) {
+            /*
+             * t31-glm50-2 [R50-12's second half]: a DECLARATION's name is
+             * followed by '(' — a bare name pair with no paren is a use
+             * statement's member the fence above should have fenced
+             * (belt beside the fence).
+             */
+            $after_name = $name_index + 1;
+            while ($after_name < $count && T_WHITESPACE === ($tokens[ $after_name ][0] ?? null)) {
+                ++$after_name;
+            }
+            if ($after_name >= $count || ! is_string($tokens[ $after_name ]) || '(' !== $tokens[ $after_name ]) {
+                continue;
+            }
+            /*
+             * t31-glm50-2 [R50-6, driven fail-open — a function declared
+             * inside a METHOD body is namespace-scoped once the method
+             * executes]: the tracker excluded EVERY 'function define'
+             * inside a class-like body, but only a function sitting
+             * DIRECTLY in the class body (depth exactly frame+1) is a
+             * METHOD — one nested deeper (inside a method's own body
+             * braces, depth >= frame+2) declares into the namespace at
+             * runtime and shadows. ('namespace E; class Boot { public
+             * function boot() { function define(){} } } ... define(...)'
+             * at ZERO violations, driven; a real method named define
+             * stays green.)
+             */
+            $is_method = false;
+            foreach ($class_frames as $frame) {
+                if ($brace_depth === $frame + 1) {
+                    $is_method = true;
+                    break;
+                }
+            }
+            if ($is_method) {
                 continue; // A method — class-likes own their bodies; a method shadows nothing at any call site.
             }
             $declarations[] = $token_offset;
         }
 
-        $consult_cache[ $cache_key ] = array($flat, $in_effect, $import_shadow, $declarations);
+        $consult_cache[ $cache_key ] = array($flat, $in_effect, $import_shadows, $declarations);
     }
-    list($flat, $in_effect, $import_shadow, $declarations) = $consult_cache[ $cache_key ];
+    list($flat, $in_effect, $import_shadows, $declarations) = $consult_cache[ $cache_key ];
 
     /*
-     * The QUALIFICATION (gap 3): walk the flat view backward from the
+     * The QUALIFICATION: walk the flat view backward from the
      * keyword over the name and separators — '\define' alone is the
      * GLOBAL escape (never a decoy), a longer qualified name is a
      * FOREIGN function (never the global define — the candidate
      * refuses, fail-closed).
+     *
+     * t31-glm50-2 [R50-4, driven fail-open — the RELATIVE qualified
+     * callee]: the branch armed only when the walk landed ON a
+     * LEADING backslash, so 'Foo\define(...)' (no leading '\',
+     * php -l clean) skipped the qualified branch, matched no
+     * import/declaration, and BOUND — executing fatals 'Call to
+     * undefined function E\Foo\define()'. ANY walk that consumed
+     * name bytes before the keyword is a qualified callee: the
+     * leading-backslash spellings ride the branch above, a relative
+     * multi-segment name is foreign the same way.
      */
     $walk = $call_offset;
     while ($walk > 0 && 1 === preg_match('/[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]/', $flat[ $walk - 1 ])) {
         --$walk;
     }
-    if ($walk < $call_offset && '\\' === $flat[ $walk ]) {
+    if ($walk < $call_offset) {
         $qualified = wp_connectors_ascii_lower((string) substr($flat, $walk, $call_offset - $walk + 6));
-        if ('\\define' === $qualified) {
-            return false; // The global escape — the mirror's false refusal dead.
+        if ('\\define' === $qualified || 'define' === $qualified) {
+            // 'define' alone cannot occur here (the collector's lookbehind
+            // refuses a name-continuation start); '\define' alone is the
+            // GLOBAL escape — never a decoy, the mirror's false refusal dead.
+            return false;
         }
 
-        return true; // A foreign qualified name — the global define is not what this call resolves to.
-    }
-
-    if ($import_shadow) {
-        return true;
+        return true; // A qualified name beyond the bare keyword — the global define is not what this call resolves to.
     }
 
     $call_scope = $in_effect($call_offset);
+    foreach ($import_shadows as $import_offset) {
+        if ($import_offset >= $call_offset) {
+            continue;
+        }
+        $import_scope = $in_effect($import_offset);
+        if ((null === $import_scope ? null : $import_scope['lower']) === (null === $call_scope ? null : $call_scope['lower'])) {
+            return true; // A shadowing import in the call's own namespace scope, preceding the call.
+        }
+    }
+
     if (null === $call_scope) {
         return false; // Global scope: a global redeclare is a load-time fatal, never a decoy.
     }
+    /*
+     * t31-glm50-2 [R50-7, driven fail-open — the offset-identity scope
+     * match]: two BRACED blocks declaring the SAME namespace are ONE
+     * runtime namespace, but the ledger hands them different offsets —
+     * a decoy in block 1 'differed in scope' from a call in block 2
+     * and laundered. The scope match rides the ledger entry's NAME.
+     */
     foreach ($declarations as $declaration_offset) {
         $declaration_scope = $in_effect($declaration_offset);
-        if (null !== $declaration_scope && $declaration_scope['offset'] === $call_scope['offset']) {
+        if (null !== $declaration_scope && $declaration_scope['lower'] === $call_scope['lower']) {
             return true;
         }
     }
