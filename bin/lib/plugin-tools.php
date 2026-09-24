@@ -4881,11 +4881,38 @@ function wp_connectors_autoloader_violations($pluginDir)
      * literal walk rides the STRIPPED view (t31-glm38-1): a quoted
      * literal spelled inside a comment must not feed the equality
      * arm — blanked comment bytes carry no quote pairs.
+     *
+     * t31-glm42-1 [R42-1, security:medium, driven fail-open — the
+     * ledger's R41-15 PLAUSIBLE seat, now driven]: the quote-pair
+     * GRAMMAR over the stripped view kept heredoc/nowdoc bodies and
+     * inline-HTML spans RAW, so quote-shaped TEXT inside them paired
+     * as a "literal" and its decoded value equalled the prefix — a
+     * php -l-clean src/autoload.php binding a FOREIGN prefix plus a
+     * nowdoc body (or a '?>' HTML tail) carrying 'Deicod\…\'
+     * answered 0 violations while class_exists() is false at runtime
+     * for the plugin's own classes (driven both shapes at HEAD). The
+     * equality arm walks the TOKEN STREAM's
+     * T_CONSTANT_ENCAPSED_STRING tokens now — the tokenizer is the
+     * ONE owner of which bytes are a real quoted literal (the
+     * glm16-1 doctrine): a nowdoc/heredoc body lexes
+     * T_ENCAPSED_AND_WHITESPACE, inline HTML lexes T_INLINE_HTML, a
+     * commented-out literal lexes T_COMMENT — every laundering region
+     * excluded by token KIND, never by a grammar the region can feed
+     * quote bytes into. The decode still rides the ONE quote-style
+     * owner; the optional b/B encoding prefix rides outside the
+     * quote slice (probed: the token text carries it).
      */
     $normalized = str_replace('\\\\', '\\', $masked);
     $prefix_bound = strpos($normalized, $expectedPrefix) !== false;
-    foreach (wp_connectors_quoted_literals($code) as $literal_pair) {
-        if (str_replace('\\\\', '\\', $literal_pair[1]) === $expectedPrefix) {
+    foreach (token_get_all($source) as $token) {
+        if (! is_array($token) || T_CONSTANT_ENCAPSED_STRING !== $token[0]) {
+            continue;
+        }
+        $text = $token[1];
+        $quote_at = ('b' === $text[0] || 'B' === $text[0]) ? 1 : 0;
+        $quote = $text[ $quote_at ];
+        $inner = (string) substr($text, $quote_at + 1, -1);
+        if (str_replace('\\\\', '\\', wp_connectors_unescape_php_string_literal($quote, $inner)) === $expectedPrefix) {
             $prefix_bound = true;
             break;
         }

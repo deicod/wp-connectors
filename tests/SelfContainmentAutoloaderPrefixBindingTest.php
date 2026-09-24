@@ -222,4 +222,40 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
             @mkdir($this->base . '/zai/src', 0755, true);
         }
     }
+
+    public function testQuoteShapedDataInANowdocBodyOrHtmlTailDoesNotBindThePrefix(): void
+    {
+        /*
+         * R42-1 (security:medium, driven fail-open — the ledger's
+         * R41-15 PLAUSIBLE seat upgraded): the equality arm once
+         * walked the quote-pair GRAMMAR over the comment-stripped
+         * view, where heredoc/nowdoc bodies and inline-HTML spans
+         * keep RAW bytes — quote-shaped TEXT inside them paired as a
+         * "literal" whose decoded value equalled the expected prefix,
+         * a php -l-clean foreign-prefix autoloader passing the gate
+         * green (driven both shapes at HEAD: 0 violations while the
+         * plugin autoloads none of its own classes at runtime). The
+         * equality arm walks the TOKEN STREAM's
+         * T_CONSTANT_ENCAPSED_STRING tokens now — the tokenizer the
+         * ONE owner of which bytes are a real quoted literal: a
+         * nowdoc body lexes T_ENCAPSED_AND_WHITESPACE, inline HTML
+         * lexes T_INLINE_HTML, a commented literal lexes T_COMMENT —
+         * excluded by token KIND, never by a grammar the region can
+         * feed quote bytes into. The canonical quoted literal still
+         * binds (the benign half of R37-2's own pin).
+         */
+        $foreign = "<?php\nspl_autoload_register(function (\$c) {\n    \$p = 'Acme\\\\Plane\\\\' . \$c . '.php';\n    require __DIR__ . '/' . \$p;\n});\n";
+        $nowdoc = $this->autoloadWith("<?php\n\$note = <<<'EOT'\nbind 'Deicod\\\\WpConnectors\\\\Zai\\\\' below\nEOT;\n" . $foreign);
+        $this->assertNotEmpty($nowdoc, 'Quote-shaped prefix TEXT inside a nowdoc body binds nothing — the tokenizer excludes it by kind (red at HEAD: 0 violations).');
+
+        $this->base .= '-html';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $html = $this->autoloadWith($foreign . "?>\nbind 'Deicod\\\\WpConnectors\\\\Zai\\\\' below\n");
+        $this->assertNotEmpty($html, 'Quote-shaped prefix TEXT inside an inline-HTML tail binds nothing — T_INLINE_HTML never arms the equality walk (red at HEAD: 0 violations).');
+
+        $this->base .= '-canonical';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $canonical = "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) {\n    \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php';\n    require \$path;\n});\n";
+        $this->assertSame(array(), $this->autoloadWith($canonical), 'The canonical quoted prefix literal still binds — a real T_CONSTANT_ENCAPSED_STRING whose decoded value equals the prefix.');
+    }
 }
