@@ -2493,7 +2493,17 @@ CHILD;
          * the parser function directly.
          */
         $this->assertSame(128 * 1024 * 1024, wp_connectors_memory_limit_to_bytes('128M'), 'In-width values stay exact.');
-        $this->assertSame(128 * 1024 * 1024, wp_connectors_memory_limit_to_bytes('128mb'), 'The unit folds case-insensitively with the optional b.');
+        /*
+         * t31-glm48-4 SUPERSEDES the former '128mb' row ('the unit
+         * folds case-insensitively with the optional b'): that
+         * contract described the HAND spelling — the engine's own
+         * parser rejects the 'b' multiplier ('unknown multiplier
+         * "b", interpreting as "128"', driven), enforcing 128 BYTES
+         * where the hand grammar read 128 mebibytes and the census
+         * overstated the real limit ~1,000,000x on such hosts. The
+         * engine is the oracle the census must agree with.
+         */
+        $this->assertSame(128, wp_connectors_memory_limit_to_bytes('128mb'), 'The engine\'s own verdict: the \'b\' multiplier is not one — the census agrees with the enforced limit, never the hand spelling (red at the hand grammar: 128 mebibytes).');
         $this->assertSame(2 * 1024 * 1024 * 1024, wp_connectors_memory_limit_to_bytes('2G'));
         $this->assertSame(512 * 1024, wp_connectors_memory_limit_to_bytes('512K'));
         /*

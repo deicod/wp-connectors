@@ -330,38 +330,44 @@ function wp_connectors_is_recognizably_fake_secret($value)
  * where the honest reading of a limit larger than the process can
  * address is the bound-off class: it can never fatal the token pass.
  * The same saturation path answers an unparseable spelling — the
- * bound is off, never misjudged. In-width values (up to 2^53 bytes,
- * every real limit) stay exact.
+ * bound is off, never misjudged. In-width values stay exact. The
+ * GRAMMAR itself is the engine's own ini_parse_quantity() since
+ * t31-glm48-4 (the composer floor guarantees it, 8.2+) — the census
+ * and the enforced limit can no longer disagree about what a
+ * spelling means.
  *
  * @param string $limit The raw ini spelling (e.g. '128M', '2G', '-1').
- * @return int The byte count; PHP_INT_MAX when over-width or unparseable.
+ * @return int The byte count; PHP_INT_MAX when over-width, unlimited, or unparseable.
  */
 function wp_connectors_memory_limit_to_bytes($limit)
 {
     /*
-     * t31-glm43-5 [R43-9, driven fatal-without-verdict — the glm17-2
-     * census's own class]: a fractional spelling ('128.5M') the
-     * engine still ENFORCES (PHP 8.5 warns 'Invalid quantity',
-     * clamps to '128M', and honors the clamp) fell out of the
-     * integer-only grammar, answered PHP_INT_MAX, and DISABLED the
-     * census — a dense payload then fatalling at exit 255 with no
-     * verdict where the '-d memory_limit=128M' control answered the
-     * loud token-memory refusal (driven at HEAD). The grammar admits
-     * the fractional tail and floors to the integer part — the
-     * engine's own clamp semantics, and the conservative direction
-     * (a smaller parsed limit only refuses MORE).
+     * t31-glm48-4 [R48-4, driven — the hand grammar and the engine's
+     * own diverge UNSAFELY]: the hand-rolled regex admitted a 'b'
+     * multiplier tail and embedded spaces the ENGINE rejects — so
+     * '128Mb' parsed to 134217728 by hand and to 128 BYTES by the
+     * engine (driven: 'unknown multiplier "b", interpreting as
+     * "128"'), the census overstating the real limit ~1,000,000x on
+     * such hosts and passing payloads the enforced limit fatals —
+     * the exact fatal-without-verdict class the census exists to
+     * close (the drift already fired once as glm43-5's fractional
+     * clamp). The composer floor's own ini_parse_quantity() (8.2+)
+     * owns the grammar now — ONE owner, the engine's enforcement
+     * itself — with the glm17-13 saturation arms unchanged: false,
+     * zero, negative (the '-1' unlimited spelling AND the over-width
+     * wrap, '9999999999G' answering a negative count at the engine)
+     * all answer the bound-off PHP_INT_MAX, never a misjudged count.
+     * The '128Mb' PIN at the unit battery is SUPERSEDED with this
+     * seat: the old contract ('the optional b folds into the unit')
+     * described the hand spelling, not the engine's, and the engine
+     * is the oracle the census must agree with.
      */
-    if (1 !== preg_match('/\A(\d+)(?:\.\d+)?\s*([kmg]?)(?:b)?\z/i', trim((string) $limit), $m)) {
-        return PHP_INT_MAX;
-    }
-    $count = (float) $m[1];
-    $unit  = strtolower($m[2]);
-    $multiplier = 'g' === $unit ? 1073741824.0 : ('m' === $unit ? 1048576.0 : ('k' === $unit ? 1024.0 : 1.0));
-    if ($count * $multiplier >= (float) PHP_INT_MAX) {
+    $parsed = @ini_parse_quantity(trim((string) $limit));
+    if ($parsed <= 0) {
         return PHP_INT_MAX;
     }
 
-    return (int) ($count * $multiplier);
+    return $parsed;
 }
 
 /**
