@@ -293,4 +293,69 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         WpHarness::releaseScratch($base);
     }
 
+
+    public function testTightGlueAndCommentGlueDefineShapes(): void
+    {
+        /*
+         * R47-4 [driven false refusals]: the define collector own
+         * lookbehind pre-filtered the byte-pair helper - tight
+         * 'case 1:define(...)', the elvis colon, and the arrow-tail
+         * spelling minting false must-define refusals where their
+         * spaced twins bind. R47-2 [driven fail-open]: the position
+         * consult walked the MASKED view where comments ride
+         * verbatim, a comment between the glue and the keyword
+         * stopping the walk on the comment bytes - the member call
+         * carrying an inline block laundering the gate. The
+         * collector collects, the helper judges on the STRIPPED
+         * view.
+         */
+        $this->assertSame(array(), $this->drive('tightcase', "switch(1){case 1:define('%s','1.2.3');}"), 'The tight case-label define binds (red at HEAD: the false refusal).');
+
+        $this->root .= '-elvis';
+        @mkdir($this->root, 0755, true);
+        $this->assertSame(array(), $this->drive('tightelvis', "\$g = true;\n\$g ?:define('%s','1.2.3');"), 'The tight elvis define binds (red at HEAD: the false refusal).');
+
+        $this->root .= '-arrow';
+        @mkdir($this->root, 0755, true);
+        $this->assertSame(array(), $this->drive('tightarrow', "\$m = array('k' =>define('%s','1.2.3'));"), 'The tight arrow-tail define binds (red at HEAD: the false refusal).');
+
+        $this->root .= '-cglue';
+        @mkdir($this->root, 0755, true);
+        $comment_glue = $this->drive('cglue', "<?php\nclass Registry { public function define(\$n, \$v) { return true; } }\n\$r = new Registry();\n\$r->/*c*/define( '%s', '1.2.3' );\n");
+        $this->assertStringContainsString('must define constant', implode("\n", $comment_glue), 'A comment between the glue and the keyword launders nothing - the consult walks the stripped view (red at HEAD: clean).');
+    }
+
+    public function testEscapedAndConcatenatedValuesBind(): void
+    {
+        /*
+         * R47-3 (driven false refusal): the ordered alternation
+         * legacy quote-blind arm sat FIRST, so an escape-bearing
+         * value with no quote byte was captured RAW and the header
+         * compare ran on escaped source bytes. R47-5 (driven): a
+         * CONCATENATION of literals never matched at all - the
+         * R38-6/R41-5 class one spelling over. The value rides the
+         * OWNER grammar in one whole-expression capture, the pieces
+         * decoding through the ONE quote-style owner and joining.
+         */
+        $base = sys_get_temp_dir() . '/wp-connectors-version-hex-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2\n */\ndefine( 'MYPLUG_VERSION', \"\\x31.\\x32\" );\n");
+        $hex = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2'), array($base . '/myplug/myplug.php'));
+        $this->assertSame(array(), $hex, 'The hex-escaped value decodes and binds (red at HEAD: the escaped-bytes mismatch refusal).');
+        WpHarness::releaseScratch($base);
+
+        $base = sys_get_temp_dir() . '/wp-connectors-version-cat-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', '1.2' . '.3' );\n");
+        $concat = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+        $this->assertSame(array(), $concat, 'The concatenated value binds - the pieces decode and join (red at HEAD: the false must-define refusal).');
+        WpHarness::releaseScratch($base);
+
+        $base = sys_get_temp_dir() . '/wp-connectors-version-catmm-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 9.9\n */\ndefine( 'MYPLUG_VERSION', '1.2' . '.3' );\n");
+        $mismatch = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '9.9'), array($base . '/myplug/myplug.php'));
+        $this->assertStringContainsString('does not match header Version', implode("\n", $mismatch), 'The concatenated mismatch twin keeps its own refusal with the DECODED value.');
+        WpHarness::releaseScratch($base);
+    }
 }

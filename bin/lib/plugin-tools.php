@@ -5282,7 +5282,7 @@ function wp_connectors_autoloader_violations($pluginDir)
  * declaration keywords ending the preceding identifier run — any
  * spacing, any comment, the byte class the ONE label owner spells.
  *
- * @param string $view   The view the match offsets come from (masked or stripped — both blank comments to whitespace).
+ * @param string $view   The view the match offsets come from — must carry comments as WHITESPACE (the stripped view; the masked view over raw keeps comments verbatim and the walk would land on the comment's own bytes — t31-glm47-2).
  * @param int    $offset The keyword match's byte offset.
  * @param bool   $allow_separator Whether the namespace separator admits the
  *                      keyword — true for the define FUNCTION seat (the
@@ -6281,7 +6281,19 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * byte and escaped bytes of its own), decoded through the ONE
      * quote-style-aware unescape owner.
      */
-    if (preg_match_all('/(?<![\\$:>' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*(?:[\'"]([^\'"]*)[\'"]|\'((?:\\\\.|[^\'\\\\])*)\'|"((?:\\\\.|[^"\\\\])*)")\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+		/*
+		 * t31-glm47-2 [R47-4+R47-9, driven - the define collector's own
+		 * lookbehind pre-filtered the byte-pair helper: tight
+		 * 'case 1:define(...)', '$g ?:define(...)', and "'k' =>define(...)"
+		 * minted false must-define refusals where their spaced twins
+		 * bind (all php -l clean, driven) - the glm46-1 byte-pair
+		 * doctrine never reached the COLLECTOR, and the escaped
+		 * backslash of the old class was an accident (the comment
+		 * claiming a separator refusal the bytes never spelled). The
+		 * class reduces to label+'$' - the helper (with its separator
+		 * flag) owning every pair judgment.
+		 */
+    if (preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*((\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*")(\s*\.\s*(\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"))*)\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
         foreach ($candidates[0] as $index => $candidate) {
             /*
              * t31-glm40-2 [R40-3, security:medium, driven fail-open —
@@ -6299,12 +6311,47 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
              * define must START as a name, never continue one.
              */
             $keyword_at = $candidate[1];
-            if (0 === substr_compare($masked, 'define', $keyword_at, 6, true) && wp_connectors_keyword_at_statement_position($masked, $keyword_at, true)) {
-                $value_raw = $candidates[1][ $index ][0];
-                if ('' !== (string) $candidates[2][ $index ][0]) {
-                    $value_raw = wp_connectors_unescape_php_string_literal(chr(39), (string) $candidates[2][ $index ][0]);
-                } elseif ('' !== (string) $candidates[3][ $index ][0]) {
-                    $value_raw = wp_connectors_unescape_php_string_literal('"', (string) $candidates[3][ $index ][0]);
+            /*
+             * t31-glm47-2 [R47-2, driven fail-open - the helper's view
+             * carried comments VERBATIM]: the masked view (mask over
+             * raw) has no T_COMMENT branch, so a comment between the
+             * name-usage glue and the keyword stopped the backward
+             * walk on the comment's own bytes ('/' never a glue
+             * byte) - the member call carrying an inline block
+             * (php -l clean) answering ZERO violations and
+             * green-lighting a plugin that fatals at runtime with no
+             * constant defined (driven, this review's own drive).
+             * The position consult walks the COMMENT-STRIPPED view -
+             * comments blank to whitespace there, the walk skipping
+             * the blanked run to the glue it owes.
+             */
+            if (0 === substr_compare($masked, 'define', $keyword_at, 6, true) && wp_connectors_keyword_at_statement_position($code, $keyword_at, true)) {
+                /*
+                 * t31-glm47-3 [driven - the ordered alternation's
+                 * legacy quote-blind arm sat FIRST, so an
+                 * escape-bearing value with no quote byte was captured
+                 * RAW and the header compare ran on escaped source
+                 * bytes - the hex-escaped value refusing against its
+                 * equal 'Version:' (driven end-to-end,
+                 * check-conventions exit 1 on a well-formed plugin)].
+                 * R47-5 [driven - a CONCATENATION of literals never
+                 * matched at all: define('X', '1.2' . '.3') minting
+                 * the false must-define refusal, the R38-6/R41-5
+                 * class one spelling over]. R47-12 [the pieces ride
+                 * the OWNER grammar - the whole-expression capture
+                 * composing wp_connectors_quoted_literal_grammar()'s
+                 * literal spelling with the join, no second
+                 * hand-spelled grammar at this seat]. The pieces
+                 * decode through the ONE quote-style owner and
+                 * concatenate: the runtime value the compare owes.
+                 */
+                $value_raw = '';
+                $value_pieces = array();
+                $value_hits = preg_match_all(wp_connectors_quoted_literal_grammar(), $candidates[1][ $index ][0], $value_pieces);
+                if (false !== $value_hits && $value_hits > 0) {
+                    foreach ($value_pieces[0] as $value_piece) {
+                        $value_raw .= wp_connectors_unescape_php_string_literal($value_piece[0], (string) substr($value_piece, 1, -1));
+                    }
                 }
                 $constantMatch = array(1 => $value_raw);
                 break;
