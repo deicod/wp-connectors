@@ -273,6 +273,55 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
      * authority grammar carries no backslash anywhere, so the refusal
      * rejects nothing legal (the bracket screens' own doctrine).
      */
+    public function testNonCanonicalIpv6SpellingsRefuse(): void
+    {
+        /*
+         * R46-7 (driven — the canonicality dimension of the ocr2-5
+         * content leg, un-adjudicated until now): the FILTER probe
+         * judges well-formedness only, so an IPv6 spelling a WHATWG
+         * consumer never serializes — the uncompressed run, the
+         * dotted-quad tail, the leading-zero hextet — constructs
+         * with every redacted form naming the raw spelling while
+         * the browser-facing channel re-serializes differently:
+         * two spellings naming one host over the verification URI
+         * (the ocr44-1 class; the IPv4 sibling screen ocr49-4
+         * demanding the canonical dotted quad since round 49). The
+         * WHATWG serializer's own spelling is the bar; uppercase
+         * hex stays legal (the pinned fold).
+         */
+        $refusals = array(
+            'the uncompressed run' => 'https://[0:0:0:0:0:0:0:1]/device',
+            'the dotted-quad tail' => 'https://[::ffff:1.2.3.4]/device',
+            'the leading-zero hextet' => 'https://[0001::]/device',
+            'the uncompressed all-zero' => 'https://[0:0:0:0:0:0:0:0]/token',
+            'the uncompressed tie run' => 'https://[0:0:1:0:0:1:0:0]/device',
+        );
+        foreach ($refusals as $label => $url) {
+            try {
+                Url::parse_validated($url);
+                $this->fail(sprintf('The %s shape must be rejected by the shared URL owner.', $label));
+            } catch (InvalidArgumentException $e) {
+                $this->assertStringContainsString('canonical IPv6 spelling', $e->getMessage(), "The {$label} refusal names the class.");
+            }
+        }
+
+        foreach (array(
+            'the compressed loopback' => 'https://[::1]/device',
+            'the canonical example' => 'https://[2001:db8::1]/device',
+            'the uppercase fold' => 'https://[FFFF::1]/device',
+            'the link-local' => 'https://[fe80::1]:8443/device',
+            'the hextet tail' => 'https://[::ffff:102:304]/device',
+            'the no-zero full form' => 'https://[1:2:3:4:5:6:7:8]/device',
+        ) as $label => $url) {
+            try {
+                $parsed = Url::parse_validated($url);
+                $this->assertArrayHasKey('authority', $parsed, "The {$label} shape keeps constructing.");
+            } catch (InvalidArgumentException $e) {
+                $this->fail(sprintf('The %s legal spelling was refused: %s', $label, $e->getMessage()));
+            }
+        }
+    }
+
     public function testABackslashInTheAuthorityRefusesInsteadOfForgingPastTheTerminationSet(): void
     {
         $hostile_urls = array(

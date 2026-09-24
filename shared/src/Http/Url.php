@@ -633,6 +633,31 @@ final class Url {
 		}
 
 		/*
+		 * t31-glm46-4 [R46-7, driven - the canonicality dimension
+		 * of the ocr2-5 content leg, un-adjudicated until now]: the
+		 * FILTER probe judges WELL-FORMEDNESS only, so an IPv6
+		 * spelling a WHATWG consumer never serializes - the
+		 * uncompressed '[0:0:0:0:0:0:0:1]', the dotted-quad tail
+		 * '[::ffff:1.2.3.4]', the leading-zero hextet '[0001::]' -
+		 * constructs with url() and every redacted form naming the
+		 * raw spelling while the browser-facing channel
+		 * re-serializes '::1' / '::ffff:102:304' / '1::': two
+		 * spellings naming one host over the device-flow
+		 * verification URI, the ocr44-1 one-URL-many-hosts class
+		 * (the IPv4 sibling screen ocr49-4 demanding the canonical
+		 * dotted quad since round 49). The WHATWG serializer's own
+		 * spelling is the bar: lowercase hex WITHOUT leading zeros,
+		 * the FIRST-LONGEST run of two-or-more zero hextets as '::'
+		 * and no other run compressed - uppercase hex stays legal
+		 * (the pinned fold, the rebuilt authority lowercasing as
+		 * every host folds), the judgment case-insensitive.
+		 */
+		$canonical_ipv6 = self::canonical_ipv6_spelling( $inner_literal );
+		if ( $well_formed_bracket_pair && null !== $canonical_ipv6 && strtolower( $inner_literal ) !== $canonical_ipv6 ) {
+			throw new InvalidArgumentException( 'A bracketed host must use the canonical IPv6 spelling the URL Standard serializes ("[2001:db8::1]", "[::1]") - an uncompressed run ("[0:0:0:0:0:0:0:1]"), a dotted-quad tail ("[::ffff:1.2.3.4]"), or a leading-zero hextet ("[0001::]") names a host every WHATWG consumer re-serializes differently, and the URL string and the rebuilt authority must agree: write the serializer spelling the value as shown here.' );
+		}
+
+		/*
 		 * The glued-authority leg of the same screen (verifier round
 		 * t31-r11-3, generalized by t31-r11-11): the colon search
 		 * starts AFTER the closing ']', so anything glued straight to
@@ -960,6 +985,111 @@ final class Url {
 	 * @param string $authority The rebuilt (lowercased host[:port]) authority.
 	 * @return void
 	 * @throws InvalidArgumentException When the rebuilt authority is not valid UTF-8.
+	 */
+	/**
+	 * The WHATWG URL Standard's own IPv6 serialization of a validated
+	 * literal (t31-glm46-4): lowercase hex without leading zeros, the
+	 * first-longest run of two-or-more zero hextets compressed to '::'
+	 * and no other. Answers null when the literal does not decompose
+	 * into eight pieces under the parser's own rules (the FILTER probe
+	 * remains the one well-formedness judge; a null skips the
+	 * canonicality check, never widens it).
+	 *
+	 * @param string $literal The bracket-inner literal (FILTER-validated).
+	 * @return string|null The canonical spelling, or null when unparseable.
+	 */
+	private static function canonical_ipv6_spelling( string $literal ) {
+		$fields = explode( ':', strtolower( $literal ) );
+		if ( array() === $fields ) {
+			return null;
+		}
+
+		// A dotted-quad tail (FILTER accepts it) becomes its two hextets.
+		if ( false !== strpos( (string) end( $fields ), '.' ) ) {
+			$quad   = array_pop( $fields );
+			$packed = filter_var( $quad, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 );
+			if ( false === $packed ) {
+				return null;
+			}
+			$host_long = sprintf( '%u', ip2long( $packed ) ) + 0;
+			$fields[]  = dechex( intdiv( $host_long, 65536 ) );
+			$fields[]  = dechex( $host_long % 65536 );
+		}
+
+		// The '::' compression: one empty field mid-literal, two at
+		// either edge (leading '::x' and trailing 'x::' each explode
+		// with a doubled empty); FILTER guarantees exactly one gap, so
+		// every empty field is the gap's own bytes and the fill splices
+		// at the FIRST empty's position.
+		$gap_at = false;
+		$pieces = array();
+		foreach ( $fields as $at => $field ) {
+			if ( '' === $field ) {
+				if ( false === $gap_at ) {
+					$gap_at = $at;
+				}
+				continue;
+			}
+			if ( ! preg_match( '/\A[0-9a-f]{1,4}\z/', $field ) ) {
+				return null;
+			}
+			$pieces[] = (int) hexdec( $field );
+		}
+		if ( false !== $gap_at ) {
+			$fill = 8 - count( $pieces );
+			if ( $fill < 1 ) {
+				return null;
+			}
+			array_splice( $pieces, (int) $gap_at, 0, array_fill( 0, $fill, 0 ) );
+		}
+		if ( 8 !== count( $pieces ) ) {
+			return null;
+		}
+
+		// First-longest run of two-or-more zeros (strict > keeps the
+		// first on ties - the serializer's own comparison).
+		$best_at  = -1;
+		$best_len = 0;
+		$run_len  = 0;
+		for ( $i = 0; $i < 8; ++$i ) {
+			if ( 0 === $pieces[ $i ] ) {
+				++$run_len;
+				if ( $run_len > $best_len ) {
+					$best_len = $run_len;
+					$best_at  = $i - $run_len + 1;
+				}
+			} else {
+				$run_len = 0;
+			}
+		}
+
+		$hex = array();
+		for ( $i = 0; $i < 8; ++$i ) {
+			$hex[] = dechex( $pieces[ $i ] );
+		}
+		if ( $best_len >= 2 ) {
+			// The compressed run: head and tail around the '::', the
+			// implode spelling answering the leading and trailing runs
+			// ('::1' and '1::') by construction.
+			return implode( ':', array_slice( $hex, 0, $best_at ) )
+				. '::' . implode( ':', array_slice( $hex, $best_at + $best_len ) );
+		}
+
+		$hex = array();
+		for ( $i = 0; $i < 8; ++$i ) {
+			$hex[] = dechex( $pieces[ $i ] );
+		}
+
+		return implode( ':', $hex );
+	}
+
+	/**
+	 * Guards the authority's UTF-8 validity after parsing (t31-r11-6):
+	 * a host the parse or the case fold mangled refuses loudly instead
+	 * of flowing into log lines whose json_encode then fails outright.
+	 *
+	 * @param string $authority The parsed authority bytes.
+	 * @throws InvalidArgumentException When the authority is no longer valid UTF-8.
 	 */
 	private static function assert_authority_still_valid_utf8( string $authority ): void {
 		if ( 1 !== preg_match( '//u', $authority ) ) {
