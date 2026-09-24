@@ -6417,73 +6417,212 @@ function wp_connectors_namespace_suffix_from_slug($slug)
 function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
 {
     /*
-     * The IMPORT arm: an UN-aliased 'use function' whose imported
-     * name's final segment is 'define' shadows the bare name at any
-     * scope (file-wide over-approximation — imports are per
-     * namespace block, and refusing more is the safe direction).
-     * Judged over the comment-stripped view: a commented-out import
-     * binds nothing.
+     * t31-glm49-3 [R49-3+R49-4+R49-5+R49-10+R49-12 — the consult's
+     * five gaps, one restructure]: (1) the IMPORT arm never computed
+     * the name an import BINDS — an aliased import whose ALIAS is
+     * 'define' ('use function Foo\other as define;') was skipped
+     * wholesale and a PHP 7 group use ('use function Foo\{ define };
+     *') broke the leaf computation, both laundering (driven, php -l
+     * clean, executing fataling with no constant bound). (2) The
+     * DECLARATION arm's text regex missed the reference-returning
+     * 'function &define(' and every conditionally or nested declared
+     * namespace-scope function the brace-depth filter excluded
+     * (both driven). (3) The consult judged only UNQUALIFIED calls —
+     * a qualified '\Foo\define(...)' laundered while the mirror
+     * global escape '\define' beside a same-scope decoy was
+     * FALSELY refused (both driven; the mirror's runtime binds the
+     * GLOBAL define). (4) The import arm judged the comment-stripped
+     * view alone — 'use function' text living in string data read as
+     * a real import and minted the false must-define refusal on a
+     * plugin whose define actually binds (the one-view gap the
+     * file's own two-view doctrine exists to prevent). (5) The
+     * consult re-tokenized the whole main file up to three times per
+     * candidate — the R46-5 O(K x filesize) shape new at this seat
+     * (~3s over a 500-decoy hostile main file, measured). THE
+     * RESTRUCTURE: everything derivable once per file is derived
+     * once (the static cache keyed by content — R49-12's measured
+     * claim landed with the restructure): the flat view (strings
+     * masked over the stripped source — the import arm judging CODE
+     * bytes only, gap 4), the namespace ledger and its in-effect
+     * closure, the import-shadow verdict (imports are file-global,
+     * gap 1: every 'use function' item's BOUND name computed — the
+     * alias when 'as' is present, the member leaf for group use,
+     * the global self-import spellings 'define'/'\define' benign —
+     * a bound 'define' from any foreign source shadows), and the
+     * declaration list from the TOKEN stream (gap 2: T_FUNCTION,
+     * optional '&', T_STRING 'define' — methods excluded by the
+     * class-frame tracker over T_CLASS/T_TRAIT/T_INTERFACE/T_ENUM
+     * bodies, conditional and nested declarations admitted, hoisting
+     * inherent in the offset-free scope match). Per call: the
+     * QUALIFICATION walks the flat view backward (gap 3) — a name
+     * spelled '\define' alone resolves GLOBAL (never a decoy, the
+     * false refusal dead), a longer qualified name resolves foreign
+     * (never the global define — the candidate refuses, the
+     * fail-closed direction the seat's decoy doctrine already
+     * rides), an unqualified name the ledger-scope and import
+     * verdicts decide.
      */
-    $code = wp_connectors_strip_comments($source);
-    $imports = array();
-    if (false !== preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?i:function)\s+([^;]+)/', $code, $imports, PREG_OFFSET_CAPTURE)) {
-        foreach ($imports[1] as $import_statement) {
-            foreach (explode(',', $import_statement[0]) as $imported) {
-                $imported = trim($imported);
-                $alias_split = preg_split('/\s+as\s+/i', $imported);
-                if (count($alias_split) > 1) {
-                    continue; // An alias binds only the alias — the bare name resolves normally.
-                }
-                $name = trim((string) $alias_split[0]);
-                $segments = explode('\\', $name);
-                $leaf = wp_connectors_ascii_lower((string) end($segments));
-                if ('define' !== $leaf) {
-                    continue;
-                }
-                if (count($segments) === 1) {
-                    continue; // The global self-import ('use function define;') — benign.
-                }
-                if (count($segments) === 2 && '' === $segments[0]) {
-                    continue; // The absolute self-import ('\define') — benign.
-                }
+    static $consult_cache = array();
+    $cache_key = md5($source);
+    if (! isset($consult_cache[ $cache_key ])) {
+        $code = wp_connectors_strip_comments($source);
+        $flat = wp_connectors_mask_string_contents($code);
+        ob_start();
+        $tokens = token_get_all($source);
+        ob_end_clean();
+        $in_effect = wp_connectors_declaration_in_effect(wp_connectors_namespace_declaration_ledger($tokens, $source));
 
-                return true;
+        $import_shadow = false;
+        $imports = array();
+        if (false !== preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+(?i:function)\s+([^;]+)/', $flat, $imports, PREG_OFFSET_CAPTURE)) {
+            foreach ($imports[1] as $import_statement) {
+                /*
+                 * A group-use body ('Foo\\{ define, other }') binds
+                 * each member under the group's prefix — the group
+                 * detected at STATEMENT level so the membership
+                 * persists across the comma split (the closing brace
+                 * rides only the last member), every member judged
+                 * on its own leaf, the prefix making any 'define'
+                 * member FOREIGN (the benign self-import spellings
+                 * carry no prefix by construction).
+                 */
+                $group_statement = false !== strpos($import_statement[0], '{');
+                foreach (explode(',', $import_statement[0]) as $imported) {
+                    $imported = trim($imported);
+                    $group_member = $group_statement;
+                    if ($group_statement) {
+                        $brace_at = strpos($imported, '{');
+                        $imported = false !== $brace_at
+                            ? trim((string) substr($imported, $brace_at + 1), "{} \t")
+                            : trim($imported, "{} \t");
+                    }
+                    $alias_split = preg_split('/\s+as\s+/i', $imported);
+                    if ('' === trim((string) $alias_split[0])) {
+                        continue;
+                    }
+                    $segments = explode('\\', trim((string) $alias_split[0]));
+                    $leaf = wp_connectors_ascii_lower((string) end($segments));
+                    /*
+                     * The BOUND name: the alias when 'as' is present, the
+                     * imported name's own LEAF otherwise — an import binds
+                     * the short name ('use function Foo\define;' binds
+                     * 'define' → Foo\define).
+                     */
+                    $bound = count($alias_split) > 1
+                        ? wp_connectors_ascii_lower(trim((string) $alias_split[ count($alias_split) - 1 ]))
+                        : $leaf;
+                    if (! $group_member && 'define' === $leaf && count($segments) === 1) {
+                        continue; // The global self-import ('use function define;') — benign.
+                    }
+                    if (! $group_member && 2 === count($segments) && '' === $segments[0]) {
+                        continue; // The absolute self-import ('\define') — benign.
+                    }
+                    if ('define' === $bound) {
+                        $import_shadow = true; // The bare name bound to a foreign function — the shadow.
+                    }
+                }
             }
         }
+
+        $declarations = array();
+        $count = count($tokens);
+        $offset = 0;
+        $class_frames = array();
+        $brace_depth = 0;
+        for ($i = 0; $i < $count; ++$i) {
+            $token = $tokens[ $i ];
+            $id = is_array($token) ? $token[0] : null;
+            $text = is_array($token) ? $token[1] : $token;
+            $token_offset = $offset;
+            $offset += strlen($text);
+            if (T_WHITESPACE === $id || T_COMMENT === $id || T_DOC_COMMENT === $id) {
+                continue;
+            }
+            if ('{' === $text) {
+                ++$brace_depth;
+
+                continue;
+            }
+            if ('}' === $text) {
+                --$brace_depth;
+                $class_frames = array_filter($class_frames, static function ( $frame ) use ( $brace_depth ) {
+                    return $frame < $brace_depth;
+                });
+
+                continue;
+            }
+            if (T_CLASS === $id || T_TRAIT === $id || T_INTERFACE === $id || T_ENUM === $id) {
+                // A '::class' spelling is a constant, never a body opener.
+                $next_significant = $i + 1;
+                while ($next_significant < $count && T_WHITESPACE === ($tokens[ $next_significant ][0] ?? null)) {
+                    ++$next_significant;
+                }
+                if ($next_significant < $count && is_array($tokens[ $next_significant ]) && T_DOUBLE_COLON === $tokens[ $next_significant ][0]) {
+                    continue;
+                }
+                $class_frames[] = $brace_depth; // The frame opens at the NEXT '{', depth+1 there.
+
+                continue;
+            }
+            if (T_FUNCTION !== $id) {
+                continue;
+            }
+            $name_index = $i + 1;
+            while ($name_index < $count) {
+                $skip_id = $tokens[ $name_index ][0] ?? null;
+                // The reference ampersand rides whichever spelling the engine
+                // mints — the named tokens since 8.1, the plain byte before.
+                if (T_WHITESPACE === $skip_id || T_AMPERSAND_NOT_FOLLOWED_BY_VAR_OR_VARARG === $skip_id || T_AMPERSAND_FOLLOWED_BY_VAR_OR_VARARG === $skip_id || (is_string($tokens[ $name_index ]) && '&' === $tokens[ $name_index ])) {
+                    ++$name_index;
+
+                    continue;
+                }
+
+                break;
+            }
+            if ($name_index >= $count || ! is_array($tokens[ $name_index ]) || T_STRING !== $tokens[ $name_index ][0] || 'define' !== wp_connectors_ascii_lower($tokens[ $name_index ][1])) {
+                continue;
+            }
+            if (array() !== $class_frames) {
+                continue; // A method — class-likes own their bodies; a method shadows nothing at any call site.
+            }
+            $declarations[] = $token_offset;
+        }
+
+        $consult_cache[ $cache_key ] = array($flat, $in_effect, $import_shadow, $declarations);
     }
+    list($flat, $in_effect, $import_shadow, $declarations) = $consult_cache[ $cache_key ];
 
     /*
-     * The DECLARATION arm: a top-level 'function define(' declared
-     * in the SAME namespace scope as the call. Function declarations
-     * hoist, so the decoy's position relative to the call does not
-     * matter; a NESTED declaration (a class method named define)
-     * shadows nothing and the depth check excludes it. The flat view
-     * (strings masked over the comment-stripped source) is the
-     * ledger's own brace-safe composition.
+     * The QUALIFICATION (gap 3): walk the flat view backward from the
+     * keyword over the name and separators — '\define' alone is the
+     * GLOBAL escape (never a decoy), a longer qualified name is a
+     * FOREIGN function (never the global define — the candidate
+     * refuses, fail-closed).
      */
-    ob_start();
-    $tokens = token_get_all($source);
-    ob_end_clean();
-    $in_effect = wp_connectors_declaration_in_effect(wp_connectors_namespace_declaration_ledger($tokens, $source));
+    $walk = $call_offset;
+    while ($walk > 0 && 1 === preg_match('/[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]/', $flat[ $walk - 1 ])) {
+        --$walk;
+    }
+    if ($walk < $call_offset && '\\' === $flat[ $walk ]) {
+        $qualified = wp_connectors_ascii_lower((string) substr($flat, $walk, $call_offset - $walk + 6));
+        if ('\\define' === $qualified) {
+            return false; // The global escape — the mirror's false refusal dead.
+        }
+
+        return true; // A foreign qualified name — the global define is not what this call resolves to.
+    }
+
+    if ($import_shadow) {
+        return true;
+    }
+
     $call_scope = $in_effect($call_offset);
     if (null === $call_scope) {
         return false; // Global scope: a global redeclare is a load-time fatal, never a decoy.
     }
-    $flat = wp_connectors_mask_string_contents($code);
-    $declarations = array();
-    if (false === preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:function)\s+(?i:define)(?![\$' . WP_CONNECTORS_LABEL_BYTES . '])\s*\(/', $flat, $declarations, PREG_OFFSET_CAPTURE)) {
-        return false; // A PCRE abort refuses the proof (glm36-8): no binding provable over unscanned bytes.
-    }
-    // A namespace block is never nested (the engine refuses it), so a
-    // braced scope's top level sits at depth 1 and an unbraced one at 0.
-    $reference_depth = null === $call_scope['expires'] ? 0 : 1;
-    foreach ($declarations[0] as $declaration) {
-        $at = $declaration[1];
-        $depth = substr_count((string) substr($flat, 0, $at), '{') - substr_count((string) substr($flat, 0, $at), '}');
-        if ($depth !== $reference_depth) {
-            continue; // A method or nested function shadows nothing at the unqualified call site.
-        }
-        $declaration_scope = $in_effect($at);
+    foreach ($declarations as $declaration_offset) {
+        $declaration_scope = $in_effect($declaration_offset);
         if (null !== $declaration_scope && $declaration_scope['offset'] === $call_scope['offset']) {
             return true;
         }

@@ -362,10 +362,10 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
 
         $base = sys_get_temp_dir() . '/wp-connectors-version-import-' . uniqid('', true);
         @mkdir($base . '/myplug', 0755, true);
-        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse function Foo\\\\define;\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n");
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse function Foo\\define;\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n");
         $import = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
         $this->assertStringContainsString('must define constant', implode("\n", $import), 'An un-aliased use-function import of a foreign define shadows the bare name (red at HEAD: green).');
-        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse function Foo\\\\define as d;\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n");
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse function Foo\\define as d;\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n");
         $aliased = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
         $this->assertSame(array(), $aliased, 'An ALIASED import binds only its alias — the bare define still binds the constant.');
         WpHarness::releaseScratch($base);
@@ -408,6 +408,59 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 9.9\n */\ndefine( 'MYPLUG_VERSION', <<<V\n1.2.3\nV\n );\n");
         $mismatch = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '9.9'), array($base . '/myplug/myplug.php'));
         $this->assertStringContainsString('does not match header Version', implode("\n", $mismatch), 'The heredoc mismatch twin keeps its own refusal with the DECODED body printed.');
+        WpHarness::releaseScratch($base);
+    }
+
+    public function testTheDecoyConsultsFiveFurtherGaps(): void
+    {
+        /*
+         * R49-3+R49-4+R49-5+R49-10 (driven — the decoy consult's
+         * five gaps, one restructure): the import arm never computed
+         * the name an import BINDS (an alias of 'define' and the
+         * PHP 7 group-use member both laundering); the declaration
+         * arm missed the reference-returning 'function &define('
+         * and every conditionally declared namespace-scope function;
+         * the consult judged only unqualified calls (a qualified
+         * '\Foo\define(...)' laundering while the global escape
+         * '\define' beside a decoy was FALSELY refused); and the
+         * import arm judged the stripped view alone ('use function'
+         * text in string data reading as a real import). Everything
+         * once-per-file derives once (the static content-keyed
+         * cache), the declarations from the token stream with a
+         * class-frame tracker, the import shadow over the flat view.
+         */
+        $b = chr(92);
+        foreach (array(
+            'aliased-to-define' => "use function Foo{$b}other as define;\ndefine('%s', '1.2.3');",
+            'group-use member' => "use function Foo{$b}{ define };\ndefine('%s', '1.2.3');",
+            'multi-member group' => "use function Foo{$b}{ other, define };\ndefine('%s', '1.2.3');",
+        ) as $name => $pre) {
+            $this->root .= '-d' . substr(md5($name), 0, 4);
+            @mkdir($this->root, 0755, true);
+            $v = $this->drive($name, $pre);
+            $this->assertStringContainsString('must define constant', implode("\n", $v), "The {$name} import shadows the bare define — the bound name is 'define' (red at HEAD: laundered).");
+        }
+        foreach (array(
+            'ref-return decoy' => "namespace E;\nfunction &define(\$n, \$v) { return null; }\ndefine('%s', '1.2.3');",
+            'conditional decoy' => "namespace E;\nif (true) { function define(\$n, \$v) {} }\ndefine('%s', '1.2.3');",
+        ) as $name => $body) {
+            $this->root .= '-d' . substr(md5($name), 0, 4);
+            @mkdir($this->root, 0755, true);
+            $v = $this->drive($name, $body);
+            $this->assertStringContainsString('must define constant', implode("\n", $v), "The {$name} declares the namespaced define — the unqualified call resolves to it (red at HEAD: laundered).");
+        }
+
+        $base = sys_get_temp_dir() . '/wp-connectors-version-r49-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace Foo { function define(\$n, \$v) {} }\nnamespace E { " . '\Foo\define' . "( 'MYPLUG_VERSION', '1.2.3' ); }\n");
+        $qualified = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+        $this->assertStringContainsString('must define constant', implode("\n", $qualified), 'A qualified foreign define call binds no constant at this file (red at HEAD: laundered).');
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\nfunction define(\$n, \$v) {}\n" . '\define' . "( 'MYPLUG_VERSION', '1.2.3' );\n");
+        $escape = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+        $this->assertSame(array(), $escape, 'The global escape beside a decoy binds the GLOBAL define at runtime — the false refusal dead (red at HEAD: refused).');
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\n\$help = 'use function Foo\\define;';\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n");
+        $string_data = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+        $this->assertSame(array(), $string_data, "'use function' text living in string DATA is not an import — the plugin's real define binds (red at HEAD: the false refusal).");
         WpHarness::releaseScratch($base);
     }
 
