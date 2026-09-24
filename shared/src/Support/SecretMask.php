@@ -411,6 +411,32 @@ final class SecretMask {
 			return self::MASK;
 		}
 
+		/*
+		 * t31-glm48-5 [R48-5, driven — the visible tail judged the
+		 * CONTAINER, never an embedded credential]: an OTP-class
+		 * value riding at the end of a longer Location/Referer
+		 * query ('https://client.example/cb?code=BCJK-3502')
+		 * cleared the container-length threshold and showed four of
+		 * the code's nine characters through every safe debug form —
+		 * defeating the doctrine's own head clause (user codes and
+		 * device codes of twelve characters or fewer never show a
+		 * tail) through the one consumption that adjudication never
+		 * considered: the whole-value masking the render seam
+		 * applies to URL-shaped headers. A value carrying a query
+		 * shape judges the FINAL parameter's value instead: a short
+		 * trailing credential renders the bare mask (the standalone
+		 * doctrine applied to the embedded code), a long one keeping
+		 * the correlation tail (a long query-embedded token
+		 * correlates the same way a long bare value does).
+		 */
+		$query_at = strrpos( $value, '?' );
+		if ( false !== $query_at ) {
+			$assignment_at = strrpos( $value, '=' );
+			if ( false !== $assignment_at && $assignment_at > $query_at && self::count_characters( substr( $value, $assignment_at + 1 ) ) <= self::MIN_LENGTH_FOR_VISIBLE_TAIL ) {
+				return self::MASK;
+			}
+		}
+
 		// The last VISIBLE_TAIL characters, then shed leading characters
 		// until what remains is standalone-valid UTF-8 (a slice starting
 		// mid-sequence, or carrying one, is not); empty means the bare

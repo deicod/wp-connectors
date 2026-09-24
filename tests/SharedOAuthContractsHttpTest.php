@@ -3119,6 +3119,23 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('abcdefghijkl'), 'A twelve-character value sits at the threshold: bare mask.');
         $this->assertSame('…jklm', SecretMask::mask('abcdefghijklm'), 'A thirteen-character value is the first to show the correlation tail.');
         $this->assertSame('…wxyz', SecretMask::mask('abcdefghijklmnopwxyz'));
+
+        /*
+         * t31-glm48-5 (R48-5, driven — the tail judged the CONTAINER,
+         * never an embedded credential): the nine-character user code
+         * riding at the end of a longer verification-URI query
+         * cleared the container threshold and rendered '…3502' —
+         * four of the code's nine characters through every safe
+         * debug form, defeating this very battery's own head clause
+         * through the whole-value masking the render seam applies
+         * to Location/Referer headers. A query-shaped value judges
+         * its FINAL parameter's value: a short trailing credential
+         * renders the bare mask; a long trailing token keeps the
+         * correlation tail exactly as a long bare value does.
+         */
+        $this->assertSame('…', SecretMask::mask('https://client.example/cb?code=BCJK-3502'), 'A short code embedded in a query renders the bare mask — the container length never answers for the credential (red at HEAD: …3502).');
+        $this->assertSame('…7710', SecretMask::mask('https://x.example/cb?access_token=' . 'ghp_' . '16C7e42F292c6912E7710'), 'A LONG trailing parameter keeps the correlation tail — the doctrine\'s tail clause stands where the credential is long.');
+        $this->assertSame('…', SecretMask::mask('https://client.example/cb?code=BCJK-3502&state=y'), 'The FINAL parameter judges — a short trailing state renders the bare mask the same way.');
     }
 
     /**
