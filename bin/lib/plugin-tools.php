@@ -159,8 +159,29 @@ function wp_connectors_mask_string_contents($code)
     // so a CR-terminated payload's masked view kept FEWER line breaks
     // than its source and the line-indexed consumers shifted past it —
     // the exact glm17-1 misalignment class, one terminator short.
+    // t31-glm41-7 [R41-8, measured efficiency — the blank's PCRE pass
+    // deleted]: the blank once rode preg_replace, a full PCRE compile/
+    // match per string region of every tokenized payload — the
+    // masker's dominant cost, ~17% of the secret scan. The native
+    // spelling starts from the region's own length in spaces and
+    // re-punches the two terminator bytes at their positions: one
+    // strpos pair per region, zero hits on the common newline-free
+    // literal, BYTE-IDENTICAL by construction (every position either
+    // keeps its space or takes its own terminator byte back).
     $blank = static function (string $region): string {
-        return (string) preg_replace('/[^\r\n]/', ' ', $region);
+        $out = str_repeat(' ', strlen($region));
+        $at = 0;
+        while (false !== ($at = strpos($region, "\n", $at))) {
+            $out[ $at ] = "\n";
+            ++$at;
+        }
+        $at = 0;
+        while (false !== ($at = strpos($region, "\r", $at))) {
+            $out[ $at ] = "\r";
+            ++$at;
+        }
+
+        return $out;
     };
 
     foreach (token_get_all($code) as $token) {
