@@ -1024,14 +1024,45 @@ function wp_connectors_group_use_imports(string $prefix, string $body): array
  */
 function wp_connectors_mention_outside_statement($source, $short, $statement_offset, $statement_length)
 {
-    $pattern = '/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])' . preg_quote($short, '/') . '(?![' . WP_CONNECTORS_LABEL_BYTES . '])/i';
-    $hits = preg_match_all($pattern, $source, $matches, PREG_OFFSET_CAPTURE);
-    if (false === $hits || 0 === $hits) {
+    /*
+     * t31-glm45-2 [R44-8, the driver-ordered pre-measured claim —
+     * the round-44 review's ~35% seat measurement]: the helper ran
+     * one full-source preg_match_all PER IMPORT with the pattern
+     * rebuilt per call (glm39-7 removed the per-import COPIES but
+     * kept the per-import scans — an import-heavy file paying
+     * imports x filesize). THE SINGLE WALK: one maximal-label-run
+     * pass per FILE, bucketed by the ascii-folded token — a
+     * mention of $short is exactly a whole label token equal to it
+     * case-insensitively (the lookbehind refusing a label byte
+     * before the run keeps every run MAXIMAL and whole — a mention of
+     * $short is a maximal label run equal to it case-insensitively,
+     * digit-led runs included (the walk spells the FULL label byte
+     * class, never the head class, so every label-byte short — even
+     * one no real import grammar mints — answers the old verdict)), the fold
+     * ASCII-only like the old pattern's byte-mode /i. The
+     * single-slot memo serves the three arms' consecutive consults
+     * over the same file; an abort answers false (the fail-closed
+     * direction glm39-7 recorded).
+     */
+    static $memo_source = null;
+    static $memo_buckets = null;
+    if ($source !== $memo_source) {
+        $memo_source = $source;
+        $memo_buckets = array();
+        $hits = preg_match_all('/(?<![' . WP_CONNECTORS_LABEL_BYTES . '])[' . WP_CONNECTORS_LABEL_BYTES . ']+/', $source, $tokens, PREG_OFFSET_CAPTURE);
+        if (false !== $hits && $hits > 0) {
+            foreach ($tokens[0] as $token) {
+                $memo_buckets[ wp_connectors_ascii_lower($token[0]) ][] = $token[1];
+            }
+        }
+    }
+    $lowered = wp_connectors_ascii_lower($short);
+    if (! isset($memo_buckets[ $lowered ])) {
         return false;
     }
     $excluded_end = $statement_offset + $statement_length;
-    foreach ($matches[0] as $match) {
-        if ($match[1] >= $excluded_end || $match[1] + strlen($match[0]) <= $statement_offset) {
+    foreach ($memo_buckets[ $lowered ] as $offset) {
+        if ($offset >= $excluded_end || $offset + strlen($short) <= $statement_offset) {
             return true;
         }
     }
