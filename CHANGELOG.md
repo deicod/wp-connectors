@@ -6,6 +6,77 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 45)
+
+Thirty-first claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first; the driver's order pre-designating the two
+round-44 measured claims, both landed before the review): still not
+zero — 8 CONFIRMED correctness findings (5 defects in the last
+rounds' own fixes), 7 cleanups recorded. DRIVER ADJUDICATION under
+the scope rule: eight fix classes accepted; the three-owner removal
+drift, the nine-site walk-abort invariant, two measured eager-view
+arms (~11ms/~7.6ms), and four smaller items recorded as
+inheritance. Nine fix commits t31-glm45-1..9 plus the docs close,
+the full offline check green after every commit. Suite 1965 → 1967
+tests, 48495 → 48511 assertions, 3 skipped unchanged.
+
+- **The scanner's native prescreen (t31-glm45-1, the pre-measured
+  R44-7; bin/lib/secret-scanner.php)** — a strict-superset strpos
+  chain skips the ten-pattern battery on ~78% of repo lines
+  (1,154,550 → 256,560 PCRE invocations; the battery seat 367ms →
+  222ms, the scan 0.99–1.07s → 0.81–0.83s), the abort pin
+  surviving by construction.
+
+- **The mention check walks once per file (t31-glm45-2, the
+  pre-measured R44-8; bin/check-conventions.php)** — one
+  maximal-label-run pass bucketed by the folded token replaces the
+  per-import full-source rescans; byte-identical by the 14-shape +
+  8000-fuzz differential (the first cut's head-class walk having
+  caught two impossible-in-production edge families before commit).
+
+- **The operand probe derives from the token stream
+  (t31-glm45-3, security:medium, driven both edges;
+  bin/lib/plugin-tools.php)** — the variable-callee
+  `$fn( ...vendor... );` shape was invisible where master flags,
+  and the member-call `$docs->include(...)` shape was falsely
+  refused. Constructs, channel T_STRINGs (their previous
+  significant token refusing the name-usage contexts), and a
+  variable-followed-by-'(' arm — the prose immunity now structural.
+
+- **The fake-secret word exempts only over placeholder bytes on
+  BOTH sides (t31-glm45-4, driven end-to-end;
+  bin/lib/secret-scanner.php)** — `xoxb-eu1-test-9f3k...` shipped
+  as fake where the same entropy ahead of the word flags; the tail
+  after the word must be placeholder material too, the pinned
+  filler fixtures keeping their exemption through the fall-through.
+
+- **Member, static, and nullsafe define calls bind nothing
+  (t31-glm45-5, driven; bin/lib/plugin-tools.php)** — a decoy
+  class's `$registry->define('MYPLUG_VERSION', ...)` satisfied the
+  must-define gate with no constant defined (the plugin fataling at
+  runtime); the left class refuses the name-usage glue bytes.
+
+- **The spacing-proof position filter (t31-glm45-6, driven;
+  bin/lib/plugin-tools.php)** — the include owner matched
+  semi-reserved keywords as method/constant names (the R44-4
+  census unswept there), and glm44-4's fixed-length guards walked
+  past by two spaces, a comment, or operator spacing. ONE shared
+  helper walks the view's bytes backward at both seats.
+
+- **glm44-6's fallback made effective and the sibling seat swept
+  (t31-glm45-7 + t31-glm45-8; bin/lint-php.php,
+  bin/inspect-artifact.php)** — the lint seat's verdict loop rides
+  inside the write-success arm (the serial call alone had landed),
+  and the inspector's write leg gains the else its comment always
+  promised (a REAL tmpfs ENOSPC having rejected all 61 extracted
+  files of the valid dist zip).
+
+- **The mention helper guards the empty short (t31-glm45-9,
+  driven; bin/check-conventions.php)** — glm45-2's own edge: a
+  backslash-ending group member minted a spurious 'unused import'
+  FAIL; the single arm's guard rides the helper, every arm at one
+  owner.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 44)
 
 Thirtieth claude-glm pass (/code-review max over the FULL branch
