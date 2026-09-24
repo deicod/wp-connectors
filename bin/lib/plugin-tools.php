@@ -5371,6 +5371,127 @@ function wp_connectors_is_php_source($path)
 }
 
 /**
+ * The ONE pooled php -l fleet (t31-glm47-9, R47-10 — the hoist the
+ * round-46 drift record armed: five commits of one class deep across
+ * the byte-identical twins at bin/lint-php.php and
+ * bin/inspect-artifact.php, the hoist-at-three-consumer policy's
+ * re-open condition satisfied by the drift count itself).
+ *
+ * THE SHAPE (glm28-11, the glm21-14/15 pool precedents): every
+ * probe is tree-independent, so one BATCHED fleet lints the whole
+ * file list — xargs -0 -n2 -P8 sh -c, each child answering INDEX
+ * PATH (the index this map's keys answer to, the per-file
+ * attribution by construction; -0 keeps every legal pathname byte
+ * whole), the verdict recorded BESIDE ITS INDEX (php -l's own
+ * output plus its exit code, the output naming the file in the
+ * report itself). The runner's trailing echo is LOAD-BEARING
+ * (glm21-15's documented idiom): php -l refuses parse errors at
+ * exit 255, a status bare xargs ABORTS on — the echo absorbs it,
+ * the fleet keeps walking past every failure.
+ *
+ * THE STAGING FALLBACKS (glm44-6, corrected glm45-7): a scratch
+ * mkdir failure (ENOSPC on the directory entry) AND a files.nul
+ * write failure (the kilobyte index write) both fall back to the
+ * serial arm — the fallback rides INSIDE the write-success test,
+ * never reading verdicts the failing staging never wrote. A POSIX
+ * host without xargs(1) answers the consumer's own loud failure at
+ * the null verdict (the glm20-6 timeout(1) doctrine), never a
+ * silent pass; non-POSIX hosts keep the serial arm outright.
+ *
+ * THE INNER-SHELL ESCAPE (glm46-3, driven over the real repo
+ * tree): the runner sprintf-interpolates $scratch inside
+ * double-quoted redirect targets of the inner 'sh -c' body, and
+ * escapeshellarg() on the OUTER exec argument does not protect
+ * bytes the inner shell re-parses — a '$' in the scratch path
+ * (TMPDIR '/tmp/w$1') made the inner sh expand '$1' to the linted
+ * file's path, nothing written, every file a spurious no-verdict
+ * refusal. The scratch rides the inner-double-quote escape (a
+ * backslash before '$', the double-quote, the backtick, and a
+ * backslash itself) before the sprintf hands it to the runner
+ * body.
+ *
+ * THE VERDICT ANCHOR (glm37-1/R37-5, security:high, driven
+ * end-to-end at the inspector's seat): the read anchors to the
+ * LAST '^exit=N' line — the runner's echo APPENDS after php -l's
+ * own output, and that output interpolates the walked path, whose
+ * bytes may carry a newline (a legal entry-name byte) — a file
+ * named with an embedded '\nexit=0\n' otherwise forges a green
+ * verdict line ahead of the runner's appended 'exit=255'. The
+ * last match is the runner's own; a forged line can only precede
+ * it.
+ *
+ * @param string[] $files The files to lint, in order — the map's keys are these indices.
+ * @param string $scratch_prefix The scratch directory name prefix (each consumer's own).
+ * @return array<int, array{exit: string, output: string}|null> Per index: the verdict
+ *         (exit the LAST '^exit=N' code, output the php -l bytes with the exit lines
+ *         stripped), or null when no verdict file answered.
+ */
+function wp_connectors_pooled_php_lint_verdicts(array $files, $scratch_prefix)
+{
+    $php = escapeshellarg(PHP_BINARY);
+    // The serial arm, spelled once: the non-POSIX fallback and the
+    // scratch-staging failure fallback both ride it.
+    $serial = static function () use ($php, $files): array {
+        $serial_verdicts = array();
+        foreach ($files as $index => $path) {
+            $output = array();
+            $exit = 0;
+            exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($path)), $output, $exit);
+            $serial_verdicts[ $index ] = array('exit' => (string) $exit, 'output' => implode("\n", $output));
+        }
+
+        return $serial_verdicts;
+    };
+    if ('/' !== DIRECTORY_SEPARATOR) {
+        return $serial();
+    }
+    $scratch = sys_get_temp_dir() . '/' . $scratch_prefix . uniqid('', true);
+    if (! @mkdir($scratch, 0755, true)) {
+        return $serial();
+    }
+    try {
+        $list = $scratch . '/files.nul';
+        $pairs = '';
+        foreach ($files as $index => $path) {
+            $pairs .= $index . "\0" . $path . "\0";
+        }
+        if (false === file_put_contents($list, $pairs)) {
+            return $serial();
+        }
+        $scratch_inner = str_replace(array('\\', '$', '"', '`'), array('\\\\', '\$', '\"', '\`'), $scratch);
+        $runner = sprintf(
+            '%1$s -l "$1" >"%2$s/$0.lint" 2>&1; echo "exit=$?" >>"%2$s/$0.lint"',
+            $php,
+            $scratch_inner
+        );
+        exec(sprintf('xargs -0 -n2 -P8 sh -c %1$s < %2$s 2>&1', escapeshellarg($runner), escapeshellarg($list)));
+        $verdicts = array();
+        foreach ($files as $index => $path) {
+            $verdict = @file_get_contents(sprintf('%s/%d.lint', $scratch, $index));
+            $code = array();
+            $verdict_lines = false === $verdict ? 0 : preg_match_all('/^exit=([0-9]+)$/m', $verdict, $code);
+            if (false === $verdict || false === $verdict_lines || 0 === $verdict_lines) {
+                $verdicts[ $index ] = null;
+
+                continue;
+            }
+            $verdicts[ $index ] = array(
+                'exit' => $code[1][ $verdict_lines - 1 ],
+                'output' => (string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict),
+            );
+        }
+
+        return $verdicts;
+    } finally {
+        @unlink($scratch . '/files.nul');
+        foreach (glob($scratch . '/*.lint') ?: array() as $verdict_file) {
+            @unlink($verdict_file);
+        }
+        @rmdir($scratch);
+    }
+}
+
+/**
  * The lint walk's declared root set — the ONE owner (glm23-13): the
  * walk (bin/lint-php.php) and every staged leg that must name the
  * tree the walk declares consult it, so a fifth declared root or a

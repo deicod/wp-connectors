@@ -225,162 +225,44 @@ if (wp_connectors_cli_entry(__FILE__)) {
         exit(1);
     }
 
-    $php = escapeshellarg(PHP_BINARY);
     $failures = 0;
-    // The serial arm, spelled once: the non-POSIX fallback and the
-    // scratch-staging failure fallback both ride it.
-    $lint_serial = static function () use ($php, $files, &$failures): void {
-        foreach ($files as $path) {
-            $output = array();
-            $exit = 0;
-            exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($path)), $output, $exit);
-            if ($exit !== 0) {
-                ++$failures;
-                fwrite(STDERR, wp_connectors_printable(implode("\n", $output)) . "\n");
-            }
-        }
-    };
     /*
-     * glm28-11: the POOLED shape (the glm21-14/15 pool precedents —
-     * ~3.5-4x on this host's spawn-bound walks). The serial loop
-     * spawned one engine per file at ~6.9 s of every check over 177
-     * files (measured, the timing in the commit); every probe is
-     * tree-independent, so one BATCHED fleet lints them — xargs -0
-     * -n2 -P8 sh -c, each child answering INDEX PATH (the index this
-     * gate maps back to its path, the per-file attribution by
-     * construction; -0 keeps every legal pathname byte whole), the
-     * verdict recorded BESIDE ITS INDEX (php -l's own output plus
-     * its exit code, the output naming the file in the report
-     * itself). The runner's trailing echo is LOAD-BEARING (glm21-15's
-     * documented idiom): php -l refuses parse errors at exit 255, a
-     * status bare xargs ABORTS on — the echo absorbs it, the fleet
-     * keeps walking past every failure. A POSIX host without xargs(1)
-     * answers the gate's own loud failure at the missing verdict file
-     * (the glm20-6 timeout(1) doctrine), never a silent pass;
-     * non-POSIX hosts keep the serial loop.
+     * t31-glm47-9 [R47-10 - the hoist the round-46 drift record
+     * armed]: the fleet rides its ONE owner
+     * (wp_connectors_pooled_php_lint_verdicts) - the ~140-line twin
+     * bin/lint-php.php and bin/inspect-artifact.php had already
+     * drifted five commits deep (glm44-6, glm45-7, and glm46-3 each
+     * sweeping one seat then the other). This gate renders its own
+     * messages: the raw php -l output through the printable owner,
+     * the no-verdict refusal in this gate's FAIL vocabulary - one
+     * rendering for the serial and pooled arms alike now (the
+     * serial/pooled rendering split the round-46 records carried
+     * closes with the twin).
      */
-    if ('/' !== DIRECTORY_SEPARATOR) {
-        $lint_serial();
-    } else {
-        $scratch = sys_get_temp_dir() . '/wpct-lint-' . uniqid('', true);
-        if (! @mkdir($scratch, 0755, true)) {
-            $lint_serial();
-        } else {
-            try {
-                $list = $scratch . '/files.nul';
-                $pairs = '';
-                foreach ($files as $index => $path) {
-                    $pairs .= $index . "\0" . $path . "\0";
-                }
-                /*
-                 * t31-glm44-6 [R44-6, driven via a namespace shim —
-                 * the staging fallback's own gap]: only the mkdir
-                 * failure fell back to the serial arm; a files.nul
-                 * write failure (ENOSPC/EDQUOT on a tmpfs /tmp where
-                 * the directory entry fits but the kilobyte index
-                 * write does not) ran NEITHER the fleet NOR the
-                 * fallback — every lintable file a spurious FAIL
-                 * with the misattributed 'the batched engine never
-                 * answered' message (driven: a 5-file valid tree
-                 * answering 5 FAILs exit 1 where the mkdir-failure
-                 * control two lines up answers the same tree green
-                 * through the serial arm). The write failure falls
-                 * back too — the comment's own promise. (CORRECTED
-                 * at t31-glm45-7, R45-6 — the first landing put the
-                 * serial call in the write-failure arm but left the
-                 * pooled-verdict loop OUTSIDE the if/else, so the
-                 * fallback ran and the loop STILL read the
-                 * never-written scratch verdicts, failing every file
-                 * — the loop rides INSIDE the write-success arm now,
-                 * the serial arm's own verdict block being the serial
-                 * loop itself.)
-                 */
-                if (false === file_put_contents($list, $pairs)) {
-                    $lint_serial();
-                } else {
-                    /*
-                             * t31-glm46-3 [R46-3, driven over the real repo tree - the
-                             * inner-shell scratch interpolation]: the runner sprintf-
-                             * interpolated $scratch RAW inside the double-quoted redirect
-                             * targets of the inner 'sh -c' body - escapeshellarg() on the
-                             * OUTER exec argument does not protect bytes the inner shell
-                             * re-parses - so a '$' in the scratch path (TMPDIR
-                             * '/tmp/w$1') made the inner sh expand '$1' to the linted
-                             * file's path, the verdict redirect targeting a nonexistent
-                             * directory, NOTHING written, and every file a spurious
-                             * 'no pooled lint verdict' FAIL (driven: all 184 files
-                             * failing where the clean-TMPDIR control answers 184 checked,
-                             * 0 failures - and the serial fallback never firing because the
-                             * PHP-side staging succeeded). The scratch rides the
-                             * inner-double-quote escape (backslash before '$',
-                             * double-quote, backtick, and backslash itself) at both
-                             * fleet seats.
-                     */
-                    $scratch_inner = str_replace(array('\\', '$', '"', '`'), array('\\\\', '\$', '\"', '\`'), $scratch);
-                    $runner = sprintf(
-                        '%1$s -l "$1" >"%2$s/$0.lint" 2>&1; echo "exit=$?" >>"%2$s/$0.lint"',
-                        $php,
-                        $scratch_inner
-                    );
-                    exec(sprintf('xargs -0 -n2 -P8 sh -c %1$s < %2$s 2>&1', escapeshellarg($runner), escapeshellarg($list)));
-                    foreach ($files as $index => $path) {
-                        $verdict = @file_get_contents(sprintf('%s/%d.lint', $scratch, $index));
-                        /*
-                         * t31-glm37-1 [R37-5, the lint gate's own seat — the same
-                         * forgery class as the inspector's, one owner's spelling]:
-                         * the verdict read anchors to the LAST '^exit=N' line, the
-                         * runner's echo appending after php -l's output — a walked
-                         * file whose NAME carries an embedded '\nexit=0\n' (a legal
-                         * filename byte) otherwise forges a green verdict over
-                         * parse-broken source (driven: 'lint-php: 182 file(s)
-                         * checked, 0 failure(s)' exit 0 over a planted
-                         * parse-broken newline-named file, the byte-identical
-                         * plain-named twin answering 1 failure exit 1).
-                         */
-                        $code = array();
-                        $verdict_lines = false === $verdict ? 0 : preg_match_all('/^exit=([0-9]+)$/m', $verdict, $code);
-                        if (false === $verdict || false === $verdict_lines || 0 === $verdict_lines) {
-                            ++$failures;
-                            fwrite(STDERR, 'lint-php: FAIL ' . wp_connectors_printable($path) . ": no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine).\n");
+    foreach (wp_connectors_pooled_php_lint_verdicts($files, 'wpct-lint-') as $index => $verdict) {
+        $path = $files[ $index ];
+        if (null === $verdict) {
+            ++$failures;
+            fwrite(STDERR, 'lint-php: FAIL ' . wp_connectors_printable($path) . ": no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine).\n");
 
-                            continue;
-                        }
-                        $code = array( 1 => $code[1][ $verdict_lines - 1 ] );
-                        if ('0' !== $code[1]) {
-                            /*
-                             * t31-glm41-4 [R41-13, the OUTPUT seam — the
-                             * inspector's printable doctrine, one owner's
-                             * spelling over]: every diagnostic this gate
-                             * prints interpolates WALKED-ENTRY bytes (php
-                             * -l's own output embeds the walked path; the
-                             * no-verdict refusal names it; the symlink and
-                             * walk-abort refusals name the entry and the
-                             * iterator's own message) — and a legal
-                             * filename byte set (an embedded '\n', the
-                             * r12-15/R37-5 class) forges WHOLE LINES into
-                             * the log: driven at HEAD, a parse-broken
-                             * 'a\nlint-php: 3 file(s) checked, 0 failure(s)\nb.php'
-                             * planted in a staged tree printed the forged
-                             * GREEN SUMMARY twice before the real '1
-                             * failure(s)' line — a harness or human
-                             * reading the log sees a clean gate. Every
-                             * seam renders through wp_connectors_printable
-                             * (C0/DEL/bidi controls become spaces, the
-                             * r13-4 map), the verdict bytes themselves
-                             * untouched — only their PRINT is swept.
-                             */
-                            ++$failures;
-                            fwrite(STDERR, wp_connectors_printable(rtrim((string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict))) . "\n");
-                        }
-                    }
-                }
-            } finally {
-                @unlink($scratch . '/files.nul');
-                foreach (glob($scratch . '/*.lint') ?: array() as $verdict_file) {
-                    @unlink($verdict_file);
-                }
-                @rmdir($scratch);
-            }
+            continue;
+        }
+        if ('0' !== $verdict['exit']) {
+            /*
+             * t31-glm41-4 [R41-13, the OUTPUT seam]: every diagnostic
+             * this gate prints interpolates WALKED-ENTRY bytes (php
+             * -l's own output embeds the walked path; the no-verdict
+             * refusal names it; the symlink and walk-abort refusals
+             * name the entry and the iterator's own message) - and a
+             * legal filename byte set (an embedded newline, the
+             * r12-15/R37-5 class) forges WHOLE LINES into the log.
+             * Every seam renders through wp_connectors_printable (C0/
+             * DEL/bidi controls become spaces, the r13-4 map), the
+             * verdict bytes themselves untouched - only their PRINT
+             * is swept.
+             */
+            ++$failures;
+            fwrite(STDERR, wp_connectors_printable(rtrim($verdict['output'])) . "\n");
         }
     }
 

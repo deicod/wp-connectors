@@ -777,106 +777,28 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
          */
         $syntax_verdicts = static function (array $syntax_files) use ($extractDir): array {
             $violations = array();
-            $php = escapeshellarg(PHP_BINARY);
-            // The serial arm, spelled once: the non-POSIX fallback and
-            // the scratch-staging failure fallback both ride it.
-            $serial = static function () use ($php, $syntax_files, $extractDir, &$violations): void {
-                foreach ($syntax_files as $path) {
-                    $output = array();
-                    $exit = 0;
-                    exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($path)), $output, $exit);
-                    if ($exit !== 0) {
-                        $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $path)), wp_connectors_printable(implode(' ', $output)));
-                    }
-                }
-            };
-            $missing_verdict = static function (string $path) use ($extractDir): string {
-                return sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $path)), 'no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine)');
-            };
-            if ('/' !== DIRECTORY_SEPARATOR) {
-                $serial();
+            /*
+             * t31-glm47-9 [R47-10 - the hoist the round-46 drift
+             * record armed]: the fleet rides its ONE owner
+             * (wp_connectors_pooled_php_lint_verdicts) - this seat's
+             * twin sibling deleted (the ~140-line copy that had
+             * already drifted five commits deep across the two
+             * gates). This seat renders its own messages: the
+             * extract-relative path through the printable owner -
+             * one rendering for the serial and pooled arms alike
+             * now (the serial/pooled rendering split the round-46
+             * records carried closes with the twin).
+             */
+            foreach (wp_connectors_pooled_php_lint_verdicts($syntax_files, 'wpct-inspect-') as $index => $verdict) {
+                $path = $syntax_files[ $index ];
+                if (null === $verdict) {
+                    $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $path)), 'no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine)');
 
-                return $violations;
-            }
-            $scratch = sys_get_temp_dir() . '/wpct-inspect-' . uniqid('', true);
-            if (! @mkdir($scratch, 0755, true)) {
-                $serial();
-
-                return $violations;
-            }
-            try {
-                $list = $scratch . '/files.nul';
-                $pairs = '';
-                foreach ($syntax_files as $index => $path) {
-                    $pairs .= $index . "\0" . $path . "\0";
+                    continue;
                 }
-                if (false === file_put_contents($list, $pairs)) {
-                    // t31-glm45-8 [R45-7]: the write-failure leg falls back
-                    // to the serial arm — glm44-6's sibling seat, never swept.
-                    $serial();
-                } else {
-                    /*
-                             * t31-glm46-3 [R46-3, driven over the real repo tree - the
-                             * inner-shell scratch interpolation]: the runner sprintf-
-                             * interpolated $scratch RAW inside the double-quoted redirect
-                             * targets of the inner 'sh -c' body - escapeshellarg() on the
-                             * OUTER exec argument does not protect bytes the inner shell
-                             * re-parses - so a '$' in the scratch path (TMPDIR
-                             * '/tmp/w$1') made the inner sh expand '$1' to the linted
-                             * file's path, the verdict redirect targeting a nonexistent
-                             * directory, NOTHING written, and every file a spurious
-                             * 'no pooled lint verdict' FAIL (driven: all 184 files
-                             * failing where the clean-TMPDIR control answers 184 checked,
-                             * 0 failures - and the serial fallback never firing because the
-                             * PHP-side staging succeeded). The scratch rides the
-                             * inner-double-quote escape (backslash before '$',
-                             * double-quote, backtick, and backslash itself) at both
-                             * fleet seats.
-                     */
-                    $scratch_inner = str_replace(array('\\', '$', '"', '`'), array('\\\\', '\$', '\"', '\`'), $scratch);
-                    $runner = sprintf(
-                        '%1$s -l "$1" >"%2$s/$0.lint" 2>&1; echo "exit=$?" >>"%2$s/$0.lint"',
-                        $php,
-                        $scratch_inner
-                    );
-                    exec(sprintf('xargs -0 -n2 -P8 sh -c %1$s < %2$s 2>&1', escapeshellarg($runner), escapeshellarg($list)));
-                    foreach ($syntax_files as $index => $path) {
-                        $verdict = @file_get_contents(sprintf('%s/%d.lint', $scratch, $index));
-                        /*
-                         * t31-glm37-1 [R37-1/R37-5, security:high, driven end-to-end]:
-                         * the verdict read anchors to the LAST '^exit=N' line —
-                         * the runner's echo APPENDS after php -l's own output, and
-                         * that output interpolates the ARCHIVE-CONTROLLED extracted
-                         * path, whose bytes may carry a newline (a legal entry-name
-                         * byte, the r12-15 note) — a zip entry named with an
-                         * embedded '\nexit=0\n' forged a passing verdict line ahead
-                         * of the runner's appended 'exit=255' and laundered a
-                         * parse-broken (webshell-shaped) file through the last
-                         * content gate (driven on the real dist zip: ACCEPTED, exit
-                         * 0, where the byte-identical parse error under a plain
-                         * name is REJECTED). The last match is the runner's own;
-                         * a forged line can only precede it.
-                         */
-                        $code = array();
-                        $verdict_lines = false === $verdict ? 0 : preg_match_all('/^exit=([0-9]+)$/m', $verdict, $code);
-                        if (false === $verdict || false === $verdict_lines || 0 === $verdict_lines) {
-                            $violations[] = $missing_verdict($path);
-
-                            continue;
-                        }
-                        $code = array( 1 => $code[1][ $verdict_lines - 1 ] );
-                        if ('0' !== $code[1]) {
-                            $output = (string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict);
-                            $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $path)), wp_connectors_printable(implode(' ', array_values(array_filter(explode("\n", rtrim($output)), static function ( $line ) { return '' !== $line; })))));
-                        }
-                    }
+                if ('0' !== $verdict['exit']) {
+                    $violations[] = sprintf('inspect: %s failed php -l: %s', wp_connectors_printable(str_replace($extractDir . '/', '', $path)), wp_connectors_printable(implode(' ', array_values(array_filter(explode("\n", rtrim($verdict['output'])), static function ( $line ) { return '' !== $line; })))));
                 }
-            } finally {
-                @unlink($scratch . '/files.nul');
-                foreach (glob($scratch . '/*.lint') ?: array() as $verdict_file) {
-                    @unlink($verdict_file);
-                }
-                @rmdir($scratch);
             }
 
             return $violations;
