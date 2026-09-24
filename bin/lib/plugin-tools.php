@@ -65,7 +65,19 @@ const WP_CONNECTORS_LABEL_BYTES = 'A-Za-z0-9_\x80-\xff';
  * copy. ONE constant, both seats — the next tail correction cannot
  * miss a copy again.
  */
-const WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR = '[^;?]*+(?:\\?(?!>)[^;?]*+)*+(?:;|\\?>|$)';
+/*
+ * t31-glm42-5 [R42-14, the hoist's own completion — the terminator
+ * piece its own constant]: the ';|?>|EOF' alternation — the piece
+ * glm29-2/glm29-3/glm39-2 each swept seat-by-seat and glm40-1's EOF
+ * arm landed last — was still hand-spelled byte-identically at BOTH
+ * assignment seats (the write-shape check and the collector) while
+ * the tail grammar's own docblock claimed 'the next tail correction
+ * cannot miss a copy again'. ONE terminator constant: the tail
+ * grammar COMPOSES it and both assignment seats ride it — the next
+ * correction is one edit, every seat.
+ */
+const WP_CONNECTORS_STATEMENT_TERMINATOR = '(?:;|\?>|$)';
+const WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR = '[^;?]*+(?:\?(?!>)[^;?]*+)*+' . WP_CONNECTORS_STATEMENT_TERMINATOR;
 
 /**
  * Strips docblock and line comments so checks only see functional code.
@@ -3432,7 +3444,7 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * END OF INPUT beside the two terminators — an unterminated
      * write is still a write, its bytes collected to the last byte.
      */
-    $write_matches = preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+?)(?:;|\?>|$)/', $before, $writes, PREG_SET_ORDER);
+    $write_matches = preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+?)' . WP_CONNECTORS_STATEMENT_TERMINATOR . '/', $before, $writes, PREG_SET_ORDER);
     if (false === $write_matches) {
         return false; // A PCRE abort refuses the proof (glm36-8).
     }
@@ -3562,7 +3574,7 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      */
     $assignments = array();
     // t31-glm39-2: the same END-OF-INPUT arm at this seat — see the write-shape twin at wp_connectors_array_writes_recognized.
-    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))[^;]+?(?:;|\?>|$)/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))[^;]+?' . WP_CONNECTORS_STATEMENT_TERMINATOR . '/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
         foreach ($matches[0] as $assignment) {
             if (! $visible($assignment[1])) {
                 // Outside every region the include can read a write from.
