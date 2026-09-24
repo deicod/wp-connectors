@@ -815,10 +815,29 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
                     // to the serial arm — glm44-6's sibling seat, never swept.
                     $serial();
                 } else {
+                    /*
+                             * t31-glm46-3 [R46-3, driven over the real repo tree - the
+                             * inner-shell scratch interpolation]: the runner sprintf-
+                             * interpolated $scratch RAW inside the double-quoted redirect
+                             * targets of the inner 'sh -c' body - escapeshellarg() on the
+                             * OUTER exec argument does not protect bytes the inner shell
+                             * re-parses - so a '$' in the scratch path (TMPDIR
+                             * '/tmp/w$1') made the inner sh expand '$1' to the linted
+                             * file's path, the verdict redirect targeting a nonexistent
+                             * directory, NOTHING written, and every file a spurious
+                             * 'no pooled lint verdict' FAIL (driven: all 184 files
+                             * failing where the clean-TMPDIR control answers 184 checked,
+                             * 0 failures - and the serial fallback never firing because the
+                             * PHP-side staging succeeded). The scratch rides the
+                             * inner-double-quote escape (backslash before '$',
+                             * double-quote, backtick, and backslash itself) at both
+                             * fleet seats.
+                     */
+                    $scratch_inner = str_replace(array('\\', '$', '"', '`'), array('\\\\', '\$', '\"', '\`'), $scratch);
                     $runner = sprintf(
                         '%1$s -l "$1" >"%2$s/$0.lint" 2>&1; echo "exit=$?" >>"%2$s/$0.lint"',
                         $php,
-                        $scratch
+                        $scratch_inner
                     );
                     exec(sprintf('xargs -0 -n2 -P8 sh -c %1$s < %2$s 2>&1', escapeshellarg($runner), escapeshellarg($list)));
                     foreach ($syntax_files as $index => $path) {
