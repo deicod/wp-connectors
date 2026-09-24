@@ -97,4 +97,47 @@ final class SelfContainmentVerdictForgeryTest extends TestCase
 
         WpHarness::releaseScratch($stage);
     }
+
+    public function testANewlineNamedFileCannotForgeSummaryLinesThroughTheLintOutput(): void
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('The lint output-forgery pin stages the gate in a scratch tree and spawns it — no spawn capability on this host.');
+        }
+
+        /*
+         * R41-13 (the lint gate's OUTPUT seam — the inspector's
+         * printable doctrine, one owner's spelling over): the pooled
+         * verdict print interpolated php -l's raw output, which embeds
+         * the WALKED PATH — so a parse-broken file named
+         * 'a\nlint-php: 3 file(s) checked, 0 failure(s)\nb.php'
+         * planted in a staged tree printed the forged GREEN SUMMARY
+         * as standalone lines (twice at HEAD: php -l names the file
+         * in both its error line and its 'Errors parsing' trailer)
+         * BEFORE the real '1 failure(s)' line — a harness or human
+         * reading the log sees a clean gate above the red one. Every
+         * walked-bytes diagnostic renders through
+         * wp_connectors_printable now: the control bytes become
+         * spaces, the forged text flattens INTO the diagnostic line,
+         * and no standalone summary line can be forged — the verdict
+         * bytes themselves untouched, only their print swept.
+         */
+        $stage = sys_get_temp_dir() . '/wp-connectors-lint-outforge-' . uniqid('', true);
+        mkdir($stage . '/bin/lib', 0755, true);
+        $this->assertTrue(copy(__DIR__ . '/../bin/lint-php.php', $stage . '/bin/lint-php.php'));
+        $this->assertTrue(copy(__DIR__ . '/../bin/lib/plugin-tools.php', $stage . '/bin/lib/plugin-tools.php'));
+        file_put_contents($stage . '/bin/' . "a\nlint-php: 3 file(s) checked, 0 failure(s)\nb.php", '<?php $x = ;');
+
+        $lint = realpath($stage . '/bin/lint-php.php');
+        $this->assertNotFalse($lint, 'The staged gate resolves before the child embeds it.');
+        $output = array();
+        $exit = 0;
+        exec(sprintf('cd %s && %s -d pcre.jit=0 %s 2>&1', escapeshellarg($stage), escapeshellarg(PHP_BINARY), escapeshellarg($lint)), $output, $exit);
+        $report = implode("\n", $output);
+
+        $this->assertNotSame(0, $exit, 'The parse-broken newline-named file still fails — the sweep touches the print, never the verdict.');
+        $this->assertStringContainsString('1 failure(s)', $report, 'The real summary counts the failure beside the staged gate\'s own healthy sources.');
+        $this->assertDoesNotMatchRegularExpression('/^lint-php: \d+ file\(s\) checked, 0 failure\(s\)$/m', $report, 'No standalone green summary line can be forged through the walked name (red at HEAD: the forged line printed twice before the real summary).');
+
+        WpHarness::releaseScratch($stage);
+    }
 }

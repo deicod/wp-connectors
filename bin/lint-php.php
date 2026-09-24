@@ -202,8 +202,8 @@ if (wp_connectors_cli_entry(__FILE__)) {
                     fwrite(STDERR, sprintf(
                         "lint-php: FAIL %s: symlinked source (%s -> %s) — the no-symlinks doctrine refuses the charge instead of silently skipping a linked source that pre-change reached php -l\n",
                         $root,
-                        $file->getPathname(),
-                        $link_target
+                        wp_connectors_printable($file->getPathname()),
+                        wp_connectors_printable($link_target)
                     ));
                     ++$walk_refusals;
                     continue;
@@ -214,7 +214,7 @@ if (wp_connectors_cli_entry(__FILE__)) {
                 $files[] = $file->getPathname();
             }
         } catch (UnexpectedValueException $walk_refusal) {
-            fwrite(STDERR, "lint-php: FAIL {$root}: unreadable subdirectory — the lint walk aborted ({$walk_refusal->getMessage()}).\n");
+            fwrite(STDERR, "lint-php: FAIL {$root}: unreadable subdirectory — the lint walk aborted (" . wp_connectors_printable($walk_refusal->getMessage()) . ").\n");
             ++$walk_refusals;
         }
     }
@@ -236,7 +236,7 @@ if (wp_connectors_cli_entry(__FILE__)) {
             exec(sprintf('%s -l %s 2>&1', $php, escapeshellarg($path)), $output, $exit);
             if ($exit !== 0) {
                 ++$failures;
-                fwrite(STDERR, implode("\n", $output) . "\n");
+                fwrite(STDERR, wp_connectors_printable(implode("\n", $output)) . "\n");
             }
         }
     };
@@ -298,14 +298,36 @@ if (wp_connectors_cli_entry(__FILE__)) {
                     $verdict_lines = false === $verdict ? 0 : preg_match_all('/^exit=([0-9]+)$/m', $verdict, $code);
                     if (false === $verdict || false === $verdict_lines || 0 === $verdict_lines) {
                         ++$failures;
-                        fwrite(STDERR, "lint-php: FAIL {$path}: no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine).\n");
+                        fwrite(STDERR, 'lint-php: FAIL ' . wp_connectors_printable($path) . ": no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine).\n");
 
                         continue;
                     }
                     $code = array( 1 => $code[1][ $verdict_lines - 1 ] );
                     if ('0' !== $code[1]) {
+                        /*
+                         * t31-glm41-4 [R41-13, the OUTPUT seam — the
+                         * inspector's printable doctrine, one owner's
+                         * spelling over]: every diagnostic this gate
+                         * prints interpolates WALKED-ENTRY bytes (php
+                         * -l's own output embeds the walked path; the
+                         * no-verdict refusal names it; the symlink and
+                         * walk-abort refusals name the entry and the
+                         * iterator's own message) — and a legal
+                         * filename byte set (an embedded '\n', the
+                         * r12-15/R37-5 class) forges WHOLE LINES into
+                         * the log: driven at HEAD, a parse-broken
+                         * 'a\nlint-php: 3 file(s) checked, 0 failure(s)\nb.php'
+                         * planted in a staged tree printed the forged
+                         * GREEN SUMMARY twice before the real '1
+                         * failure(s)' line — a harness or human
+                         * reading the log sees a clean gate. Every
+                         * seam renders through wp_connectors_printable
+                         * (C0/DEL/bidi controls become spaces, the
+                         * r13-4 map), the verdict bytes themselves
+                         * untouched — only their PRINT is swept.
+                         */
                         ++$failures;
-                        fwrite(STDERR, rtrim((string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict)) . "\n");
+                        fwrite(STDERR, wp_connectors_printable(rtrim((string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict))) . "\n");
                     }
                 }
             } finally {
