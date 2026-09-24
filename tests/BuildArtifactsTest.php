@@ -7413,10 +7413,34 @@ FIXTURE;
             'vendor comment before semicolon' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock} /* c */;\nclass SeatStore\n{\n}\n",
             'comma inside a block comment' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\{Clock, /* a, b */ Now};\nclass SeatStore\n{\n}\n",
             'comma inside a line comment' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\{Clock, // note, with comma\n Now};\nclass SeatStore\n{\n}\n",
+            /*
+             * t31-glm43-3 [R43-4+R43-5+R43-6, the blanked-twin sweep
+             * completed one seat over]: the NAMESPACE-DECLARATION pass
+             * kept plain preg_replace over RAW bytes (glm42-3 minted
+             * the helper and never reached it — a php -l-clean comment
+             * inside the declaration refusing the build anonymously),
+             * and both group seats demanded the separator IMMEDIATELY
+             * after the name with zero inter-token tolerance — the
+             * php -l-clean whitespace-before-separator spelling
+             * refusing anonymously at the postcondition. All three
+             * red at HEAD; all rewrite clean now.
+             */
+            'declaration comment before the name' => "<?php\nnamespace /* c */ Deicod\\WpConnectors\\Shared;\nclass SeatStore\n{\n}\n",
+            'declaration comment before the semicolon' => "<?php\nnamespace Deicod\\WpConnectors\\Shared /* c */;\nclass SeatStore\n{\n}\n",
+            'vendor whitespace before the separator-brace' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors \\{Shared\\Clock};\nclass SeatStore\n{\n}\n",
+            'vendor comment before the separator-brace' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors /* c */ \\{Shared\\Clock};\nclass SeatStore\n{\n}\n",
+            'family whitespace before the separator-brace' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared \\{Clock};\nclass SeatStore\n{\n}\n",
         ) as $name => $source) {
             $rewritten_seat = WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/SeatStore.php');
             $this->assertStringContainsString('OpenAiOauth\\Shared', $rewritten_seat, sprintf('The %s spelling rewrites clean at the SEAT — engine-legal trivia never refuses the build (red at HEAD: the refusal).', $name));
-            $this->assertStringNotContainsString('/*', substr($rewritten_seat, (int) strpos($rewritten_seat, 'use ')), sprintf('The %s comment rides neither verdict nor output — the matched span\'s reassembly drops it.', $name));
+            // The comment-drop assertion scopes to the GROUP rows (a
+            // use statement to anchor on); the declaration rows carry
+            // no use statement and the banner's own docblock opener
+            // would false-trip the whole-output read.
+            $use_at = strpos($rewritten_seat, 'use ');
+            if (false !== $use_at) {
+                $this->assertStringNotContainsString('/*', (string) substr($rewritten_seat, $use_at), sprintf('The %s comment rides neither verdict nor output — the matched span\'s reassembly drops it.', $name));
+            }
         }
 
         /*

@@ -182,6 +182,11 @@ final class WpConnectorsBuild
         // is a validated namespace segment; preg_quote is the belt to
         // the assertNamespaceSegment braces).
         $target_escaped = $vendor_pattern . '\\\\' . preg_quote((string) $pluginSuffix, '/') . '\\\\' . $shared_leaf;
+        /* t31-glm43-3: the CALLBACK spelling of the same target — the
+         * declaration pass now rides replaceOverCommentBlanked, whose
+         * callback returns bytes VERBATIM where the old replacement
+         * TEMPLATE unescaped '\\\\' to '\\' (the t31-r2-19 verifier pin). */
+        $target_plain = $vendor . '\\' . preg_quote((string) $pluginSuffix, '/') . '\\' . $shared_leaf;
 
         $escapedVersion = str_replace(array('\\', '$'), array('\\\\', '\\$'), (string) $sourceVersion);
         $provenance = "/**\n * Generated copy of {$escapedVersion} for this plugin's private namespace.\n * Do not edit here; change the shared source and rebuild.\n */\n";
@@ -252,12 +257,23 @@ final class WpConnectorsBuild
          * family-reference verdict owns it — never a rewrite that
          * splices mid-name.
          */
-        $rewritten = self::replaceOrThrow(
-            preg_replace(
-                '/(' . $statement_start . '(?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*\s*;)/',
-                '$1' . $target_escaped . '$2',
-                $rewritten
-            ),
+        /*
+         * t31-glm43-3 [R43-4, the blanked-twin sweep one seat over —
+         * glm42-3 minted the helper for this exact disease and the
+         * declaration pass kept plain preg_replace over RAW bytes]:
+         * a php -l-clean comment inside the namespace statement
+         * killed the pattern match and the build refused legal input
+         * with the ANONYMOUS postcondition failure (driven both
+         * spellings at HEAD: a comment before the name and a comment
+         * before the semicolon). The pass rides the comment-blanked
+         * twin like both group seats.
+         */
+        $rewritten = self::replaceOverCommentBlanked(
+            '/(' . $statement_start . '(?i:namespace)\s+)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*\s*;)/',
+            static function ($matches) use ($target_plain) {
+                return $matches[1] . $target_plain . $matches[2];
+            },
+            $rewritten,
             'namespace declaration rewrite',
             $sourceVersion
         );
@@ -388,7 +404,7 @@ final class WpConnectorsBuild
                  * high byte before the keyword is label content
                  * ('Grüßuse'), not a boundary.
                  */
-                '/' . $statement_start . '((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*)(\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)?((?:\\\\)?\s*\{[^;}]*\})?\s*;/',
+                '/' . $statement_start . '((?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?)' . $shared_pattern . '((?:\\\\[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)*)(\s+(?i:as)\s+[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)?((?:\s*\\\\)?\s*\{[^;}]*\})?\s*;/',
                 static function ($matches) use ($sourceVersion, $vendor, $pluginSuffix, $family_leaf) {
                     // The optional groups are ABSENT keys (never
                     // null/'' — no PREG_UNMATCHED_AS_NULL here), the
@@ -573,12 +589,19 @@ final class WpConnectorsBuild
          * seam, its byte class the LABEL_BYTES owner's since
          * t31-ocr60-3).
          */
+        /* t31-glm43-3 [R43-5, the separator tolerance]: the seat
+         * demanded the separator IMMEDIATELY after the vendor name,
+         * so the php -l-clean 'use Deicod\WpConnectors \{Shared\Clock};'
+         * (whitespace before the separator-brace) matched no seat and
+         * refused anonymously at the postcondition (driven at HEAD);
+         * the '\s*' tolerance before the separator admits it, glued
+         * spellings unchanged. */
         /* t31-glm42-3 [R42-4+R42-5]: this seat rides the comment-blanked
          * twin too — the inter-token and in-body comment shapes refused
          * php -l-clean input here while the conventions gate answered 0
          * (see the plain seat's census note above). */
         $rewritten = self::replaceOverCommentBlanked(
-                '/(' . $statement_start . '(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
+                '/(' . $statement_start . '(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?' . $vendor_pattern . '\s*\\\\)\s*(\{)([^{}]*)(\})\s*;/',
                 static function ($matches) use ($pluginSuffix, $sourceVersion, $shared_leaf) {
                     $members = array();
                     $member_pieces = explode(',', $matches[3]);
