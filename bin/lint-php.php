@@ -285,7 +285,15 @@ if (wp_connectors_cli_entry(__FILE__)) {
                  * answering 5 FAILs exit 1 where the mkdir-failure
                  * control two lines up answers the same tree green
                  * through the serial arm). The write failure falls
-                 * back too — the comment's own promise.
+                 * back too — the comment's own promise. (CORRECTED
+                 * at t31-glm45-7, R45-6 — the first landing put the
+                 * serial call in the write-failure arm but left the
+                 * pooled-verdict loop OUTSIDE the if/else, so the
+                 * fallback ran and the loop STILL read the
+                 * never-written scratch verdicts, failing every file
+                 * — the loop rides INSIDE the write-success arm now,
+                 * the serial arm's own verdict block being the serial
+                 * loop itself.)
                  */
                 if (false === file_put_contents($list, $pairs)) {
                     $lint_serial();
@@ -296,55 +304,55 @@ if (wp_connectors_cli_entry(__FILE__)) {
                         $scratch
                     );
                     exec(sprintf('xargs -0 -n2 -P8 sh -c %1$s < %2$s 2>&1', escapeshellarg($runner), escapeshellarg($list)));
-                }
-                foreach ($files as $index => $path) {
-                    $verdict = @file_get_contents(sprintf('%s/%d.lint', $scratch, $index));
-                    /*
-                     * t31-glm37-1 [R37-5, the lint gate's own seat — the same
-                     * forgery class as the inspector's, one owner's spelling]:
-                     * the verdict read anchors to the LAST '^exit=N' line, the
-                     * runner's echo appending after php -l's output — a walked
-                     * file whose NAME carries an embedded '\nexit=0\n' (a legal
-                     * filename byte) otherwise forges a green verdict over
-                     * parse-broken source (driven: 'lint-php: 182 file(s)
-                     * checked, 0 failure(s)' exit 0 over a planted
-                     * parse-broken newline-named file, the byte-identical
-                     * plain-named twin answering 1 failure exit 1).
-                     */
-                    $code = array();
-                    $verdict_lines = false === $verdict ? 0 : preg_match_all('/^exit=([0-9]+)$/m', $verdict, $code);
-                    if (false === $verdict || false === $verdict_lines || 0 === $verdict_lines) {
-                        ++$failures;
-                        fwrite(STDERR, 'lint-php: FAIL ' . wp_connectors_printable($path) . ": no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine).\n");
-
-                        continue;
-                    }
-                    $code = array( 1 => $code[1][ $verdict_lines - 1 ] );
-                    if ('0' !== $code[1]) {
+                    foreach ($files as $index => $path) {
+                        $verdict = @file_get_contents(sprintf('%s/%d.lint', $scratch, $index));
                         /*
-                         * t31-glm41-4 [R41-13, the OUTPUT seam — the
-                         * inspector's printable doctrine, one owner's
-                         * spelling over]: every diagnostic this gate
-                         * prints interpolates WALKED-ENTRY bytes (php
-                         * -l's own output embeds the walked path; the
-                         * no-verdict refusal names it; the symlink and
-                         * walk-abort refusals name the entry and the
-                         * iterator's own message) — and a legal
-                         * filename byte set (an embedded '\n', the
-                         * r12-15/R37-5 class) forges WHOLE LINES into
-                         * the log: driven at HEAD, a parse-broken
-                         * 'a\nlint-php: 3 file(s) checked, 0 failure(s)\nb.php'
-                         * planted in a staged tree printed the forged
-                         * GREEN SUMMARY twice before the real '1
-                         * failure(s)' line — a harness or human
-                         * reading the log sees a clean gate. Every
-                         * seam renders through wp_connectors_printable
-                         * (C0/DEL/bidi controls become spaces, the
-                         * r13-4 map), the verdict bytes themselves
-                         * untouched — only their PRINT is swept.
+                         * t31-glm37-1 [R37-5, the lint gate's own seat — the same
+                         * forgery class as the inspector's, one owner's spelling]:
+                         * the verdict read anchors to the LAST '^exit=N' line, the
+                         * runner's echo appending after php -l's output — a walked
+                         * file whose NAME carries an embedded '\nexit=0\n' (a legal
+                         * filename byte) otherwise forges a green verdict over
+                         * parse-broken source (driven: 'lint-php: 182 file(s)
+                         * checked, 0 failure(s)' exit 0 over a planted
+                         * parse-broken newline-named file, the byte-identical
+                         * plain-named twin answering 1 failure exit 1).
                          */
-                        ++$failures;
-                        fwrite(STDERR, wp_connectors_printable(rtrim((string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict))) . "\n");
+                        $code = array();
+                        $verdict_lines = false === $verdict ? 0 : preg_match_all('/^exit=([0-9]+)$/m', $verdict, $code);
+                        if (false === $verdict || false === $verdict_lines || 0 === $verdict_lines) {
+                            ++$failures;
+                            fwrite(STDERR, 'lint-php: FAIL ' . wp_connectors_printable($path) . ": no pooled lint verdict — the batched engine never answered (a POSIX host without xargs(1) answers its own loud failure here, the glm20-6 timeout(1) doctrine).\n");
+
+                            continue;
+                        }
+                        $code = array( 1 => $code[1][ $verdict_lines - 1 ] );
+                        if ('0' !== $code[1]) {
+                            /*
+                             * t31-glm41-4 [R41-13, the OUTPUT seam — the
+                             * inspector's printable doctrine, one owner's
+                             * spelling over]: every diagnostic this gate
+                             * prints interpolates WALKED-ENTRY bytes (php
+                             * -l's own output embeds the walked path; the
+                             * no-verdict refusal names it; the symlink and
+                             * walk-abort refusals name the entry and the
+                             * iterator's own message) — and a legal
+                             * filename byte set (an embedded '\n', the
+                             * r12-15/R37-5 class) forges WHOLE LINES into
+                             * the log: driven at HEAD, a parse-broken
+                             * 'a\nlint-php: 3 file(s) checked, 0 failure(s)\nb.php'
+                             * planted in a staged tree printed the forged
+                             * GREEN SUMMARY twice before the real '1
+                             * failure(s)' line — a harness or human
+                             * reading the log sees a clean gate. Every
+                             * seam renders through wp_connectors_printable
+                             * (C0/DEL/bidi controls become spaces, the
+                             * r13-4 map), the verdict bytes themselves
+                             * untouched — only their PRINT is swept.
+                             */
+                            ++$failures;
+                            fwrite(STDERR, wp_connectors_printable(rtrim((string) preg_replace('/^exit=[0-9]+$\n?/m', '', $verdict))) . "\n");
+                        }
                     }
                 }
             } finally {
