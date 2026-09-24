@@ -136,19 +136,39 @@ final class SelfContainmentAutoloaderPrefixBindingTest extends TestCase
         foreach ($flag_shapes as $name => $leg) {
             $violations = $this->autoloadWith($canonical . $leg . "\n");
             $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $violations), "The {$name} operand channel flags — an operand path is never prose.");
-            $this->base .= '-n' . md5($name);
+            // 8 digest chars: the chained per-shape roots once crossed
+            // NAME_MAX at full md5 width (glm42-4's three new rows pushed
+            // the 11-shape chain past 255 bytes — driven 'File name too long').
+            $this->base .= '-n' . substr(md5($name), 0, 8);
             @mkdir($this->base . '/zai/src', 0755, true);
         }
 
         $clean_shapes = array(
             'prose require words' => "\$why = 'self-contained: must not require composer or any vendor tree';",
             'dollar-include variable' => '$include = "vendor/nothing.php";',
+            /*
+             * R42-6 (driven false flag — the probe's boundary one class
+             * short): the keyword arm's lookbehind spelled PCRE's ASCII
+             * '\w' while a LEGAL label byte glued to the keyword still
+             * started a match — a php -l-clean autoloader calling the
+             * user helper 'äfile_get_contents(...)' over an
+             * assets/vendor-notes.txt path false-flagged as its sole
+             * violation (red at HEAD). Both edges ride the LABEL byte
+             * class now: a call must neither start nor continue a name
+             * over any byte a label admits.
+             */
+            'high-byte glued helper' => "\xC3\xA4file_get_contents(__DIR__ . \"/assets/vendor-notes.txt\");",
+            'right-edge high byte' => "eval\xFC(__DIR__ . \"/assets/x.php\");",
+            'ASCII glued control' => 'my_file_get_contents(__DIR__ . "/assets/vendor-notes.txt");',
             'plain valid' => '',
         );
         foreach ($clean_shapes as $name => $leg) {
             $violations = $this->autoloadWith($canonical . $leg . "\n");
             $this->assertStringNotContainsString('must not reference composer or vendor', implode("\n", $violations), "The {$name} shape stays clean — prose words and variables never arm the operand probe (red at HEAD for the prose/variable shapes: the false flag).");
-            $this->base .= '-n' . md5($name);
+            // 8 digest chars: the chained per-shape roots once crossed
+            // NAME_MAX at full md5 width (glm42-4's three new rows pushed
+            // the 11-shape chain past 255 bytes — driven 'File name too long').
+            $this->base .= '-n' . substr(md5($name), 0, 8);
             @mkdir($this->base . '/zai/src', 0755, true);
         }
     }
@@ -218,7 +238,10 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         foreach ($flag_shapes as $name => $leg) {
             $violations = $this->autoloadWith($canonical . $leg . "\n");
             $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $violations), "The {$name} operand channel flags (red at HEAD: 0 violations where master flags).");
-            $this->base .= '-n' . md5($name);
+            // 8 digest chars: the chained per-shape roots once crossed
+            // NAME_MAX at full md5 width (glm42-4's three new rows pushed
+            // the 11-shape chain past 255 bytes — driven 'File name too long').
+            $this->base .= '-n' . substr(md5($name), 0, 8);
             @mkdir($this->base . '/zai/src', 0755, true);
         }
     }

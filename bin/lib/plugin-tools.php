@@ -4843,7 +4843,23 @@ function wp_connectors_autoloader_violations($pluginDir)
          * the vendor/composer judgment reads the RAW slice at the same
          * length-preserved offsets, the two-view judge's own shape.
          */
-        $operand_hits = preg_match_all('/(?<![\\$\w])((?i:require|include)(?i:_once)?|(?i:eval|file_get_contents|readfile|shell_exec|exec|system|passthru|popen|proc_open|fopen|file_put_contents))\b' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $operand_statements, PREG_OFFSET_CAPTURE);
+        /*
+         * t31-glm42-4 [R42-6, driven false flag — the probe's own
+         * boundary one class short]: the keyword arm's lookbehind
+         * spelled PCRE's ASCII '(?<![\$\w])' and its right edge a
+         * bare '\b', while a LEGAL label byte (the high bytes
+         * WP_CONNECTORS_LABEL_BYTES owns, the ocr59-2 class) glued
+         * to the keyword still started a match — a php -l-clean
+         * autoloader calling the user helper
+         * 'äfile_get_contents(__DIR__ . "/assets/vendor-notes.txt");'
+         * false-flagged 'must not reference composer or vendor' as
+         * its sole violation (driven at HEAD through the real entry
+         * point; the ASCII-glued control already clean). Both edges
+         * ride the LABEL byte class now — a call must neither start
+         * nor continue a name over any byte a label admits (the
+         * file's own census doctrine, the define probe's spelling).
+         */
+        $operand_hits = preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])((?i:require|include)(?i:_once)?|(?i:eval|file_get_contents|readfile|shell_exec|exec|system|passthru|popen|proc_open|fopen|file_put_contents))(?![' . WP_CONNECTORS_LABEL_BYTES . '])' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $operand_statements, PREG_OFFSET_CAPTURE);
         if (false !== $operand_hits && $operand_hits > 0) {
             foreach ($operand_statements[0] as $index => $operand) {
                 $statement_text = (string) substr($code, $operand[1], strlen($operand[0]));
