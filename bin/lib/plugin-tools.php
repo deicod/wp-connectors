@@ -6446,14 +6446,37 @@ function wp_connectors_decode_define_literal_expression($expression, $heredoc_ar
 
             continue;
         }
-        // The opener ends at the FIRST line terminator of either kind.
-        $body = (string) substr($text, (int) strcspn($text, "\r\n") + 1);
+        /*
+         * The opener ends at the FIRST line terminator of either kind —
+         * and a CRLF terminator is TWO bytes, one terminator
+         * (t31-glm50-3, R50-11, driven false refusal): the '+1' slice
+         * left the LF at the head of a CRLF-authored body ('(\n1.2.3)
+         * does not match' on a runtime value of exactly '1.2.3', the
+         * pre-glm49-5 strpos("\n")+1 spelling having handled CRLF —
+         * the round-49 restructure's own regression, caught one
+         * round later).
+         */
+        $opener_end = (int) strcspn($text, "\r\n") + 1;
+        if ($opener_end < strlen($text) && "\r" === $text[ $opener_end - 1 ] && "\n" === $text[ $opener_end ]) {
+            ++$opener_end;
+        }
+        $body = (string) substr($text, $opener_end);
         $body = (string) preg_replace('/(?:\r\n|\n|\r)[ \t]*' . preg_quote($label, '/') . '\z/', '', $body);
         if ('' !== $indent) {
             // De-indent by the closer's own indentation, line-wise.
             $body = preg_replace('/(^|(?<=\r)|(?<=\n))' . preg_quote($indent, '/') . '/', '', $body);
         }
-        $decoded .= '' !== $quote ? $body : wp_connectors_unescape_php_string_literal('"', $body);
+        /*
+         * t31-glm50-3 (R50-15, driven false refusal): only the
+         * SINGLE-quoted label is a nowdoc (its body verbatim — nothing
+         * resolves); the round-49 arm routed ANY non-empty captured
+         * quote to verbatim, so the double-quoted '<<<"V"' heredoc —
+         * whose escapes the engine processes — decoded its body raw
+         * ('"\x31.2.3"' refusing against its own runtime '1.2.3').
+         * The unquoted and double-quoted spellings ride the ONE
+         * quote-style owner's double-quote arm.
+         */
+        $decoded .= "'" === $quote ? $body : wp_connectors_unescape_php_string_literal('"', $body);
     }
 
     return $decoded;

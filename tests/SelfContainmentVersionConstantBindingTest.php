@@ -402,6 +402,9 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
             'flexible closer indent' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<V\n    1.2.3\n    V\n );\n",
             'CR-only opener' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<V\r1.2.3\rV\n );\n",
             'quote then heredoc' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', '1.2' . <<<V\n.3\nV\n );\n",
+            'CRLF-terminated heredoc' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\r\ndefine( 'MYPLUG_VERSION', <<<V\r\n1.2.3\r\nV\r\n );\r\n",
+            'CRLF flex-closer indent' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\r\ndefine( 'MYPLUG_VERSION', <<<V\r\n    1.2.3\r\n    V\r\n );\r\n",
+            'double-quoted heredoc escapes' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<\"V\"\n\\x31.2.3\nV\n );\n",
             'parenthesized name' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( ( 'MYPLUG_VERSION' ), '1.2.3' );\n",
             'concatenated name' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG' . '_VERSION', '1.2.3' );\n",
         ) as $name => $source) {
