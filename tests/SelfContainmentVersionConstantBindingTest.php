@@ -344,6 +344,46 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         WpHarness::releaseScratch($base);
     }
 
+    public function testEncodingParenAndHeredocValueSpellingsBind(): void
+    {
+        /*
+         * R48-6 (driven false refusals — the value's legal spellings
+         * one grammar over): the capture admitted only bare
+         * un-parenthesized single/double-quoted literals, so an
+         * executed constant equal to the header REFUSED at every
+         * gate — the b/B-encoding prefix (a no-op spelling), one
+         * parenthesizing around the concatenation, and a
+         * heredoc/nowdoc value all minting the false 'must define
+         * constant' refusal on php -l-clean working plugins. The
+         * capture admits the prefix, the wrapping parens, and the
+         * heredoc arm (the closer matched against its own label by
+         * RELATIVE backreference — the one spelling shared by the
+         * first piece and every concatenation arm); the pieces
+         * decode IN ORDER (quoted pieces and heredoc blocks merged
+         * by offset), the heredoc body through the ONE quote-style
+         * owner's double-quote arm, the nowdoc body verbatim.
+         */
+        $base = sys_get_temp_dir() . '/wp-connectors-version-spell-' . uniqid('', true);
+        foreach (array(
+            'b-prefixed single' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', b'1.2.3' );\n",
+            'B-prefixed double' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', B\"1.2.3\" );\n",
+            'parenthesized concat' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', ( '1.2' . '.3' ) );\n",
+            'heredoc value' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<V\n1.2.3\nV\n );\n",
+            'nowdoc value' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<'V'\n1.2.3\nV\n );\n",
+            'quote then heredoc' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', '1.2' . <<<V\n.3\nV\n );\n",
+        ) as $name => $source) {
+            @mkdir($base . '/myplug', 0755, true);
+            file_put_contents($base . '/myplug/myplug.php', $source);
+            $this->assertSame(array(), wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php')), "The {$name} spelling binds — the executed constant equals the header (red at HEAD: the false must-define refusal).");
+            unlink($base . '/myplug/myplug.php');
+        }
+        @mkdir($base . '/myplug', 0755, true);
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 9.9\n */\ndefine( 'MYPLUG_VERSION', <<<V\n1.2.3\nV\n );\n");
+        $mismatch = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '9.9'), array($base . '/myplug/myplug.php'));
+        $this->assertStringContainsString('does not match header Version', implode("\n", $mismatch), 'The heredoc mismatch twin keeps its own refusal with the DECODED body printed.');
+        WpHarness::releaseScratch($base);
+    }
+
     public function testTightGlueAndCommentGlueDefineShapes(): void
     {
         /*
