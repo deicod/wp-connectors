@@ -1011,9 +1011,27 @@ final class Url {
 			if ( false === $packed ) {
 				return null;
 			}
-			$host_long = sprintf( '%u', ip2long( $packed ) ) + 0;
-			$fields[]  = dechex( intdiv( $host_long, 65536 ) );
-			$fields[]  = dechex( $host_long % 65536 );
+
+			/*
+			 * t31-glm47-4 [R47-6 — the 32-bit floor the composer
+			 * constraint admits]: the first spelling derived the two
+			 * hextets through sprintf('%u', ip2long(...)) + 0 — a
+			 * FLOAT for every quad above 127.255.255.255 on a
+			 * 32-bit engine (the unsigned value exceeds
+			 * PHP_INT_SIZE=4 there) — and intdiv() on a float is a
+			 * TypeError under strict_types, so the helper fataled
+			 * on the dotted-tail shape on every 32-bit host while
+			 * the 64-bit CI stayed green. The hextets ride
+			 * inet_pton() + unpack() now — pure int arithmetic on
+			 * both word sizes, the network byte order the
+			 * serializer's own spelling (driven: the TypeError
+			 * class reproduced directly, the four edge quads —
+			 * 255.255.255.255, 127.0.0.1, 0.0.0.0, 1.2.3.4 —
+			 * answering the identical hextet pairs as ints).
+			 */
+			$hextets  = unpack( 'n2', (string) inet_pton( $packed ) );
+			$fields[] = dechex( $hextets[1] );
+			$fields[] = dechex( $hextets[2] );
 		}
 
 		// The '::' compression: one empty field mid-literal, two at
