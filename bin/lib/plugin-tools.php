@@ -4950,10 +4950,108 @@ function wp_connectors_autoloader_violations($pluginDir)
          * nor continue a name over any byte a label admits (the
          * file's own census doctrine, the define probe's spelling).
          */
-        $operand_hits = preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])((?i:require|include)(?i:_once)?|(?i:eval|file_get_contents|readfile|shell_exec|exec|system|passthru|popen|proc_open|fopen|file_put_contents))(?![' . WP_CONNECTORS_LABEL_BYTES . '])' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $operand_statements, PREG_OFFSET_CAPTURE);
-        if (false !== $operand_hits && $operand_hits > 0) {
-            foreach ($operand_statements[0] as $index => $operand) {
-                $statement_text = (string) substr($code, $operand[1], strlen($operand[0]));
+        /*
+         * t31-glm45-3 [R45-1, security:medium, driven both edges -
+         * the fixed keyword enumeration wrong at BOTH ends]: the
+         * variable-callee spelling ('$fn = ' + 'file_get_contents' +
+         * "; $fn( __DIR__ . \"/vendor-pkg/lib.php\" );" and the system
+         * twin) was INVISIBLE where master flags (the glm43-1/glm44-1
+         * variable-resolution only runs inside already-matched
+         * statements), and the member-call spelling
+         * ('$docs->include( ...vendor-notes... )' - a legal include()
+         * METHOD, php -l clean) FALSELY REFUSED for the bare vendor
+         * substring (the left lookbehind refused only '$' and label
+         * bytes, not the ':' '>' glue bytes R44-4 gave the loop
+         * detector). The probe derives from the TOKEN STREAM now:
+         * every T_STRING whose case-folded text is a channel keyword
+         * is a candidate (a direct call or a member/static/nullsafe
+         * method name - the gluing punctuation rides the bytes
+         * BETWEEN tokens, so the enumeration and its fixed lookarounds
+         * die together), and a T_VARIABLE immediately followed by
+         * '(' feeds the SAME variable-resolution machinery the direct
+         * spelling rides (a variable callee is a channel whatever name
+         * it holds - the resolution judges the resolved VALUE bytes by
+         * the operand-probe standard, a resolved string carrying
+         * vendor/composer being a vendor path by the same R39-3
+         * doctrine the require-through-variable shape already rides).
+         */
+        $operand_tokens = token_get_all($source);
+        $channel_functions = array(
+            'file_get_contents' => true, 'readfile' => true, 'shell_exec' => true, 'exec' => true,
+            'system' => true, 'passthru' => true, 'popen' => true, 'proc_open' => true,
+            'fopen' => true, 'file_put_contents' => true,
+        );
+        /*
+         * t31-glm45-3: the walk accumulates each token's byte offset
+         * (token_get_all answers LINE, never offset — and it never
+         * THROWS over unparseable bytes, the pre-lint threat model's
+         * own requirement PhpToken::tokenize's ParseError would
+         * breach); the trivia class spans whitespace and comments.
+         */
+        $operand_candidates = array();
+        $token_offset = 0;
+        $token_count = count($operand_tokens);
+        for ($operand_index = 0; $operand_index < $token_count; ++$operand_index) {
+            $operand_token = $operand_tokens[ $operand_index ];
+            $token_text = is_array($operand_token) ? $operand_token[1] : $operand_token;
+            $token_id = is_array($operand_token) ? $operand_token[0] : null;
+            $is_trivia = is_array($operand_token) && (T_WHITESPACE === $token_id || T_COMMENT === $token_id || T_DOC_COMMENT === $token_id);
+            if (! $is_trivia) {
+                if (T_INCLUDE === $token_id || T_INCLUDE_ONCE === $token_id || T_REQUIRE === $token_id || T_REQUIRE_ONCE === $token_id || T_EVAL === $token_id) {
+                    $operand_candidates[] = $token_offset;
+                } elseif (T_STRING === $token_id && isset($channel_functions[ wp_connectors_ascii_lower($token_text) ])) {
+                    /*
+                     * The name-usage contexts R44-4 spelled for the
+                     * loop detector, at this seat by TOKEN: a
+                     * member/static/nullsafe method NAMED like a
+                     * channel function, a const declaration, and a
+                     * function declaration are legal PHP (php -l
+                     * clean) and never channels — the previous
+                     * significant token names the context, the gluing
+                     * punctuation riding between tokens where the
+                     * enumeration's fixed lookarounds could not see
+                     * it.
+                     */
+                    $prev_index = $operand_index - 1;
+                    while ($prev_index >= 0 && is_array($operand_tokens[ $prev_index ]) && (T_WHITESPACE === $operand_tokens[ $prev_index ][0] || T_COMMENT === $operand_tokens[ $prev_index ][0] || T_DOC_COMMENT === $operand_tokens[ $prev_index ][0])) {
+                        --$prev_index;
+                    }
+                    $prev_id = (is_array($operand_tokens[ $prev_index ] ?? null)) ? $operand_tokens[ $prev_index ][0] : null;
+                    $prev_text = (is_array($operand_tokens[ $prev_index ] ?? null)) ? $operand_tokens[ $prev_index ][1] : (string) ($operand_tokens[ $prev_index ] ?? '');
+                    if (T_OBJECT_OPERATOR === $prev_id || T_DOUBLE_COLON === $prev_id || T_CONST === $prev_id || T_FUNCTION === $prev_id
+                        || (null !== $prev_id && '?->' === $prev_text)) {
+                        // A member/static/nullsafe call, a constant, or
+                        // a declaration — never a channel.
+                    } else {
+                        $operand_candidates[] = $token_offset;
+                    }
+                } elseif (T_VARIABLE === $token_id) {
+                    /*
+                     * The VARIABLE-CALLEE arm: '$fn( __DIR__ .
+                     * '/vendor-pkg/lib.php' );' with '$fn =
+                     * 'file_get_contents';' — a variable immediately
+                     * followed by '(' is a dynamic call whatever name
+                     * it holds, the call's argument bytes riding the
+                     * statement extent this loop already judges.
+                     */
+                    $next_index = $operand_index + 1;
+                    while ($next_index < $token_count && is_array($operand_tokens[ $next_index ]) && (T_WHITESPACE === $operand_tokens[ $next_index ][0] || T_COMMENT === $operand_tokens[ $next_index ][0] || T_DOC_COMMENT === $operand_tokens[ $next_index ][0])) {
+                        ++$next_index;
+                    }
+                    $next_text = (is_array($operand_tokens[ $next_index ] ?? null)) ? $operand_tokens[ $next_index ][1] : (string) ($operand_tokens[ $next_index ] ?? '');
+                    if ('(' === $next_text) {
+                        $operand_candidates[] = $token_offset;
+                    }
+                }
+            }
+            $token_offset += strlen($token_text);
+        }
+        foreach ($operand_candidates as $operand_start) {
+            $extent_hits = preg_match('/' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $extent, 0, $operand_start);
+            if (1 !== $extent_hits) {
+                continue;
+            }
+            $statement_text = (string) substr($code, $operand_start, strlen($extent[0]));
                 if (false === stripos($statement_text, 'vendor') && false === stripos($statement_text, 'composer')) {
                     /*
                      * t31-glm43-1 [R43-1, security:medium, driven
@@ -5001,7 +5099,7 @@ function wp_connectors_autoloader_violations($pluginDir)
                     preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $statement_text, $variable_names);
                     $pending = array();
                     foreach (array_reverse($variable_names[1]) as $variable_name) {
-                        $pending[] = array( '$' . $variable_name, $operand[1] );
+                        $pending[] = array( '$' . $variable_name, $operand_start );
                     }
                     $seen_variables = array();
                     while ($pending !== array()) {
@@ -5024,15 +5122,13 @@ function wp_connectors_autoloader_violations($pluginDir)
                     }
                     continue;
                 }
-                // The keyword is the captured call name; prose words blank in the
-                // masked view this pattern runs over, a real call's keyword keeps
-                // its code bytes there by construction.
-                $keyword = $operand_statements[1][ $index ][0];
-                if (0 === substr_compare($masked, $keyword, $operand_statements[1][ $index ][1], strlen($keyword), true)) {
-                    $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
-                    break;
-                }
-            }
+            // A candidate whose statement text names vendor/composer IS the
+            // violation — the token kinds are code by construction, no
+            // masked re-confirmation owed (the prose immunity lives in the
+            // token kind itself: prose words lex T_CONSTANT_ENCAPSED_STRING
+            // or T_INLINE_HTML, never these ids).
+            $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
+            break;
         }
     }
     $expectedPrefix = 'Deicod\\WpConnectors\\' . wp_connectors_namespace_suffix_from_slug($slug) . '\\';

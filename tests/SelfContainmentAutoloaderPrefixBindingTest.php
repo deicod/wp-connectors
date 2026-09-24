@@ -345,4 +345,38 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         $this->assertStringNotContainsString('must not reference composer or vendor', implode("\n", $cycle), 'A variable cycle over an anchored value stays clean — the seen-set closes the loop.');
     }
 
+
+    public function testVariableCalleesFlagAndMemberCallSpellingsStayClean(): void
+    {
+        /*
+         * R45-1 (security:medium, driven both edges — the fixed
+         * keyword enumeration wrong at BOTH ends): the
+         * variable-callee spelling ('$fn = 'file_get_contents';
+         * $fn( __DIR__ . '/../vendor-pkg/lib.php' );') was INVISIBLE
+         * where master flags, and the member-call spelling
+         * ('$docs->include( ...vendor-notes... )', a legal include()
+         * method) was refused for the bare vendor substring. The
+         * probe derives from the TOKEN STREAM now: keyword tokens
+         * and channel T_STRINGs (their previous significant token
+         * refusing the member/static/nullsafe/const/function
+         * name-usage contexts R44-4 spelled for the loop detector)
+         * plus a variable-immediately-followed-by-'(' arm — every
+         * candidate's statement extent judged by the same standard.
+         */
+        $canonical = "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) { \$path = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php'; require_once \$path; });\n";
+
+        $var_callee = $this->autoloadWith($canonical . "\$fn = 'file_get_contents';\n\$fn( __DIR__ . '/../vendor-pkg/lib.php' );\n");
+        $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $var_callee), 'The variable callee is a channel whatever name it holds — the argument bytes ride the statement extent (red at HEAD: clean where master flags).');
+
+        $this->base .= '-member';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $member = $this->autoloadWith($canonical . "\$docs = new DocHelper();\n\$docs->include( __DIR__ . '/../assets/vendor-notes.txt' );\nclass DocHelper { public function include(\$p) { return readfile(\$p); } }\n");
+        $this->assertStringNotContainsString('must not reference composer or vendor', implode("\n", $member), 'A legal include() method is a member call, never a channel — the name-usage contexts refused by token (red at HEAD: the false refusal).');
+
+        $this->base .= '-direct';
+        @mkdir($this->base . '/zai/src', 0755, true);
+        $direct = $this->autoloadWith($canonical . "file_get_contents(__DIR__ . '/vendor/pkg/lib.php');\n");
+        $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $direct), 'The direct spelling keeps its flag — the rewrite widens, never narrows.');
+    }
+
 }
