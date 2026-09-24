@@ -1565,6 +1565,22 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertTrue(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'your-' . 'api-' . 'key-' . 'here'), 'The canonical placeholder word tail keeps its exemption — api/key/here join the dictionary (red at HEAD: a live credential).');
         $this->assertTrue(wp_connectors_is_recognizably_fake_secret('test-' . 'api-' . 'key-' . 'here'), 'The leading-word spelling of the same tail.');
 
+        /*
+         * t31-glm51-1 (R51-1, driven through the real CLI — the
+         * vocabulary SPLIT): the round-50 'api'/'key'/'here'
+         * addition landed at the segment walker and the all-fake
+         * tail pass but NOT at the head/tail WORD-SPLIT seat, so
+         * 'api' cost 0 head bytes at the walker while the split
+         * still anchored on a LATER word — 16 bytes of chunked
+         * entropy riding the head side of the LAST dictionary word
+         * passing the budget and the chunked-entropy laundering
+         * class glm49-2 closed reopening. ONE owner serves all
+         * three seats now; the all-placeholder control keeps its
+         * exemption through the unified vocabulary.
+         */
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('sk-' . 'api-' . 'k3f9m7d' . '-test-' . 'a1b2c3d4e'), 'The split anchors the FIRST dictionary word with the full vocabulary — the chunked head entropy counts against the budget (red at HEAD: exempted).');
+        $this->assertTrue(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'api-' . 'abcdefgh'), 'The all-placeholder control keeps its exemption through the unified vocabulary — prefix, dictionary word, pure filler.');
+
         $fake = array(
             'vendor example head' => 'sk-proj-TEST-abc123',
             'whole-value words' => 'YOUR_API_KEY',

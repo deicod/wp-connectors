@@ -47,6 +47,33 @@ require_once __DIR__ . '/plugin-tools.php';
  *
  * @return array<string, list<string>>
  */
+/**
+ * The placeholder DICTIONARY (t31-glm51-1, R51-1 — the ONE owner):
+ * the words a segment (or a word-split region) must spell to count
+ * as placeholder material. The list lived hand-spelled at three
+ * seats (the segment walker, the all-fake tail pass, and the
+ * head/tail word split) — and the round-50 'api'/'key'/'here'
+ * addition landed at TWO of them only, the word-split seat keeping
+ * the base list — so 'api' cost 0 bytes at the walker while the
+ * split still anchored on a LATER word, keeping the entropy on the
+ * head side of the budget: the chunked-entropy laundering class
+ * glm49-2 closed reopened through the split (driven through the
+ * real CLI, a 16-byte chunked entropy tail shipping fake where the
+ * pre-round-50 tree flagged). Every seat composes from this owner;
+ * a future word lands everywhere or nowhere.
+ *
+ * The hyphenated words ('not-a-real', 'test-value') are WINDOW
+ * spellings at the word split (their pieces split on the same
+ * delimiters) and whole-segment spellings at the walker — both
+ * consumers derive from the one list.
+ *
+ * @return list<string> The dictionary words, longest-first for the alternation.
+ */
+function wp_connectors_fake_secret_dictionary_words()
+{
+    return array( 'not-a-real', 'notareal', 'test-value', 'placeholder', 'example', 'fixture', 'redacted', 'sample', 'dummy', 'fake', 'your', 'test', 'wpct', 'api', 'key', 'here' );
+}
+
 function wp_connectors_secret_patterns()
 {
     return array(
@@ -328,7 +355,7 @@ function wp_connectors_fake_secret_placeholder_spans(array $segments)
          * YOUR_API_KEY and the <your-token-here> wrapper only, the
          * three-word tail unpinned until now.
          */
-        if (1 === preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct|api|key|here)$/i', $segments[ $i ])
+        if (1 === preg_match('/^(?:' . implode( '|', wp_connectors_fake_secret_dictionary_words() ) . ')$/i', $segments[ $i ])
             || wp_connectors_segment_is_sequential_filler($folded)) {
             continue;
         }
@@ -363,7 +390,7 @@ function wp_connectors_is_recognizably_fake_secret($value)
      */
     $word_match = array();
     $head_is_placeholder = false;
-    if (preg_match('/(?:^|[-_\s])(not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)(?:[-_\s]|$)/i', $value, $word_match, PREG_OFFSET_CAPTURE)) {
+    if (preg_match('/(?:^|[-_\s])(' . implode( '|', wp_connectors_fake_secret_dictionary_words() ) . ')(?:[-_\s]|$)/i', $value, $word_match, PREG_OFFSET_CAPTURE)) {
         /*
          * t31-glm49-2 [R49-2, driven through the real CLI — the
          * chunked-entropy laundering, BOTH sides]: the head loop
@@ -472,7 +499,7 @@ function wp_connectors_is_recognizably_fake_secret($value)
         if ('' === $folded_value) {
             continue;
         }
-        if (1 !== preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct|api|key|here)$/i', $segment)
+        if (1 !== preg_match('/^(?:' . implode( '|', wp_connectors_fake_secret_dictionary_words() ) . ')$/i', $segment)
             && ! wp_connectors_segment_is_sequential_filler($folded_value)) {
             return false;
         }
