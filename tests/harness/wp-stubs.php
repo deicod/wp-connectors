@@ -2269,7 +2269,19 @@ function add_query_arg(...$args)
         $params[ (string) $key ] = $value; // Replace, do not duplicate.
     }
 
-    return $path . ($params === array() ? '' : '?' . http_build_query($params)) . $fragment;
+    /*
+     * t31-glm47-8 [R47-7, driven — the separator rode the INI]: core
+     * builds the query with '&' (its own `_http_build_query()` shape),
+     * while the bare http_build_query() consults
+     * arg_separator.output — an ini every host may set differently
+     * ('&amp;' on many distro builds) — so the stub emitted
+     * '&amp;'-joined queries and every pinned assertion over the
+     * built URL failed four times under
+     * `-d arg_separator.output='&amp;'` where the default-ini run
+     * stayed green: harness parity hostage to process ini. The
+     * separator pins explicitly, the output stable on every host.
+     */
+    return $path . ($params === array() ? '' : '?' . http_build_query($params, '', '&')) . $fragment;
 }
 
 /**
