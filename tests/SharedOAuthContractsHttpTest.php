@@ -2875,6 +2875,33 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         }
 
         /*
+         * t31-glm43-8 (R43-13, the review's PLAUSIBLE policy gap
+         * driven at HEAD): 'X-Session-Id' — the final segment 'id'
+         * matching no suffix — rendered its value verbatim through
+         * every masked render surface while the catalog's own cookie
+         * row masks the SAME credential material response-side
+         * (OWASP's session-management guidance names the session
+         * identifier a secret; the file's own prose calls the CSRF
+         * token 'the session credential'). 'session-id' joins the
+         * suffix class — the r24-4 curation bar met the ocr57-2 way
+         * (the finding is the writer).
+         */
+        foreach (array('X-Session-Id', 'Session-Id', 'x_session_id', 'x.session.id') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — the session identifier is credential material over every delimiter (red at HEAD: unmasked).");
+        }
+        $session_map = new HeaderMap(array(
+            'X-Session-Id' => 'sess_DEADBEEFCAFE0123',
+            'x-request-id' => 'req-58',
+        ));
+        foreach (array('dump' => print_r($session_map, true), 'serialize' => serialize($session_map)) as $channel => $rendered) {
+            $this->assertStringNotContainsString('sess_DEADBEEFCAFE0123', $rendered, "The session identifier renders masked in the {$channel} channel.");
+            $this->assertStringContainsString('req-58', $rendered, "The non-sensitive 'x-request-id' value still renders verbatim.");
+        }
+        foreach (array('x-session-idle', 'x-session-count') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — tails that are not 'session-id' are outside the class.");
+        }
+
+        /*
          * Round-21 pin (glm21-1 — the .NET glued twin, the r57-2
          * skip's re-open condition met by driven falsification of its
          * recorded premise): '__RequestVerificationToken' is the

@@ -369,7 +369,21 @@ final class SecretMask {
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256' );
+	/**
+	 * The session identifier joins the class (t31-glm43-8, R43-13 —
+	 * the review's PLAUSIBLE policy gap driven at HEAD): 'X-Session-
+	 * Id'/'Session-Id' — the final segment 'id' matching no suffix —
+	 * rendered its value verbatim through every masked render surface
+	 * while the catalog's own cookie row masks the SAME credential
+	 * material on the response side (OWASP's session-management
+	 * guidance names the session identifier a secret; the file's own
+	 * prose calls the CSRF token 'the session credential').
+	 * 'session-id' rides the suffix class — the r24-4 curation bar met
+	 * the ocr57-2 way (the finding is the writer); the boundary
+	 * unchanged ('x-session-idle', 'x-session-count' — tails that are
+	 * not 'session-id' — stay verbatim).
+	 */
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256', 'session-id' );
 
 	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
