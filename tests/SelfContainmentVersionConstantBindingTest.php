@@ -395,9 +395,15 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
             'b-prefixed single' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', b'1.2.3' );\n",
             'B-prefixed double' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', B\"1.2.3\" );\n",
             'parenthesized concat' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', ( '1.2' . '.3' ) );\n",
+            'double parens' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', ( ( '1.2' . '.3' ) ) );\n",
             'heredoc value' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<V\n1.2.3\nV\n );\n",
             'nowdoc value' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<'V'\n1.2.3\nV\n );\n",
+            'double-quoted label' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<\"V\"\n1.2.3\nV\n );\n",
+            'flexible closer indent' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<V\n    1.2.3\n    V\n );\n",
+            'CR-only opener' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<V\r1.2.3\rV\n );\n",
             'quote then heredoc' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', '1.2' . <<<V\n.3\nV\n );\n",
+            'parenthesized name' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( ( 'MYPLUG_VERSION' ), '1.2.3' );\n",
+            'concatenated name' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG' . '_VERSION', '1.2.3' );\n",
         ) as $name => $source) {
             @mkdir($base . '/myplug', 0755, true);
             file_put_contents($base . '/myplug/myplug.php', $source);
@@ -408,6 +414,25 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 9.9\n */\ndefine( 'MYPLUG_VERSION', <<<V\n1.2.3\nV\n );\n");
         $mismatch = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '9.9'), array($base . '/myplug/myplug.php'));
         $this->assertStringContainsString('does not match header Version', implode("\n", $mismatch), 'The heredoc mismatch twin keeps its own refusal with the DECODED body printed.');
+
+        /*
+         * t31-glm49-5 (R49-6, driven fail-open — the heredoc decode's
+         * unanchored closer): a body line STARTING with the label
+         * ('V9 body line') closed the decode at the first
+         * line-start label while the collector's backtracking
+         * spanned the full body — the truncated decode matching a
+         * header the real value MISMATCHES, the version-mismatch
+         * laundering the gate exists to catch. The closer anchors
+         * against label-continuation bytes now; this fixture's
+         * decoded value ('1.2.3' + newline + 'V9 body line')
+         * mismatches the '1.2.3' header and says so.
+         */
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<V\n1.2.3\nV9 body line\nV\n );\n");
+        $label_continuation = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+        $this->assertStringContainsString('V9 body line', implode("\n", $label_continuation), 'A body line starting with the label does not close the heredoc — the FULL decoded value mismatches its header (red at HEAD: binds clean on the truncated decode).');
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG' . '_OTHER', '1.2.3' );\n");
+        $wrong_name = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+        $this->assertStringContainsString('must define constant', implode("\n", $wrong_name), 'A concatenated name spelling ANOTHER constant binds nothing for this one — the name decodes and compares.');
         WpHarness::releaseScratch($base);
     }
 

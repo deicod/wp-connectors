@@ -6414,6 +6414,79 @@ function wp_connectors_namespace_suffix_from_slug($slug)
  * @param int    $call_offset The define keyword's byte offset.
  * @return bool True when the call resolves to a decoy (the binding must refuse).
  */
+/**
+ * Decodes one define-argument literal expression to its runtime
+ * string (t31-glm49-5): the quoted pieces and heredoc/nowdoc blocks
+ * walked IN ORDER (the concatenation owing its runtime order), the
+ * b/B prefix sliced outside the quote, the heredoc body unescaped
+ * through the ONE quote-style owner's double-quote arm, the nowdoc
+ * body verbatim. The heredoc decode rides the SHARED arm spelling
+ * (named groups quote/label/indent — no second hand-spelled
+ * grammar, R49-15), the body de-indented by the closer's own
+ * captured indentation (the PHP 7.3+ flexible-heredoc semantics),
+ * the opener's end at the FIRST of CR or LF (a CR-only-terminated
+ * file's strpos("\n") once answered false whose (int) cast left the
+ * opener bytes inside the decoded value).
+ *
+ * @param string $expression The captured argument expression.
+ * @param string $heredoc_arm The shared heredoc arm spelling.
+ * @return string The runtime string.
+ */
+function wp_connectors_decode_define_literal_expression($expression, $heredoc_arm)
+{
+    $decoded = '';
+    $quoted_pieces = array();
+    $quoted_hits = preg_match_all(wp_connectors_quoted_literal_grammar(), $expression, $quoted_pieces, PREG_OFFSET_CAPTURE);
+    $heredoc_pieces = array();
+    $heredoc_hits = preg_match_all('/' . $heredoc_arm . '/', $expression, $heredoc_pieces, PREG_OFFSET_CAPTURE);
+    $ordered = array();
+    $heredoc_spans = array();
+    if (false !== $heredoc_hits && $heredoc_hits > 0) {
+        foreach ($heredoc_pieces[0] as $heredoc_index => $heredoc_piece) {
+            $ordered[ $heredoc_piece[1] ] = array(
+                $heredoc_pieces[1][ $heredoc_index ][0],
+                $heredoc_piece[0],
+                $heredoc_pieces[2][ $heredoc_index ][0],
+                $heredoc_pieces[3][ $heredoc_index ][0],
+            );
+            $heredoc_spans[] = array($heredoc_piece[1], $heredoc_piece[1] + strlen($heredoc_piece[0]));
+        }
+    }
+    if (false !== $quoted_hits && $quoted_hits > 0) {
+        foreach ($quoted_pieces[0] as $quoted_piece) {
+            $inside_heredoc = false;
+            foreach ($heredoc_spans as $heredoc_span) {
+                if ($quoted_piece[1] >= $heredoc_span[0] && $quoted_piece[1] < $heredoc_span[1]) {
+                    $inside_heredoc = true;
+                    break;
+                }
+            }
+            if (! $inside_heredoc) {
+                $ordered[ $quoted_piece[1] ] = array('', $quoted_piece[0], '', '');
+            }
+        }
+    }
+    ksort($ordered);
+    foreach ($ordered as $piece) {
+        list($quote, $text, $label, $indent) = $piece;
+        if ('' === $label) {
+            $decoded .= wp_connectors_unescape_php_string_literal($text[0], (string) substr($text, 1, -1));
+
+            continue;
+        }
+        // The opener ends at the FIRST line terminator of either kind.
+        $body = (string) substr($text, (int) strcspn($text, "\r\n") + 1);
+        $body = (string) preg_replace('/(?:\r\n|\n|\r)[ \t]*' . preg_quote($label, '/') . '\z/', '', $body);
+        if ('' !== $indent) {
+            // De-indent by the closer's own indentation, line-wise.
+            $body = preg_replace('/(^|(?<=\r)|(?<=\n))' . preg_quote($indent, '/') . '/', '', $body);
+        }
+        $decoded .= '' !== $quote ? $body : wp_connectors_unescape_php_string_literal('"', $body);
+    }
+
+    return $decoded;
+}
+
 function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
 {
     /*
@@ -6777,7 +6850,26 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * flag) owning every pair judgment.
      */
 
-    $wp_connectors_define_heredoc_value_arm = '(?s:<<<[ \t]*(?:\'?)([A-Za-z_' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)(?:\'?)(?:\r\n|\n|\r).*?(?:\r\n|\n|\r)[ \t]*\g{-1})';
+    /*
+     * t31-glm49-5 [R49-6+R49-9+R49-15 — the heredoc arm's three
+     * corrections, the shared spelling the ONE grammar]: the closer
+     * anchors against label-continuation bytes (a body line STARTING
+     * with the label — 'V9 body line' — was closing the heredoc at
+     * the first line-start label while the collector's backtracking
+     * spanned the full body, the truncated decode BINDING a value
+     * that mismatches its header at zero violations, driven: the
+     * version-mismatch laundering the gate exists to catch); the
+     * opener's quote admits BOTH spellings (the double-quoted label
+     * '<<<"V"' a legal heredoc the single-quote-only arm refused);
+     * and the closer's indentation is CAPTURED — the decode
+     * de-indenting the body by exactly the closer's own indent, the
+     * PHP 7.3+ flexible-heredoc semantics (a closer at four spaces
+     * means the engine strips four spaces from every body line).
+     * NAMED groups (quote/label/indent) so the collector and the
+     * decode share this ONE spelling with no numbered-backreference
+     * drift (R49-15's duplicated-grammar doctrine).
+     */
+    $wp_connectors_define_heredoc_value_arm = '(?s:<<<[ \t]*([\'"]?)([A-Za-z_' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)(?:[\'"]?)(?:\r\n|\n|\r).*?(?:\r\n|\n|\r)([ \t]*)\g{-2}(?![\$' . WP_CONNECTORS_LABEL_BYTES . ']))';
     /*
      * t31-glm48-6 [R48-6, driven false refusals — the value's legal
      * spellings one grammar over]: the capture admitted only bare
@@ -6815,7 +6907,17 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * as every sibling seat spells it (line 3102's loop collector
      * the reference shape).
      */
-    if (preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*(?:\(\s*)?((?:[bB]?\'(?:\\\\.|[^\'\\\\])*\'|[bB]?"(?:\\\\.|[^"\\\\])*"|' . $wp_connectors_define_heredoc_value_arm . ')(\s*\.\s*(?:[bB]?\'(?:\\\\.|[^\'\\\\])*\'|[bB]?"(?:\\\\.|[^"\\\\])*"|' . $wp_connectors_define_heredoc_value_arm . '))*)(?:\s*\))?\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+    $wp_connectors_define_literal_expr = '(?:[bB]?\'(?:\\\\.|[^\'\\\\])*\'|[bB]?"(?:\\\\.|[^"\\\\])*"|' . $wp_connectors_define_heredoc_value_arm . ')';
+    /*
+     * t31-glm49-5 [R49-11 — the remaining legal spellings]: the
+     * wrap admits DOUBLE parenthesization (('1.2' . '.3') twice
+     * over) and the NAME argument rides the same literal
+     * expression as the value — a parenthesized name
+     * (('MYPLUG_VERSION')) or a concatenated one ('MYPLUG' .
+     * '_VERSION') decoded and compared against the derived
+     * constant, case-insensitively, before the candidate binds.
+     */
+    if (preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*(?:\(\s*){0,2}(?P<dname>' . $wp_connectors_define_literal_expr . '(?:\s*\.\s*' . $wp_connectors_define_literal_expr . ')*)(?:\s*\)){0,2}\s*,\s*(?:\(\s*){0,2}(?P<dvalue>' . $wp_connectors_define_literal_expr . '(?:\s*\.\s*' . $wp_connectors_define_literal_expr . ')*)(?:\s*\)){0,2}\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
         foreach ($candidates[0] as $index => $candidate) {
             /*
              * t31-glm40-2 [R40-3, security:medium, driven fail-open —
@@ -6885,61 +6987,19 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
                  * decode through the ONE quote-style owner and
                  * concatenate: the runtime value the compare owes.
                  */
-                $value_raw = '';
                 /*
-                 * The pieces walk IN ORDER (t31-glm48-6): the owner
-                 * grammar's quoted literals and the heredoc/nowdoc
-                 * blocks merged by offset — the concatenation owes
-                 * its runtime order, so a mixed expression ('1.' .
-                 * <<<V … V) decodes left to right. The b/B prefix
-                 * sits OUTSIDE the quotes the owner grammar matches,
-                 * so it never disturbs the quoted scan; the heredoc
-                 * blocks carry their own decode (the quote-marked
-                 * label a nowdoc — its body verbatim — the bare
-                 * label a heredoc through the ONE quote-style
-                 * owner's double-quote arm).
+                 * The NAME decodes first (t31-glm49-5): the argument
+                 * rides the same literal expression as the value, its
+                 * runtime spelling compared against the derived
+                 * constant case-insensitively — a parenthesized or
+                 * concatenated name binding exactly when its decoded
+                 * value IS the constant.
                  */
-                $quoted_pieces = array();
-                $quoted_hits = preg_match_all(wp_connectors_quoted_literal_grammar(), $candidates[1][ $index ][0], $quoted_pieces, PREG_OFFSET_CAPTURE);
-                $heredoc_pieces = array();
-                $heredoc_hits = preg_match_all('/(?s:<<<[ \t]*(\'?)([A-Za-z_' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)(?:\'?)(?:\r\n|\n|\r).*?(?:\r\n|\n|\r)[ \t]*\g{-1})/', $candidates[1][ $index ][0], $heredoc_pieces, PREG_OFFSET_CAPTURE);
-                $ordered = array();
-                $heredoc_spans = array();
-                if (false !== $heredoc_hits && $heredoc_hits > 0) {
-                    foreach ($heredoc_pieces[0] as $heredoc_index => $heredoc_piece) {
-                        $ordered[ $heredoc_piece[1] ] = array('heredoc', $heredoc_piece[0], $heredoc_pieces[1][ $heredoc_index ][0], $heredoc_pieces[2][ $heredoc_index ][0]);
-                        $heredoc_spans[] = array($heredoc_piece[1], $heredoc_piece[1] + strlen($heredoc_piece[0]));
-                    }
+                $name_raw = wp_connectors_decode_define_literal_expression($candidates['dname'][ $index ][0], $wp_connectors_define_heredoc_value_arm);
+                if ($name_raw !== $constantName && 0 !== substr_compare($name_raw, $constantName, 0, strlen($constantName), true)) {
+                    continue;
                 }
-                if (false !== $quoted_hits && $quoted_hits > 0) {
-                    foreach ($quoted_pieces[0] as $quoted_piece) {
-                        $inside_heredoc = false;
-                        foreach ($heredoc_spans as $heredoc_span) {
-                            if ($quoted_piece[1] >= $heredoc_span[0] && $quoted_piece[1] < $heredoc_span[1]) {
-                                $inside_heredoc = true;
-                                break;
-                            }
-                        }
-                        if (! $inside_heredoc) {
-                            $ordered[ $quoted_piece[1] ] = array('quoted', $quoted_piece[0]);
-                        }
-                    }
-                }
-                if (false !== $heredoc_hits && $heredoc_hits > 0) {
-                    foreach ($heredoc_pieces[0] as $heredoc_index => $heredoc_piece) {
-                        $ordered[ $heredoc_piece[1] ] = array('heredoc', $heredoc_piece[0], $heredoc_pieces[1][ $heredoc_index ][0], $heredoc_pieces[2][ $heredoc_index ][0]);
-                    }
-                }
-                ksort($ordered);
-                foreach ($ordered as $piece) {
-                    if ('quoted' === $piece[0]) {
-                        $value_raw .= wp_connectors_unescape_php_string_literal($piece[1][0], (string) substr($piece[1], 1, -1));
-
-                        continue;
-                    }
-                    $body = (string) preg_replace('/(?:\r\n|\n|\r)[ \t]*' . preg_quote((string) $piece[3], '/') . '\z/', '', (string) substr($piece[1], (int) strpos($piece[1], "\n") + 1));
-                    $value_raw .= '' !== $piece[2] ? $body : wp_connectors_unescape_php_string_literal('"', $body);
-                }
+                $value_raw = wp_connectors_decode_define_literal_expression($candidates['dvalue'][ $index ][0], $wp_connectors_define_heredoc_value_arm);
                 $constantMatch = array(1 => $value_raw);
                 break;
             }
