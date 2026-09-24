@@ -210,8 +210,40 @@ function wp_connectors_is_recognizably_fake_secret($value)
     if (preg_match('/^\$\{[^}]+\}$/', $value) || preg_match('/^<[^>]+>$/', $value)) {
         return true;
     }
-    if (preg_match('/(?:^|[-_\s])(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)(?:[-_\s]|$)/i', $value)) {
-        return true;
+    /*
+     * t31-glm43-4 [R43-8, driven under-refusal — the dictionary word
+     * matched ANYWHERE inside an already-matched value]: a live
+     * credential whose own body carries '-test-' or '_test_'
+     * (realistic staging tokens: a Slack-shaped body carrying the
+     * word between two entropy runs, a bearer body, an
+     * api03-keyed body — the driven shapes) was exempted
+     * WHOLESALE and shipped undetected (driven through the real CLI:
+     * 0 findings where the '-tesx-' twin flags). The word exempts
+     * only when the value's HEAD before it is placeholder material
+     * itself — empty, vendor markers and short type segments (at
+     * most 4 bytes), other dictionary words, or the sequential
+     * filler — never high-entropy credential bytes ('sk-proj-TEST-…'
+     * still fake, the documented vendor-example shape; 'xoxb-7f3k9q2m-
+     * test-…' live, the entropy ahead of the word naming it). The
+     * first occurrence owns the minimal head; every later one only
+     * grows it.
+     */
+    if (preg_match('/(?:^|[-_\s])(not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)(?:[-_\s]|$)/i', $value, $word_match, PREG_OFFSET_CAPTURE)) {
+        $head_segments = preg_split('/[-_\s]+/', (string) substr($value, 0, $word_match[1][1]));
+        $head_is_placeholder = true;
+        foreach ($head_segments as $head_segment) {
+            if ('' === $head_segment
+                || strlen($head_segment) <= 4
+                || 1 === preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)$/i', $head_segment)
+                || 1 === preg_match('/0123456789abcdef|abcdefgh/i', $head_segment)) {
+                continue;
+            }
+            $head_is_placeholder = false;
+            break;
+        }
+        if ($head_is_placeholder) {
+            return true;
+        }
     }
 
     return (bool) preg_match('/0123456789abcdef|abcdefgh/i', $value);

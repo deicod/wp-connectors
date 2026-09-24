@@ -1473,6 +1473,49 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_scan_string("# secrets:allow {$zaiKey}", 'realhash2'));
     }
 
+    public function testADictionaryWordInsideALiveValueExemptsNothing()
+    {
+        /*
+         * R43-8 (driven under-refusal through the real CLI): the
+         * recognizably-fake screen matched a dictionary word
+         * anywhere separator-bounded INSIDE an already-matched value,
+         * so a live credential whose own body carries '-test-' or
+         * '_test_' (realistic staging tokens) was exempted wholesale
+         * and shipped undetected where the '-tesx-' twin flagged. The
+         * word exempts only when the value's HEAD before it is
+         * placeholder material itself — empty, vendor markers and
+         * short type segments (at most 4 bytes), other dictionary
+         * words, or the sequential filler — never the high-entropy
+         * bytes of a live body ('sk-proj-TEST-…' stays fake, the
+         * documented vendor-example shape).
+         */
+        // The live bodies compose at runtime so this test's own source
+        // never carries a contiguous credential shape (the repo scan's
+        // own charge — the same discipline as the forgery pins).
+        $live = array(
+            'slack body, word between entropy runs' => 'xoxb-' . '7f3k9q2m' . '-test-' . 'QwRtYui2Zx9vBn4Lm8Kp',
+            'bearer body, underscored word' => 'ghp_' . 'aZ1bY2' . '_test_' . 'cX0dW3eF4gH5iJ6kL7mN',
+            'api03 body, word segment' => 'sk-ant-' . 'api03-' . '_test_-' . 'Zz9yXx8wWv7uUtTsRr',
+        );
+        foreach ($live as $name => $value) {
+            $this->assertFalse(wp_connectors_is_recognizably_fake_secret($value), "The {$name} shape is live — entropy ahead of the word names it (red at HEAD: exempted).");
+        }
+
+        $fake = array(
+            'vendor example head' => 'sk-proj-TEST-abc123',
+            'whole-value words' => 'YOUR_API_KEY',
+            'leading word' => 'test-key-abc123',
+            'fixture prefix' => 'wpct_fixture_9f3a2b',
+            'not-a-real head' => 'not-a-real-key-12345',
+            'sequential filler body' => 'sk-proj-abcdefghij_test_klmnopqrstuvwxyz01',
+            'dollar placeholder' => '$' . '{PLACEHOLDER}',
+            'angle placeholder' => '<your-token-here>',
+        );
+        foreach ($fake as $name => $value) {
+            $this->assertTrue(wp_connectors_is_recognizably_fake_secret($value), "The {$name} shape stays recognizably fake — the fixtures' own spellings keep their exemption.");
+        }
+    }
+
     public function testMarkerInsideAHeredocBodyExemptsNothing()
     {
         /*
