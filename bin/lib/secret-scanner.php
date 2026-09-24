@@ -205,6 +205,50 @@ function wp_connectors_line_without_string_literals($line)
  * @param string $value The matched secret text (never reported verbatim).
  * @return bool True when the value is verifiably not a live credential.
  */
+/**
+ * The entropy byte-count of a side's segments, the ONE budget walker
+ * (t31-glm49-2): every segment counts unless it is a dictionary WORD
+ * — the HYPHENATED dictionary words honored as consecutive-segment
+ * windows, 'not-a-real' and 'test-value' splitting into 'not'/'a'/
+ * 'real' and 'test'/'value' pieces no single-segment judge ever saw —
+ * or the sequential filler (the 16-char run anywhere, the pure
+ * digit-flanked run). Empty segments carry nothing.
+ *
+ * @param list<string> $segments The side's dash/underscore/whitespace-split segments.
+ * @return list<int> Per counted segment, its byte length (empty segments omitted).
+ */
+function wp_connectors_fake_secret_placeholder_spans(array $segments)
+{
+    $spans = array();
+    $count = count($segments);
+    for ($i = 0; $i < $count; ++$i) {
+        $folded = wp_connectors_ascii_lower((string) $segments[ $i ]);
+        if ('' === $folded) {
+            continue;
+        }
+        $next = $i + 1 < $count ? wp_connectors_ascii_lower((string) $segments[ $i + 1 ]) : null;
+        $after = $i + 2 < $count ? wp_connectors_ascii_lower((string) $segments[ $i + 2 ]) : null;
+        if ('not' === $folded && 'a' === $next && 'real' === $after) {
+            $i += 2;
+
+            continue;
+        }
+        if ('test' === $folded && 'value' === $next) {
+            ++$i;
+
+            continue;
+        }
+        if (1 === preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)$/i', $segments[ $i ])
+            || 1 === preg_match('/0123456789abcdef|abcdefgh/i', $segments[ $i ])
+            || 1 === preg_match('/^[0-9]*(?:0123456789|abcdefgh)[0-9]*$/i', $segments[ $i ])) {
+            continue;
+        }
+        $spans[] = strlen((string) $segments[ $i ]);
+    }
+
+    return $spans;
+}
+
 function wp_connectors_is_recognizably_fake_secret($value)
 {
     if (preg_match('/^\$\{[^}]+\}$/', $value) || preg_match('/^<[^>]+>$/', $value)) {
@@ -231,17 +275,36 @@ function wp_connectors_is_recognizably_fake_secret($value)
     $word_match = array();
     $head_is_placeholder = false;
     if (preg_match('/(?:^|[-_\s])(not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)(?:[-_\s]|$)/i', $value, $word_match, PREG_OFFSET_CAPTURE)) {
+        /*
+         * t31-glm49-2 [R49-2, driven through the real CLI — the
+         * chunked-entropy laundering, BOTH sides]: the head loop
+         * carried NO aggregate budget at all (any count of ≤4-byte
+         * segments passing free) and glm48-3's tail aggregate
+         * skipped the ≤4-byte segments from its total — so a live
+         * credential chunked into 4-byte dash-separated pieces
+         * shipped as recognizably fake (a Slack-shaped prefix and a
+         * dictionary word, all entropy between them in four-byte
+         * chunks, answering '0 finding(s)' exit 0 where the same
+         * entropy bytes contiguous flag), defeating the
+         * glm45-4/glm48-3 contract's own 'never high-entropy
+         * credential bytes on EITHER side of the word'. BOTH sides
+         * ride ONE unified budget now: every non-dictionary,
+         * non-filler segment counts toward its side's aggregate —
+         * dictionary words and the sequential-filler spellings
+         * (the 16-char run anywhere, the pure digit-flanked run)
+         * stay exempt — and the bound is 9, the pinned fake
+         * fixtures' own maximum ('test-key-abc123' the boundary:
+         * key 3 + abc123 6), one number derived from the corpus
+         * the way glm48-3 derived its 6.
+         */
         $head_segments = preg_split('/[-_\s]+/', (string) substr($value, 0, $word_match[1][1]));
         $head_is_placeholder = true;
-        foreach ($head_segments as $head_segment) {
-            if ('' === $head_segment
-                || strlen($head_segment) <= 4
-                || 1 === preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)$/i', $head_segment)
-                || 1 === preg_match('/0123456789abcdef|abcdefgh/i', $head_segment)) {
-                continue;
-            }
+        $head_total = 0;
+        foreach (wp_connectors_fake_secret_placeholder_spans($head_segments) as $head_span) {
+            $head_total += $head_span;
+        }
+        if ($head_total > 9) {
             $head_is_placeholder = false;
-            break;
         }
         if ($head_is_placeholder) {
             /*
@@ -285,22 +348,11 @@ function wp_connectors_is_recognizably_fake_secret($value)
              * is entropy and counts, the mirrored-head laundering
              * shape driven beside it.
              */
-            $tail_max = 0;
             $tail_total = 0;
-            foreach ($tail_segments as $tail_segment) {
-                if ('' === $tail_segment) {
-                    continue;
-                }
-                if (strlen($tail_segment) <= 4
-                    || 1 === preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)$/i', $tail_segment)
-                    || 1 === preg_match('/0123456789abcdef|abcdefgh/i', $tail_segment)
-                    || 1 === preg_match('/^[0-9]*(?:0123456789|abcdefgh)[0-9]*$/i', $tail_segment)) {
-                    continue;
-                }
-                $tail_max = max($tail_max, strlen($tail_segment));
-                $tail_total += strlen($tail_segment);
+            foreach (wp_connectors_fake_secret_placeholder_spans($tail_segments) as $tail_span) {
+                $tail_total += $tail_span;
             }
-            if ($tail_max > 6 || $tail_total > 6) {
+            if ($tail_total > 9) {
                 /*
                  * Neither exempt nor refused here: the trailing
                  * sequential-filler check below owns this value (the

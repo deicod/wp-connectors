@@ -1530,6 +1530,21 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertTrue(wp_connectors_is_recognizably_fake_secret('sk-proj-' . 'TEST-' . 'PLACEHOLDER-' . '0123456789'), 'The PURE digit run stays filler — the pinned placeholder spelling keeps its exemption.');
         $this->assertTrue(wp_connectors_is_recognizably_fake_secret('sk-ant-' . 'YOUR_KEY_' . 'abcdefgh1234'), 'The digit-flanked sequential run stays filler — the pinned vendor-example spelling keeps its exemption.');
 
+        /*
+         * t31-glm49-2 (R49-2, driven through the real CLI — the
+         * chunked-entropy laundering, BOTH sides): the head loop
+         * carried NO aggregate budget and the tail's aggregate
+         * skipped its ≤4-byte segments, so a live credential
+         * chunked into 4-byte dash-separated pieces shipped as
+         * recognizably fake. Both sides ride ONE unified budget —
+         * every non-dictionary, non-filler segment counting toward
+         * its side's aggregate, the bound 9 the pinned fixtures'
+         * own maximum ('test-key-abc123' the boundary).
+         */
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'a1b2' . '-c3d4' . '-e5f6' . '-g7h8' . '-i9j0' . '-test-key'), 'Four-byte chunks are entropy too — the unified budget counts the HEAD side (red at HEAD: exempted).');
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'test-' . 'k3f9' . '-7d2xq' . '-9m4z' . '-b2c5' . '-n8p3' . '-t6w1' . '-y4u9'), 'Four-byte chunks are entropy too — the unified budget counts the TAIL side (red at HEAD: exempted).');
+        $this->assertTrue(wp_connectors_is_recognizably_fake_secret('test-' . 'key-' . 'abc123'), 'The boundary fixture keeps its exemption — 3 + 6 = 9, the corpus-derived bound.');
+
         $fake = array(
             'vendor example head' => 'sk-proj-TEST-abc123',
             'whole-value words' => 'YOUR_API_KEY',
