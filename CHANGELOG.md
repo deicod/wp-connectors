@@ -6,6 +6,51 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 51)
+
+Thirty-seventh claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first; the convergence round ordered — still not
+zero, six of the fifteen findings in the round-49/50 commits' own
+machinery): the scanner dictionary's three-seat split, the mask
+boundary's four arms, the decoy consult's three gaps, the markup
+marker on code bytes, the composer prose scans, the empty-'=' build
+bypass, and the readlink guards. Four fix commits plus the docs
+close, the full offline check green after every commit. Three
+harness filter families recorded as inheritance. Suite 1980 → 1982
+tests, 48616 → 48637 assertions, 3 skipped unchanged.
+
+- **The placeholder dictionary rides ONE owner (t31-glm51-1, driven
+  through the real CLI; bin/lib/secret-scanner.php)** — the round-50
+  api/key/here addition landed at two of the three seats, the
+  word-split anchor keeping the base list and the chunked-entropy
+  laundering class reopening through the split; every seat composes
+  from wp_connectors_fake_secret_dictionary_words().
+
+- **The mask boundary's four arms, one revision (t31-glm51-2,
+  driven; shared/src/Support/SecretMask.php)** — the run sliced
+  after the winning delimiter's own byte length (an encoded match
+  spans three bytes), the once-decoded view resolving every
+  encoding layer, the assignment-bearing non-query container
+  ('Cookie a=X', 'PHPSESSID=X') admitted, and the bare opaque
+  key's correlation tail kept by the raw-view gate; the 'Bearer X'
+  scheme prefix the one recorded outside.
+
+- **The decoy consult's three further gaps (t31-glm51-3, driven;
+  bin/lib/plugin-tools.php)** — the trait adaptation aliasing a
+  method as 'define' fenced (a group-use's brace rides a separator,
+  a trait adaptation's a class name), imports block-scoped per
+  their ledger entry (functions staying name-scoped per R50-7), and
+  the two trivia walks on the one-owner comment-skipping helpers.
+
+- **Four seats at once (t31-glm51-4..7, driven; bin/lib/
+  secret-scanner.php, bin/lib/plugin-tools.php, bin/build.php)** —
+  the code-view marker consult riding the line-comment arms alone
+  (a markup splice on code bytes exempting nothing), the
+  vendor/autoload and composer scans re-confirming on the masked
+  view, the empty-'=' option spelling refusing instead of silently
+  rebuilding everything, and the readlink guards at both remaining
+  symlink-refusal seats.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 50)
 
 Thirty-sixth claude-glm pass (/code-review max over the FULL branch
