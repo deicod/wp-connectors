@@ -6,6 +6,109 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 41)
+
+Twenty-seventh claude-glm pass (/code-review max over the FULL
+branch diff, ledger-read first; the driver's order designating
+round 40's deferred efficiency trio as this round's cheap claims):
+still not zero — 15 candidates, the yield concentrated on round
+40's own commits beside two fresh seats (the version gate's third
+define argument, the lint gate's verdict PRINT). DRIVER
+ADJUDICATION under the scope rule: R41-1/2/3 with R41-14 (the
+operand probe's three gaps and the tail-grammar hoist), R41-4
+(glm40-4's trailing-only comment strip widened to every
+position), R41-5 (the three-argument define), R41-13 (the lint
+gate's output seam swept through the printable doctrine), the
+deferred efficiency trio, and R41-8 (the masker's blank off the
+PCRE engine) accepted; R41-7 (the same_file_assignments
+O(includes × filesize) re-walk, structural), the five harness
+divergences R41-6/9/10/11/12, R41-15 (PLAUSIBLE), and three cut
+cleanups recorded as inheritance. Seven fix commits
+t31-glm41-1..7 plus the docs close, the full offline check green
+after EVERY commit. Suite 1953 → 1956 tests, 48389 → 48408
+assertions, 3 skipped unchanged.
+
+- **The operand probe's three gaps closed and the statement-tail
+  grammar hoisted to the one constant (t31-glm41-1,
+  security:medium, all three driven; bin/lib/plugin-tools.php,
+  tests/SelfContainmentAutoloaderPrefixBindingTest.php)** — the
+  channel family one short (`exec( $base_dir .
+  '/vendor/run.php' );` in a canonical php -l-clean autoloader
+  passing every gate green where master flags), the `/^\S+/`
+  keyword extraction grabbing the whole zero-whitespace statement
+  (`eval(file_get_contents(__DIR__."/vendor/pkg/lib.php"));`
+  laundering), and the extent truncating at an in-string `;`
+  (`shell_exec( "true; cat vendor/build.sh" );` laundering
+  end-to-end). The channel set widens to the full file/exec call
+  family, the keyword a capture group of its own, the extent
+  riding the MASKED view with the judgment reading the RAW slice
+  at the same offsets — and the tail grammar riding
+  `WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR`, one constant both
+  seats consult.
+
+- **The group-use comment strip fires in every position
+  (t31-glm41-2, driven false refusals over legal input;
+  bin/build.php, tests/BuildArtifactsTest.php)** — glm40-4's
+  strip was $-anchored (trailing-only), so engine-legal comment
+  trivia in every other position of a group body was refused with
+  messages claiming php -l rejects spellings php -l accepts
+  (leading after `{`, after a comma, mid-member before `as`, and
+  trailing-comma-then-comment throwing 'a trailing comma' while
+  reciting it as 'the one legal exception'). The comment strips
+  anywhere in the member (one helper), the trailing-comma drop
+  test consulting the stripped piece — a comment-only final piece
+  IS the legal trailing comma. Pinned at the grammar's own seam
+  by reflection (four positions parsing clean — red at HEAD:
+  every shape threw).
+
+- **The version gate's three-argument define spelling accepted
+  (t31-glm41-3, driven false refusal; bin/lib/plugin-tools.php,
+  tests/SelfContainmentVersionConstantBindingTest.php)** — the
+  pattern required `)` immediately after the second quoted
+  literal, so `define('X', '1.2.3', false)` (the documented
+  case-insensitivity switch, php -l clean and executing
+  diagnostic-free) answered 'must define constant' at all three
+  gates on a well-formed plugin. The tail tolerates the optional
+  third argument, the value capture still the SECOND literal —
+  the guarded idiom and `DeFiNe(..., FALSE)` ride the widened
+  tail, the laundering and no-define controls keep their
+  refusals.
+
+- **The lint gate's output seam swept through the printable
+  doctrine (t31-glm41-4, driven; bin/lint-php.php,
+  tests/SelfContainmentVerdictForgeryTest.php)** — every
+  diagnostic the gate printed interpolated walked-entry bytes
+  raw, so a parse-broken file named
+  `a\nlint-php: 3 file(s) checked, 0 failure(s)\nb.php` planted
+  in a staged tree printed the forged green summary as standalone
+  lines TWICE before the real one (the R37-5 forgery class regrown
+  from the verdict read to the verdict PRINT). All five sites
+  render through `wp_connectors_printable()`: the forged text
+  flattens into the diagnostic line, the verdict bytes untouched.
+
+- **The deferred efficiency trio landed, all three measured and
+  verdict-identical (t31-glm41-5; bin/lib/secret-scanner.php,
+  bin/check-conventions.php)** — the scanner's double
+  `line_split` deleted (the masked line IS the masked bytes at
+  the source line's own slice, the mask length- and
+  terminator-preserving: 1.846-1.895s → 1.571-1.601s over three
+  runs each, 0 findings both sides); the eager line-local blank
+  deferred to the first marker consult; and the fence walk's
+  O(statement-offsets) re-scan made RESUMABLE (the walk state by
+  reference, each statement arm holding one walker across its
+  ascending-offset loop: 0.223s → 0.184s over three runs each).
+
+- **The masker's blank closure off the PCRE engine
+  (t31-glm41-7, measured and byte-identical;
+  bin/lib/plugin-tools.php)** — the ONE region-blank spelling
+  rode `preg_replace`, a full PCRE pass per string region of
+  every tokenized payload (~17% of the whole secret scan). The
+  native spelling: the region's own length in spaces, the two
+  terminator bytes re-punched at their positions by a strpos
+  pair. Byte-identical by the full 184-file differential
+  (identical md5s both spellings); the repo secret scan
+  1.571-1.601s → 1.258-1.297s, findings 0 before and after.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 40)
 
 Twenty-sixth claude-glm pass (/code-review max over the FULL
