@@ -6,6 +6,60 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 46)
+
+Thirty-second claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first): still not zero — 14 findings under the
+cap, the four headline defects all in the last rounds' own fixes.
+DRIVER ADJUDICATION under the scope rule: five fix classes accepted
+(the byte-pair glue judgment, the define seat's spacing and quote
+gaps, the inner-shell scratch escape at both fleet seats, the IPv6
+canonicality screen, the dead seat guard); the measured hostile-tree
+quadratic, the pooled/serial message divergence, two latent harness
+divergences, the unpinned prescreen anchors, and the fleet hoist
+(third drift) recorded as inheritance. Five fix commits
+t31-glm46-1..5 plus the docs close, the full offline check green
+after every commit. Suite 1969 → 1970 tests, 48521 → 48532
+assertions, 3 skipped unchanged.
+
+- **The glue judgment rides the byte pair (t31-glm46-1,
+  security:medium, driven fail-open at every gate;
+  bin/lib/plugin-tools.php, tests/SelfContainmentLoopWritesTest.php)**
+  — glm45-6's helper refused ':' and '>' unconditionally, but those
+  are also the case-label, alternative-syntax, ternary-colon, and
+  '=>' positions: includes and loops there were invisible where
+  master flags. '>' glues only after '-', ':' only after ':', the
+  $allow_separator flag admitting the legal '\define'.
+
+- **The define seat's two gaps closed (t31-glm46-2, driven;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentVersionConstantBindingTest.php)** — the
+  spacing-proof helper consulted at the third keyword seat
+  ('$r -> define(...)' laundering no more), and the value capture
+  riding the per-quote alternation decoded through the one
+  quote-style owner ('Version: 1.2'3' no longer falsely refused).
+
+- **The pooled-lint scratch rides the inner-shell escape
+  (t31-glm46-3, driven over the real repo; bin/lint-php.php,
+  bin/inspect-artifact.php)** — a '$' in TMPDIR made the inner
+  'sh -c' expand it inside the redirect targets, all 184 files
+  spurious FAILs with the serial fallback never firing; the scratch
+  escapes the four bytes sh re-parses inside double quotes, at both
+  fleet seats.
+
+- **The IPv6 canonicality screen (t31-glm46-4, driven;
+  shared/src/Http/Url.php, tests/SharedOAuthContractsHttpTest.php)**
+  — '[0:0:0:0:0:0:0:1]' and '[::ffff:1.2.3.4]' constructed while
+  every WHATWG consumer serializes '::1' / '::ffff:102:304': two
+  spellings naming one host over the browser-facing channel. The
+  WHATWG serializer spelled as one helper; the literal must equal
+  its own canonical serialization (uppercase hex legal per the
+  pinned fold).
+
+- **The leftover empty-short seat guard deleted (t31-glm46-5;
+  bin/check-conventions.php)** — glm45-9's 'every arm at one owner'
+  claim made true, the stale copy having read as load-bearing.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 45)
 
 Thirty-first claude-glm pass (/code-review max over the FULL branch
