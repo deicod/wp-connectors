@@ -2663,8 +2663,22 @@ final class WpConnectorsBuild
      */
     private static function assertNamespaceSegment($pluginSuffix)
     {
-        if (1 !== preg_match('/\A[A-Za-z_][A-Za-z0-9_]*\z/', (string) $pluginSuffix)) {
-            throw new RuntimeException("build: namespace_suffix must be a namespace segment (letters, digits, underscores; it may not start with a digit): '{$pluginSuffix}' given");
+        /*
+         * t31-glm44-5 [R44-5, driven end-to-end — the lone ASCII
+         * straggler at a label-legality verdict]: the hand-spelled
+         * '[A-Za-z_]...' class refused what every label seat in
+         * this file admits — a plugin directory 'grün' derives the
+         * suffix 'Grün' through the high-byte-permeable slug core,
+         * php -l accepts 'namespace Deicod\WpConnectors\Grün;',
+         * and the build failed SOLELY here with the wrong-reason
+         * message (segment legality) before the true reason (prefix
+         * equality) could fire. The judgment rides the ONE
+         * label-byte owner every other seat consults (ocr59-2 —
+         * the member-alias seat below documents 'as Grün,
+         * php -l-verified').
+         */
+        if (1 !== preg_match('/\A[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*\z/', (string) $pluginSuffix)) {
+            throw new RuntimeException("build: namespace_suffix must be a namespace segment (label bytes: letters, digits, underscores, high bytes; it may not start with a digit): '{$pluginSuffix}' given");
         }
     }
 

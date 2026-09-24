@@ -3975,6 +3975,34 @@ FIXTURE;
      * loudly now, the vocabulary-doctrine premise made explicit: no
      * component may compose into the family's own spelling.
      */
+    /**
+     * t31-glm44-5 (R44-5, driven end-to-end — the lone ASCII
+     * straggler at a label-legality verdict): assertNamespaceSegment
+     * hand-spelled '[A-Za-z_]...' while every label seat in the file
+     * rides the owner, so a plugin directory 'grün' (php -l accepts
+     * 'namespace Deicod\WpConnectors\Grün;') passed every pre-config
+     * gate and failed the build SOLELY at this seat with the
+     * wrong-reason message. The judgment rides WP_CONNECTORS_LABEL_*
+     * now; the digit-initial and punctuation shapes keep their
+     * refusals.
+     */
+    public function testAHighByteNamespaceSuffixIsALegalSegment(): void
+    {
+        $probe = new ReflectionMethod('WpConnectorsBuild', 'assertNamespaceSegment');
+        $probe->invoke(null, "GrÃ¼n");
+        $this->addToAssertionCount(1);
+        $probe->invoke(null, 'Clock');
+        $this->addToAssertionCount(1);
+        foreach (array('0abc', 'a-b', '') as $refused) {
+            try {
+                $probe->invoke(null, $refused);
+                $this->fail("The '{$refused}' shape must stay refused — digit-initial, punctuation, and empty are not label heads.");
+            } catch (RuntimeException $e) {
+                $this->assertStringContainsString('namespace segment', $e->getMessage());
+            }
+        }
+    }
+
     public function testASlugDerivingTheFamilyLeafRefusesTheBuildAtTheConfigSeam(): void
     {
         $scratch = self::scratchPath('degenerate-slug');
