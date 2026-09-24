@@ -5273,9 +5273,14 @@ function wp_connectors_autoloader_violations($pluginDir)
  *
  * @param string $view   The view the match offsets come from (masked or stripped — both blank comments to whitespace).
  * @param int    $offset The keyword match's byte offset.
+ * @param bool   $allow_separator Whether the namespace separator admits the
+ *                      keyword — true for the define FUNCTION seat (the
+ *                      fully-qualified '\define(...)' a legal spelling,
+ *                      t31-glm46-2), false at the construct seats (a
+ *                      construct can never be qualified).
  * @return bool True at statement/call position; false inside a name usage or declaration.
  */
-function wp_connectors_keyword_at_statement_position($view, $offset)
+function wp_connectors_keyword_at_statement_position($view, $offset, $allow_separator = false)
 {
     $at = $offset - 1;
     while ($at >= 0 && (' ' === $view[ $at ] || "\t" === $view[ $at ] || "\n" === $view[ $at ] || "\r" === $view[ $at ])) {
@@ -5284,8 +5289,30 @@ function wp_connectors_keyword_at_statement_position($view, $offset)
     if ($at < 0) {
         return true;
     }
+    /*
+     * t31-glm46-1 [R46-1, driven fail-open at every gate — glm45-6's
+     * own unconditional glue refusal]: ':' and '>' are ALSO the
+     * case/default label terminator, the alternative-syntax colon,
+     * the ternary else-colon, and the '=>' tail — includes and
+     * loops in those positions were judged 'not a statement' and
+     * skipped at both consult seats (driven: four php -l-clean
+     * shapes answering ZERO violations where master flags, the
+     * loop-seat laundering twin the same). The glue judgment rides
+     * the BYTE PAIR: '>' glues only after '-' (the '->' and '?->'
+     * operators), ':' only after ':' (the '::' operator) — a lone
+     * colon or arrow-tail is a statement position.
+     */
     $byte = $view[ $at ];
-    if (':' === $byte || '>' === $byte || '\\' === $byte || '$' === $byte) {
+    if ('>' === $byte && $at >= 1 && '-' === $view[ $at - 1 ]) {
+        return false;
+    }
+    if (':' === $byte && $at >= 1 && ':' === $view[ $at - 1 ]) {
+        return false;
+    }
+    if (! $allow_separator && '\\' === $byte) {
+        return false;
+    }
+    if ('$' === $byte) {
         return false;
     }
     $run_end = $at;
@@ -6228,7 +6255,22 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
     // constant reference. The class refuses the ':' '>' '$' and
     // namespace-separator glue bytes too (R44-4's loop-detector
     // doctrine at this seat).
-    if (preg_match_all('/(?<![\\$:>' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*[\'"]([^\'"]*)[\'"]\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
+    /*
+     * t31-glm46-2+R46-4 [driven — the seat's two remaining gaps]:
+     * (1) the fixed-length lookbehind was spacing-blind, one space
+     * around '->'/'::' laundering the gate ('$r -> define(...)'
+     * answering 0 violations where the tight spelling refuses) —
+     * the candidate loop consults the SPACING-PROOF helper now
+     * (glm45-6's byte-pair judgment, this third keyword seat). (2)
+     * the value capture was QUOTE-BLIND — a version literal
+     * carrying the other quote kind ('1.2\'3' inside double
+     * quotes, php -l clean) failed the pattern and minted the
+     * false 'must define constant' refusal — the value rides the
+     * per-quote alternation (each arm allowing the OTHER quote
+     * byte and escaped bytes of its own), decoded through the ONE
+     * quote-style-aware unescape owner.
+     */
+    if (preg_match_all('/(?<![\\$:>' . WP_CONNECTORS_LABEL_BYTES . '])(?i:define)\s*\(\s*[\'"]' . preg_quote($constantName, '/') . '[\'"]\s*,\s*(?:[\'"]([^\'"]*)[\'"]|\'((?:\\\\.|[^\'\\\\])*)\'|"((?:\\\\.|[^"\\\\])*)")\s*(?:,[^)]*)?\)/', $code, $candidates, PREG_OFFSET_CAPTURE)) {
         foreach ($candidates[0] as $index => $candidate) {
             /*
              * t31-glm40-2 [R40-3, security:medium, driven fail-open —
@@ -6246,8 +6288,14 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
              * define must START as a name, never continue one.
              */
             $keyword_at = $candidate[1];
-            if (0 === substr_compare($masked, 'define', $keyword_at, 6, true)) {
-                $constantMatch = array(1 => $candidates[1][ $index ][0]);
+            if (0 === substr_compare($masked, 'define', $keyword_at, 6, true) && wp_connectors_keyword_at_statement_position($masked, $keyword_at, true)) {
+                $value_raw = $candidates[1][ $index ][0];
+                if ('' !== (string) $candidates[2][ $index ][0]) {
+                    $value_raw = wp_connectors_unescape_php_string_literal(chr(39), (string) $candidates[2][ $index ][0]);
+                } elseif ('' !== (string) $candidates[3][ $index ][0]) {
+                    $value_raw = wp_connectors_unescape_php_string_literal('"', (string) $candidates[3][ $index ][0]);
+                }
+                $constantMatch = array(1 => $value_raw);
                 break;
             }
         }

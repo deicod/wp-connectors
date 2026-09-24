@@ -477,6 +477,29 @@ final class SelfContainmentLoopWritesTest extends TestCase
          */
         file_put_contents($this->root . '/vars.php', "<?php\nclass Loader { public function require(string \$file): void { echo \$file; } }\n\$l = new Loader();\n\$path = __DIR__ . '/safe.txt';\n\$l->require(\$path);\n");
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A require() method and its call mint no include statement (red at HEAD: the phantom).');
+
+        /*
+         * t31-glm46-1 [R46-1, driven fail-open at every gate —
+         * glm45-6's own unconditional glue refusal]: ':' and '>' are
+         * ALSO the case/default label terminator, the
+         * alternative-syntax colon, the ternary else-colon, and the
+         * '=>' tail — includes and loops in those positions were
+         * judged 'not a statement' and skipped (driven: four
+         * php -l-clean shapes answering ZERO violations where master
+         * flags, the loop-seat laundering twin the same). The glue
+         * judgment rides the BYTE PAIR: '>' only after '-', ':'
+         * only after ':'.
+         */
+        foreach (array(
+            'case-label include' => "<?php\n\$f = '/tmp/outside.php';\nswitch(1){case 1: include \$f;}\n",
+            'alternative-syntax include' => "<?php\n\$f = '/tmp/outside.php';\nif(true): include \$f; endif;\n",
+            'ternary else-colon require' => "<?php\n\$flag = true;\n\$flag ?: require __DIR__ . '/../outside.php';\n",
+            'array-arrow include' => "<?php\n\$f = '/tmp/outside.php';\n\$map = array('k' => include \$f);\n",
+            'loop-seat case-label laundering' => "<?php\n\$f = __DIR__ . '/safe.txt';\nswitch(1){case 1: while(true){ require \$f; \$f = '/tmp/outside.php'; }}\n",
+        ) as $colon_name => $colon_source) {
+            file_put_contents($this->root . '/vars.php', $colon_source);
+            $this->assertNotEmpty(wp_connectors_self_containment_violations($this->root), "The {$colon_name} shape is a real statement — it flags (red at HEAD: clean where master flags).");
+        }
         @unlink($this->root . '/vars.php');
     }
 }
