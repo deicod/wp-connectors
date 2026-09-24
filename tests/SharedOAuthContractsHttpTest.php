@@ -3165,6 +3165,33 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('https://client.example/cb%23code%3DBCJK-3502'), 'The percent-encoded fragment spelling judges the same.');
         $this->assertSame('…', SecretMask::mask('https://client.example/cb%3Fcode%3DBCJK-3502'), 'The percent-encoded query spelling judges the same.');
         $this->assertSame('…7710', SecretMask::mask('https://x.example/cb%3Faccess_token%3D' . 'ghp_' . '16C7e42F292c6912E7710'), 'A LONG percent-encoded parameter keeps the correlation tail.');
+
+        /*
+         * t31-glm51-2 (R51-2+R51-4+R51-10+R51-15, driven — the
+         * boundary's four arms, one revision): the run was sliced at
+         * +1 regardless of the winning delimiter's spelling (an
+         * encoded match spans THREE bytes — an 11- or 12-character
+         * OTP behind an encoded delimiter leaking four characters
+         * where its literal twin rendered bare); exactly one
+         * encoding layer was enumerated (a DOUBLE-encoded
+         * redirect_uri leaking the same); the assignment-bearing
+         * NON-QUERY container ('Cookie a=X', 'PHPSESSID=X') never
+         * entered the branch; and the encoded arms fired on '%3F'
+         * bytes ANYWHERE — a bare opaque key containing the triple
+         * losing its correlation tail. The gate rides the RAW view
+         * (URL-shape or '='), the judgment both views (the decoded
+         * one resolving every layer), the run after the winning
+         * delimiter's own byte length; the space-delimited scheme
+         * prefix ('Bearer X') stays outside — no assignment byte,
+         * and scheme vocabulary is HeaderMap's, not this owner's.
+         */
+        $this->assertSame('…', SecretMask::mask('https://cb%3Fcode%3DABCDEFGHIJK'), 'An ELEVEN-character code behind an encoded delimiter renders the bare mask — the run sliced after the delimiter\'s full three bytes (red at HEAD: …HIJK).');
+        $this->assertSame('…', SecretMask::mask('https://cb%3Fcode%3DABCDEFGHIJKL'), 'The twelve-character boundary shape judges the same.');
+        $this->assertSame('…', SecretMask::mask('https://sso.example/authorize?client_id=abc123def456&redirect_uri=https%253A%252F%252Fclient.example%252Fcb%253Fcode%253DBCJK-3502'), 'The DOUBLE-encoded redirect_uri judges through the decoded view — every layer by construction (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('Cookie a=BCJK-3502'), 'An assignment-bearing non-query container judges its trailing run — the Cookie header shape (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('PHPSESSID=abcdefgh'), 'Half an eight-character session id never renders (red at HEAD: …efgh).');
+        $this->assertSame('…' . 'uvwx', SecretMask::mask('abcdefghijklmnop%3Fqrstuvwx'), 'A bare opaque key containing an encoded-delimiter TRIPLE keeps its correlation tail — the gate rides the raw view (red at HEAD: the bare mask).');
+        $this->assertSame('…1234', SecretMask::mask('Bearer ey1234'), 'The space-delimited scheme prefix stays OUTSIDE the boundary — recorded, no assignment byte to anchor on.');
     }
 
     /**

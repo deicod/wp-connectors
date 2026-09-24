@@ -454,22 +454,49 @@ final class SecretMask {
 		 * matched in their percent-encoded spellings too,
 		 * case-insensitively — the run after the last
 		 * delimiter-equivalent judging exactly as the literal one.
+		 *
+		 * t31-glm51-2 [R51-2+R51-4+R51-10+R51-15, driven — the
+		 * boundary's four arms, one revision]: (1) the run was
+		 * sliced at $credential_at + 1 regardless of the WINNING
+		 * delimiter's spelling — a percent-encoded match spans
+		 * THREE bytes, so the run swallowed the delimiter's
+		 * leftover '3D' bytes and inflated by 2, an 11- or
+		 * 12-character OTP-class credential behind an encoded
+		 * delimiter clearing the threshold and rendering four
+		 * characters while its literal-delimiter twin rendered the
+		 * bare mask (the screen's own two arms answering opposite
+		 * verdicts). (2) The encoding arms enumerated exactly ONE
+		 * layer — a redirect_uri echoed DOUBLE-encoded
+		 * ('%253F'/'%253D', a server that re-encodes an
+		 * already-encoded parameter) leaked the same four
+		 * characters; the judgment rides the once-DECODED view
+		 * beside the raw now, one mechanism covering every layer
+		 * by construction instead of a fourth enumerated spelling.
+		 * (3) The assignment-bearing NON-QUERY container
+		 * ('Cookie a=X', 'PHPSESSID=X') never entered the branch —
+		 * the whole-value length threshold cleared and half an
+		 * eight-character session id rendered through every safe
+		 * debug surface; the gate admits any URL-shaped OR
+		 * '='-bearing value (a bare opaque key carrying an '%3F'
+		 * triple in its own bytes keeps its correlation tail — no
+		 * URL shape, no assignment, the encoded arms never arming
+		 * on it: the round-50 anywhere-stripos over-mask closing
+		 * with the same gate). (4) The space-delimited scheme
+		 * prefix ('Bearer X') stays OUTSIDE the boundary — no
+		 * assignment byte to anchor on, and scheme-prefix
+		 * knowledge is HeaderMap's vocabulary, not this owner's.
 		 */
 
-		$query_at  = max( (int) strrpos( $value, '?' ), (int) strripos( $value, '%3f' ) );
-		$frag_at   = max( (int) strrpos( $value, '#' ), (int) strripos( $value, '%23' ) );
-		$tail_open = max( $query_at, $frag_at );
-		$has_open  = false !== strrpos( $value, '?' ) || false !== strripos( $value, '%3f' ) || false !== strrpos( $value, '#' ) || false !== strripos( $value, '%23' );
-		if ( $has_open ) {
-			$credential_at = $tail_open;
-			$assignment_at = max( (int) strrpos( $value, '=' ), (int) strripos( $value, '%3d' ) );
-			$has_assign    = false !== strrpos( $value, '=' ) || false !== strripos( $value, '%3d' );
-			if ( $has_assign && $assignment_at > $tail_open ) {
-				$credential_at = $assignment_at;
-			}
-			if ( self::count_characters( substr( $value, $credential_at + 1 ) ) <= self::MIN_LENGTH_FOR_VISIBLE_TAIL ) {
-				return self::MASK;
-			}
+		/*
+		 * The GATE rides the RAW view (an opaque key whose own bytes
+		 * spell '%3F' decodes to a '?' — the decoded view alone must
+		 * never arm the boundary on a value the raw spelling never
+		 * shaped); within the gate, BOTH views judge, the decoded
+		 * one resolving every encoding layer by construction.
+		 */
+		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || false !== strrpos( $value, '=' );
+		if ( $raw_gated && ( self::value_carries_short_embedded_credential( $value ) || self::value_carries_short_embedded_credential( rawurldecode( $value ) ) ) ) {
+			return self::MASK;
 		}
 
 		// The last VISIBLE_TAIL characters, then shed leading characters
@@ -717,6 +744,69 @@ final class SecretMask {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Whether ONE view of a value carries a short credential at its
+	 * tail (t31-glm51-2): the gate is URL-SHAPE or ASSIGNMENT —
+	 * '://' or a literal '?'/'#' present, or an '=' anywhere — so a
+	 * bare opaque key whose own bytes spell an encoded delimiter
+	 * ('%3F' residue in a provider-issued key) never arms the
+	 * encoded arms and keeps its correlation tail. Within the gate,
+	 * the boundary is the LAST opener-equivalent ('?','#','%3f',
+	 * '%23') and the last assignment-equivalent ('=','%3d') beyond
+	 * it, the run sliced after the WINNING delimiter's own byte
+	 * length (one or three — the round-50 inflation closing), and
+	 * the run judged against MIN_LENGTH_FOR_VISIBLE_TAIL.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $value One view of the value (raw or decoded-once).
+	 * @return bool True when the trailing run is a short embedded credential.
+	 */
+	private static function value_carries_short_embedded_credential( string $value ): bool {
+		$url_shaped = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' );
+		$has_assign = false !== strrpos( $value, '=' );
+		if ( ! $url_shaped && ! $has_assign ) {
+			return false; // Not the helper's caller's concern when direct — the raw gate owns the value-shape question.
+		}
+
+		$query_at  = strrpos( $value, '?' );
+		$encoded_q = strripos( $value, '%3f' );
+		$frag_at   = strrpos( $value, '#' );
+		$encoded_f = strripos( $value, '%23' );
+		$open_at   = -1;
+		$open_len  = 0;
+		foreach ( array(
+			array( $query_at, 1 ),
+			array( false === $encoded_q ? -1 : $encoded_q, 3 ),
+			array( $frag_at, 1 ),
+			array( false === $encoded_f ? -1 : $encoded_f, 3 ),
+		) as $opener ) {
+			if ( false !== $opener[0] && $opener[0] > $open_at ) {
+				$open_at  = $opener[0];
+				$open_len = $opener[1];
+			}
+		}
+
+		$assign_at  = strrpos( $value, '=' );
+		$encoded_a  = strripos( $value, '%3d' );
+		$assign_len = 1;
+		if ( false !== $encoded_a && ( false === $assign_at || $encoded_a > $assign_at ) ) {
+			$assign_at  = $encoded_a;
+			$assign_len = 3;
+		}
+
+		if ( false !== $assign_at && $assign_at > $open_at ) {
+			$run = (string) substr( $value, $assign_at + $assign_len );
+		} elseif ( $open_at >= 0 ) {
+			$run = (string) substr( $value, $open_at + $open_len );
+		} else {
+			// An '='-bearing value with no opener: the assignment IS the boundary.
+			$run = (string) substr( $value, $assign_at + $assign_len );
+		}
+
+		return self::count_characters( $run ) <= self::MIN_LENGTH_FOR_VISIBLE_TAIL;
 	}
 
 	/**
