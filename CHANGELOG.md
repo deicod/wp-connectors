@@ -6,6 +6,92 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 42)
+
+Twenty-eighth claude-glm pass (/code-review max over the FULL
+branch diff, ledger-read first): still not zero — 15 findings,
+three of them contradicting round 41's own commit records (the
+r26-8 class, corrected in-round). DRIVER ADJUDICATION under the
+scope rule: R42-1 (the autoloader equality arm — the ledger's
+R41-15 PLAUSIBLE upgraded to a driven fail-open), R42-2+3 (the
+printable seam's last two gates), R42-4+5+7 (the group-use seats'
+comment-blindness — the ledger's deferred seat-matching question
+re-driven as a real defect — plus the orphaned grammar docblock),
+R42-6 (the operand probe's ASCII lookbehind one short of the label
+class), R42-14 (the terminator alternation hoisted to its own
+constant), and R42-15 (the family's last two hand-rolled
+tearDowns) accepted; R42-8 (the line_split strcspn twin, measured
+5.08x/5.60x with a byte-identical differential — the next round's
+cheap claim), R42-9 (the scanner's double-lex), the two
+ledger-covered re-flags (R42-10, R42-11), and two cleanups
+recorded as inheritance. Six fix commits t31-glm42-1..6 plus the
+docs close, the full offline check green after every commit. Suite
+1953 → 1959 tests, 48408 → 48437 assertions, 3 skipped unchanged.
+
+- **The autoloader equality arm walks the token stream
+  (t31-glm42-1, security:medium, driven fail-open;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentAutoloaderPrefixBindingTest.php)** — the
+  quote-pair grammar over the comment-stripped view kept
+  heredoc/nowdoc bodies and inline-HTML spans raw, so quote-shaped
+  text inside them paired as a "literal" whose decoded value
+  equalled the expected prefix: a php -l-clean foreign-prefix
+  autoloader plus a nowdoc body (or a `?>` HTML tail) passed the
+  gate green while class_exists() is false at runtime. The arm
+  walks T_CONSTANT_ENCAPSED_STRING tokens now — the tokenizer the
+  one owner of which bytes are a real quoted literal, every
+  laundering region excluded by token kind.
+
+- **The printable seam's last two gates swept (t31-glm42-2,
+  driven; bin/check-conventions.php, bin/scan-secrets.php,
+  bin/build.php, tests/SelfContainmentVerdictForgeryTest.php)** —
+  the conventions gate's FAIL prints interpolated the shared
+  builders' violation bytes raw (a newline inside a quoted include
+  operand forging a standalone green-summary line above the real
+  red one), and the scanner CLI's finding prints carried walked
+  paths (a newline-named directory forging the green `0
+  finding(s)` line above a live-credential finding). All prints
+  render through `wp_connectors_printable()` — the forged text
+  flattens into the diagnostic line, the verdict bytes untouched.
+
+- **The group-use seats run over the comment-blanked twin
+  (t31-glm42-3, driven false refusals over php -l-clean input;
+  bin/build.php, tests/BuildArtifactsTest.php)** — the seat
+  patterns and the body comma split were comment-blind over raw
+  bytes, so a `;`/`}` inside a comment killed the seat match (the
+  postcondition refusing legal input while the conventions gate
+  answered 0 on the identical bytes) and a `,` inside a comment
+  split a member mid-comment into the grammar's own refusal. Both
+  seats ride `replaceOverCommentBlanked()`; the orphaned grammar
+  docblock re-attached (getDocComment() was false at HEAD); the
+  widened ownership forced three pin supersessions (the ocr35-1
+  pattern).
+
+- **The operand probe's keyword boundary rides the label byte
+  class (t31-glm42-4, driven false flag; bin/lib/plugin-tools.php,
+  tests/SelfContainmentAutoloaderPrefixBindingTest.php)** — the
+  ASCII `(?<![\$\w])` lookbehind (and the right-side `\b`)
+  false-flagged a php -l-clean `äfile_get_contents(...)` user
+  helper as its sole violation; both edges ride
+  WP_CONNECTORS_LABEL_BYTES now (the laundering direction refuted
+  — the ASCII class is a strict subset).
+
+- **The terminator alternation hoisted to its own constant
+  (t31-glm42-5, verdict-identical by construction;
+  bin/lib/plugin-tools.php)** — the `;|?>|EOF` alternation was
+  still hand-spelled at both assignment seats while the tail
+  grammar's docblock claimed the hoist closed the drift;
+  WP_CONNECTORS_STATEMENT_TERMINATOR owns it, the tail grammar
+  composes it, both seats ride it.
+
+- **The family's last two hand-rolled tearDowns ride releaseScratch
+  (t31-glm42-6; tests/SelfContainmentLoopWritesTest.php,
+  tests/SelfContainmentCompoundWritesTest.php)** — the flat-walk
+  releases stranded every scratch tree whose fixture grew a nested
+  or locked entry (the residue demonstrated live by three stranded
+  /tmp trees); both bodies are the one owner the six sibling
+  suites spell.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 41)
 
 Twenty-seventh claude-glm pass (/code-review max over the FULL
