@@ -267,19 +267,40 @@ function wp_connectors_is_recognizably_fake_secret($value)
              */
             $tail = (string) substr($value, $word_match[1][1] + strlen($word_match[1][0]));
             $tail_segments = preg_split('/[-_\s]+/', $tail);
+            /*
+             * t31-glm48-3 [R48-3, driven — the tail's entropy budget
+             * is AGGREGATE, never per segment]: the per-segment
+             * at-most-6 slack admitted ANY COUNT of short entropy
+             * segments — six 5-byte segments (35 chunked bytes)
+             * shipped as fake where the SAME bytes contiguous flag
+             * (driven through the real CLI), a live credential
+             * chunked into dash-separated pieces sailing past the
+             * glm45-4 contract's own 'never high-entropy credential
+             * bytes on EITHER side of the word'. The filler anchor
+             * tightens to the head's own spelling beside it: the
+             * 16-char run anywhere, or a PURE sequential segment
+             * ('0123456789', 'abcdefgh1234' — the run digit-flanked,
+             * the pinned filler shapes whole) — a segment carrying
+             * non-sequential bytes AROUND the run ('k0123456789z')
+             * is entropy and counts, the mirrored-head laundering
+             * shape driven beside it.
+             */
             $tail_max = 0;
+            $tail_total = 0;
             foreach ($tail_segments as $tail_segment) {
                 if ('' === $tail_segment) {
                     continue;
                 }
                 if (strlen($tail_segment) <= 4
                     || 1 === preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)$/i', $tail_segment)
-                    || 1 === preg_match('/0123456789|abcdefgh/i', $tail_segment)) {
+                    || 1 === preg_match('/0123456789abcdef|abcdefgh/i', $tail_segment)
+                    || 1 === preg_match('/^[0-9]*(?:0123456789|abcdefgh)[0-9]*$/i', $tail_segment)) {
                     continue;
                 }
                 $tail_max = max($tail_max, strlen($tail_segment));
+                $tail_total += strlen($tail_segment);
             }
-            if ($tail_max > 6) {
+            if ($tail_max > 6 || $tail_total > 6) {
                 /*
                  * Neither exempt nor refused here: the trailing
                  * sequential-filler check below owns this value (the

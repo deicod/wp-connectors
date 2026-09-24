@@ -1512,6 +1512,24 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'eu1' . '-test-' . '9f3k9q2m4p5o6i7u8'), 'Entropy AFTER the word names the live body too — the mirror half of the head rule (red at HEAD: exempted).');
         $this->assertFalse(wp_connectors_is_recognizably_fake_secret('sk-' . 'eu1' . '-test-' . '9f3k9q2m4p5o6i7u8x2'), 'The api-key family carries the same tail-entropy shape.');
 
+        /*
+         * t31-glm48-3 (R48-3, driven through the real CLI — the
+         * tail's entropy budget is AGGREGATE, never per segment):
+         * the per-segment at-most-6 slack admitted ANY COUNT of
+         * short entropy segments — 35 chunked bytes in seven 5-byte
+         * pieces shipped as fake where the SAME bytes contiguous
+         * flag, a live credential chunked into dash-separated
+         * pieces sailing past the contract this very pin states.
+         * The filler anchor tightened with it: a segment carrying
+         * non-sequential bytes AROUND the digit run
+         * ('k0123456789z') is entropy, the PURE sequential runs
+         * ('0123456789', 'abcdefgh1234') staying filler.
+         */
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'test-' . 'k3f9m' . '-7d2xq' . '-9m4zb' . '-2h8wn' . '-5c7yp' . '-8r3tv' . '-4n6yq'), 'Chunked entropy is entropy — the aggregate budget counts every short segment together (red at HEAD: exempted).');
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'test-' . 'k0123456789' . 'z'), 'Non-sequential bytes around the digit run name the live body — the pure-run filler keeps only pure runs (red at HEAD: exempted).');
+        $this->assertTrue(wp_connectors_is_recognizably_fake_secret('sk-proj-' . 'TEST-' . 'PLACEHOLDER-' . '0123456789'), 'The PURE digit run stays filler — the pinned placeholder spelling keeps its exemption.');
+        $this->assertTrue(wp_connectors_is_recognizably_fake_secret('sk-ant-' . 'YOUR_KEY_' . 'abcdefgh1234'), 'The digit-flanked sequential run stays filler — the pinned vendor-example spelling keeps its exemption.');
+
         $fake = array(
             'vendor example head' => 'sk-proj-TEST-abc123',
             'whole-value words' => 'YOUR_API_KEY',
