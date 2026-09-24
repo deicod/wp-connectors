@@ -6,6 +6,118 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 43)
+
+Twenty-ninth claude-glm pass (/code-review max over the FULL
+branch diff, ledger-read first; R42-8 pre-designated the round's
+cheap claim): still not zero — 15 findings, the dominant disease
+the branch's own label-byte-census and comment-blanked-twin
+doctrines unswept at sibling seats, beside one fail-open
+regression versus master. DRIVER ADJUDICATION under the scope
+rule: ten fix classes accepted (the variable-mediated vendor
+operand, the label-byte census at three families, the
+blanked-twin sweep and separator spacing, the fake-secret
+dictionary word, the fractional memory limit, glm42-2's own
+printable leftovers, the provider's TOCTOU null, the session-id
+suffix, the third hand-rolled tearDown, and the driver-ordered
+line_split strcspn twin); the eight-seat use-head grammar hoist
+recorded as inheritance (cleanup, its terminator difference
+deliberate). Ten fix commits t31-glm43-1..10 plus the docs close,
+the full offline check green after every commit. Suite
+1959 → 1962 tests, 48437 → 48476 assertions, 3 skipped unchanged.
+
+- **The variable-mediated vendor operand still references vendor
+  (t31-glm43-1, security:medium, driven fail-open versus master;
+  bin/lib/plugin-tools.php,
+  tests/SelfContainmentAutoloaderPrefixBindingTest.php)** — the
+  masked probe blanks the vendor path riding a quoted literal and
+  the operand probe judged only the statement text at hand, so
+  `$lib = __DIR__ . '/../vendor/pkg/lib.php'; require $lib;`
+  passed every gate where master flagged (the review's master
+  worktree drive). The channel statement's variable operands
+  resolve through the same-file assignment machinery the escape
+  walk rides, each resolved value judged by the operand probe's
+  own standard — an operand path is never prose, whatever its
+  spelling.
+
+- **The label-byte census swept to three sibling families
+  (t31-glm43-2, driven false flags; bin/lib/plugin-tools.php,
+  tests/SelfContainmentLoopWritesTest.php)** — the include scan's
+  ASCII `\b` keyword arm minted four phantom include statements
+  over two `$require`/`$include` variable assignments (the
+  R37-6/R37-7 recorded inheritance claimed), the loop detector's
+  `\b` arms read `grüwhile(` as a loop header arming a phantom
+  span, and the variable-shape regexes at four seats refused a
+  legal high-byte variable its ASCII twin resolves. Every arm
+  rides the label byte class with the `$` guard.
+
+- **The blanked-twin sweep completed and both group seats admit
+  the separator spacing (t31-glm43-3, driven false refusals;
+  bin/build.php, tests/BuildArtifactsTest.php)** — the
+  namespace-declaration pass rides `replaceOverCommentBlanked()`
+  (a php -l-clean comment inside the declaration refused
+  anonymously), and `use Deicod\WpConnectors \{Shared\Clock};`
+  (whitespace before the separator-brace) refused anonymously at
+  both seats; all eight shapes rewrite clean.
+
+- **The fake-secret dictionary word exempts only over a
+  placeholder head (t31-glm43-4, driven under-refusal;
+  bin/lib/secret-scanner.php, tests/SecureFixturesTest.php)** —
+  a live credential carrying `-test-` or `_test_` mid-body was
+  exempted wholesale and shipped undetected where the `-tesx-`
+  twin flagged; the word exempts only when the value's head
+  before it is placeholder material itself (empty, vendor
+  markers, other dictionary words, filler) — never the
+  high-entropy bytes of a live body.
+
+- **A fractional memory_limit parses to the engine's clamp
+  (t31-glm43-5, driven fatal-without-verdict;
+  bin/lib/secret-scanner.php, tests/SecureFixturesTest.php)** —
+  `128.5M` (which PHP 8.5 clamps to `128M` and enforces) fell out
+  of the integer-only grammar, answered PHP_INT_MAX, and
+  disabled the token-memory census: a dense payload fatalling at
+  exit 255 with no verdict where the integer control answered the
+  loud refusal. The grammar admits the fractional tail and floors.
+
+- **glm42-2's own printable leftovers (t31-glm43-6, both the
+  r26-8 class over round 42's records; bin/check-conventions.php)**
+  — the connectors walk-abort print was never swept (the round-42
+  scripted replacement silently no-oped, unasserted, while the
+  commit claimed both), and the four sprintf FAIL arms' terminator
+  sat inside `wp_connectors_printable()`, flattening `\n` to a
+  space and merging consecutive violations onto one stderr line.
+
+- **The provider's null read answers the loud unreadable refusal
+  (t31-glm43-7, race-driven; bin/lib/plugin-tools.php)** — a TOCTOU
+  null degraded to `''` and the gate answered 'must register a
+  PSR-4 autoloader' over bytes it never saw (101 such verdicts
+  over 4000 race-driven calls); the misattributed content
+  verdicts are unreachable over unread bytes now.
+
+- **The session identifier joins the sensitive-header suffix
+  class (t31-glm43-8, the PLAUSIBLE upgraded and driven;
+  shared/src/Support/SecretMask.php,
+  tests/SharedOAuthContractsHttpTest.php)** — `X-Session-Id`
+  rendered its value verbatim through every masked render surface
+  while the catalog's own cookie row masks the same credential
+  channel; `session-id` joins the suffixes, the boundary unchanged
+  (`x-session-idle`, `x-session-count`, `x-request-id` verbatim).
+
+- **The census miss: a third hand-rolled tearDown rides
+  releaseScratch (t31-glm43-9; tests/SelfContainmentInterpolationTest.php)**
+  — glm42-6's 'the family's LAST two' claim missed this flat-walk
+  spelling (nested directories and locked entries stranded); the
+  owner rides every exit.
+
+- **The line_split strcspn twin landed, byte-identical
+  (t31-glm43-10, the driver-ordered R42-8;
+  bin/lib/secret-scanner.php)** — one native `strcspn` scan per
+  line replaces the per-byte PHP walk (round 42's measurement:
+  5.08x broad / 5.60x scan-realistic), the same terminator
+  semantics by construction, zero mismatches re-driven against
+  the inline reference over 26 edge shapes + 3000 fuzz + the
+  6.4 MB repo corpus; the repo scan 1.26–1.36s → 0.99–1.07s.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 42)
 
 Twenty-eighth claude-glm pass (/code-review max over the FULL
