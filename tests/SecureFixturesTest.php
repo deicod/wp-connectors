@@ -1545,6 +1545,26 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'test-' . 'k3f9' . '-7d2xq' . '-9m4z' . '-b2c5' . '-n8p3' . '-t6w1' . '-y4u9'), 'Four-byte chunks are entropy too — the unified budget counts the TAIL side (red at HEAD: exempted).');
         $this->assertTrue(wp_connectors_is_recognizably_fake_secret('test-' . 'key-' . 'abc123'), 'The boundary fixture keeps its exemption — 3 + 6 = 9, the corpus-derived bound.');
 
+        /*
+         * t31-glm50-4 (R50-9, driven through the real CLI — the
+         * unanchored run exemption defeating the unified budget it
+         * enforced one clause above): any segment merely CONTAINING
+         * the run exempted wholesale, non-sequential entropy around
+         * it and all — the exact opposite of the R48-3 contract's
+         * own words. The exemption is the sequential-continuation
+         * arm (the run plus digits or alphabet-continuing letters)
+         * and the dictionary alone, at the walker AND the
+         * value-level twin. R50-14 beside it: the dictionary gains
+         * 'api'/'key'/'here' — the canonical multi-word placeholder
+         * tail 'your-api-key-here' newly read as a live credential
+         * by the unified budget (a false-FAIL regression versus the
+         * pre-round-49 walker, driven A/B).
+         */
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'test-' . 'abcdefgh9f3kq2mz4n'), 'Non-sequential bytes around the alphabet run are entropy — the walker\'s continuation arm refuses the tail (red at HEAD: exempted by the unanchored contains).');
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'abcdefgh9f3kq2mz4n'), 'The value-level twin agrees — no unanchored catch of a run elsewhere in the value (red at HEAD: exempted).');
+        $this->assertTrue(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'your-' . 'api-' . 'key-' . 'here'), 'The canonical placeholder word tail keeps its exemption — api/key/here join the dictionary (red at HEAD: a live credential).');
+        $this->assertTrue(wp_connectors_is_recognizably_fake_secret('test-' . 'api-' . 'key-' . 'here'), 'The leading-word spelling of the same tail.');
+
         $fake = array(
             'vendor example head' => 'sk-proj-TEST-abc123',
             'whole-value words' => 'YOUR_API_KEY',

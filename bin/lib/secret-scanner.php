@@ -217,6 +217,76 @@ function wp_connectors_line_without_string_literals($line)
  * @param list<string> $segments The side's dash/underscore/whitespace-split segments.
  * @return list<int> Per counted segment, its byte length (empty segments omitted).
  */
+/**
+ * Whether a segment is SEQUENTIAL FILLER (t31-glm50-4): the 16-char
+ * hex run '0123456789abcdef' whole, or a run ('0123456789',
+ * 'abcdefgh') whose remaining bytes are DIGITS or letters CONTINUING
+ * the alphabet from where the run ended ('abcdefgh1234' the pure
+ * digit flank, 'abcdefghij' the alphabet continuation the pinned
+ * 'sk-proj-abcdefghij_test_klmnopqrstuvwxyz01' body rides) — never
+ * non-sequential entropy around the run ('abcdefgh9f3kq2mz4n' is
+ * ENTROPY, the R48-3 contract's own words).
+ *
+ * @param string $folded The ascii-folded segment.
+ * @return bool True when the segment is filler whole.
+ */
+function wp_connectors_segment_is_sequential_filler($folded)
+{
+    if (false !== strpos($folded, '0123456789abcdef')) {
+        return true;
+    }
+    foreach (array('0123456789', 'abcdefgh') as $run) {
+        $at = strpos($folded, $run);
+        if (false === $at) {
+            continue;
+        }
+        $tail = (string) substr($folded, $at + strlen($run));
+        if ('' === $tail || 1 === preg_match('/^[0-9]+$/', $tail)) {
+            return true;
+        }
+        // The alphabet continuation: each byte is the previous byte + 1,
+        // the first continuing from the run's own last byte.
+        $expected = ord($run[ strlen($run) - 1 ]) + 1;
+        $continues = true;
+        foreach (str_split($tail) as $byte) {
+            if (ord($byte) !== $expected) {
+                $continues = false;
+                break;
+            }
+            ++$expected;
+        }
+        if ($continues) {
+            return true;
+        }
+    }
+    /*
+     * A long ASCENDING SLICE of the alphabet, optionally digit-suffixed
+     * — the pinned 'klmnopqrstuvwxyz01' tail of the sequential-filler
+     * body ('sk-proj-abcdefghij_test_klmnopqrstuvwxyz01'): no anchor
+     * run inside it, its fakeness once riding only the unanchored
+     * value-level catch of the HEAD's run. Eight ascending bytes
+     * minimum (no real credential is an alphabet slice), the suffix
+     * digits alone — 'abcdefgh9f3k' fails the suffix test and stays
+     * entropy.
+     */
+    $run_length = 1;
+    $length = strlen($folded);
+    for ($at = 1; $at < $length; ++$at) {
+        if (ord($folded[ $at ]) === ord($folded[ $at - 1 ]) + 1) {
+            ++$run_length;
+        } else {
+            break;
+        }
+    }
+    if ($run_length >= 8) {
+        $suffix = (string) substr($folded, $run_length);
+
+        return '' === $suffix || 1 === preg_match('/^[0-9]+$/', $suffix);
+    }
+
+    return false;
+}
+
 function wp_connectors_fake_secret_placeholder_spans(array $segments)
 {
     $spans = array();
@@ -238,9 +308,28 @@ function wp_connectors_fake_secret_placeholder_spans(array $segments)
 
             continue;
         }
-        if (1 === preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)$/i', $segments[ $i ])
-            || 1 === preg_match('/0123456789abcdef|abcdefgh/i', $segments[ $i ])
-            || 1 === preg_match('/^[0-9]*(?:0123456789|abcdefgh)[0-9]*$/i', $segments[ $i ])) {
+        /*
+         * t31-glm50-4 [R50-9+R50-14, both driven through the real
+         * CLI]: (1) the UNANCHORED '0123456789abcdef|abcdefgh'
+         * contains-match exempted any segment merely CONTAINING the
+         * run — 'abcdefgh9f3kq2mz4n' shipping as recognizably fake
+         * while the pinned-live digit-run twin 'k0123456789z' flags,
+         * the exact opposite of the recorded contract ('non-
+         * sequential bytes around the run are entropy') — the
+         * exemption is the SEQUENTIAL-CONTINUATION arm below it
+         * (the run plus a tail of digits or alphabet-continuing
+         * letters, the walker's own docblock spelling) and the
+         * dictionary word list alone. (2) The dictionary gains the
+         * ordinary placeholder words 'api'/'key'/'here' — the
+         * canonical multi-word placeholder tail 'your-api-key-here'
+         * (3+3+3+4) newly read as a live credential by the unified
+         * budget, a false-FAIL regression versus the pre-round-49
+         * walker (driven A/B); the pinned corpus pins
+         * YOUR_API_KEY and the <your-token-here> wrapper only, the
+         * three-word tail unpinned until now.
+         */
+        if (1 === preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct|api|key|here)$/i', $segments[ $i ])
+            || wp_connectors_segment_is_sequential_filler($folded)) {
             continue;
         }
         $spans[] = strlen((string) $segments[ $i ]);
@@ -367,7 +456,29 @@ function wp_connectors_is_recognizably_fake_secret($value)
         }
     }
 
-    return (bool) preg_match('/0123456789abcdef|abcdefgh/i', $value);
+    /*
+     * t31-glm50-4 [R50-9's value-level twin]: the trailing
+     * sequential-filler check exempts a value whose EVERY segment is
+     * dictionary material or sequential filler (the walker's own
+     * predicates) — the unanchored contains-match once exempted any
+     * value merely containing a run, entropy around it and all
+     * (an entropy-bearing body around the run shipping fake, driven
+     * through the real CLI). The pinned 'sk-proj-abcdefghij_test_
+     * klmnopqrstuvwxyz01' body rides the walker's
+     * alphabet-continuation arm ('abcdefgh' + 'ij' continuing).
+     */
+    foreach (preg_split('/[-_\s]+/', $value) as $segment) {
+        $folded_value = wp_connectors_ascii_lower($segment);
+        if ('' === $folded_value) {
+            continue;
+        }
+        if (1 !== preg_match('/^(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct|api|key|here)$/i', $segment)
+            && ! wp_connectors_segment_is_sequential_filler($folded_value)) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 /**
