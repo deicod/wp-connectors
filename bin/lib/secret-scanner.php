@@ -765,9 +765,10 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * blanks through EOF whatever the trailing byte.
      *
      * glm17-1: the mask is LINE-PRESERVING (interior newlines stay
-     * newlines through the blanking), so the split below answers one
-     * view line per source line and $views[$index] is the SAME line's
-     * code view — the mask once swallowed interior newlines into
+     * newlines through the blanking), so the source split below
+     * answers each line's own code view as the masked bytes AT that
+     * line's [start, start+len) slice — the mask once swallowed
+     * interior newlines into
      * spaces, leaving fewer view lines than $lines, so every line past
      * the first multi-line region shifted UP into an earlier line's
      * view and a code marker lines BELOW a live key exempted it
@@ -787,7 +788,6 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * marker in REAL code beside a sample stays honored in both —
      * comments are not string data, the masker never blanks them).
      */
-    $views = null;
     $masked_view = null;
     $regions = null;
     if ($has_php) {
@@ -798,12 +798,6 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
             $regions = wp_connectors_php_sample_regions($contents);
         }
         $masked_view = wp_connectors_mask_string_contents($contents);
-        if (null === $regions) {
-            // t31-glm29-1: the view split spells the SAME three
-            // terminators as the source split below — index-aligned
-            // with it through the mask's terminator-preserving blank.
-            $views = array_column(wp_connectors_line_split($masked_view), 0);
-        }
     }
     /*
      * t31-glm29-1 [R29-1, security:high, driven fail-open]: the split
@@ -862,9 +856,22 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
          * the line-local arm's own marker — never crossed in either
          * direction.
          */
-        if (null !== $views) {
+        if (null !== $masked_view && null === $regions) {
+            /*
+             * t31-glm41-5 [R41-EFF-a, the deferred double split — one
+             * split, masked slices]: the code view once cost a SECOND
+             * full-payload line_split over the masked view, its
+             * per-line array handed to the loop by index. The mask is
+             * length-preserving and terminator-preserving (glm29-1's
+             * own alignment premise), so the masked line $index IS the
+             * masked bytes at the SOURCE line's own [start, start+len)
+             * slice — the source split below answers both views, the
+             * second split deleted (~283ms of a ~1.97s repo scan,
+             * measured at HEAD; the slice spelling byte-identical by
+             * construction, never a different line's bytes).
+             */
             $prose_view = '';
-            $code_view = $views[ $index ] ?? '';
+            $code_view = substr($masked_view, $line_start, strlen($line));
             $spans = '' === $line ? array() : array( array( 0, strlen($line) - 1 ) );
         } elseif (null !== $regions) {
             $arm = wp_connectors_sample_region_line_view($line, $line_start, $regions, $masked_view, $region_cursor);
@@ -872,7 +879,13 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
             $code_view = $arm['code'];
             $spans = $arm['spans'];
         } else {
-            $prose_view = wp_connectors_line_without_string_literals($line);
+            // t31-glm41-5 [R41-EFF-b, the eager blank deferred]: the
+            // quote-stripped prose view was computed for EVERY line of
+            // every non-PHP payload but consumed only at the first
+            // marker consult below — most lines carry no non-fake
+            // candidate at all. Computed at the consult now (glm21-13's
+            // own lazy-marker doctrine applied to the view it reads).
+            $prose_view = null;
             $code_view = '';
             $spans = array();
         }
@@ -931,6 +944,9 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                     }
                 } else {
                     if (null === $prose_marker) {
+                        if (null === $prose_view) {
+                            $prose_view = wp_connectors_line_without_string_literals($line);
+                        }
                         /*
                          * t31-glm39-1 [R39-1, security:medium, driven
                          * fail-open — the marker honored inside STRING

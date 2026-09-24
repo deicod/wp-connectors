@@ -425,8 +425,9 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 continue;
             }
 
+            $fence = null;
             foreach ($matches as $match) {
-                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1], $source)) {
+                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1], $source, $fence)) {
                     // A trait clause list, never an import — the
                     // fence helper's own census.
                     continue;
@@ -546,8 +547,9 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
              * label-boundary mention anywhere (code, comments,
              * docblocks), case-insensitive.
              */
+            $fence = null;
             foreach ($comma_matches as $match) {
-                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1], $source)) {
+                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1], $source, $fence)) {
                     // A trait clause list ('use TraitA, TraitB;') —
                     // the fence helper's own census.
                     continue;
@@ -609,8 +611,9 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
                 }
             }
 
+            $fence = null;
             foreach ($group_matches as $match) {
-                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1], $source)) {
+                if (! wp_connectors_use_statement_in_import_position($code_view, $match[0][1], $source, $fence)) {
                     // A trait adaptation ('use T { … }'), never a
                     // group import — the fence helper's own census.
                     continue;
@@ -741,23 +744,43 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
  * accident: this gate owns PHP-source trees, never templating
  * mixtures, and @lint owns what does not parse.
  *
- * @param string $code_view The masked view the statement offsets came from.
- * @param int    $offset    The statement's byte offset (the pattern match).
- * @param string $source    The raw source (same length as the view — the
- *                          open-tag follower reads the byte the view's
- *                          comment-blanking would hide).
+ * @param string   $code_view The masked view the statement offsets came from.
+ * @param int      $offset    The statement's byte offset (the pattern match).
+ * @param string   $source    The raw source (same length as the view — the
+ *                            open-tag follower reads the byte the view's
+ *                            comment-blanking would hide).
+ * @param array|null &$walker  The walk's resumable state. The three
+ *                            statement arms each iterate their matches in
+ *                            ASCENDING offset order over the same unmutated
+ *                            view, so a caller holding one walker across its
+ *                            loop resumes from the last statement's byte
+ *                            (frames, run start, engine mode) instead of
+ *                            re-walking from byte 0 per statement — the
+ *                            O(statements × filesize) re-scan once measured
+ *                            ~50ms of the ~247ms gate. A null, a view/source
+ *                            change, or a non-ascending offset re-initializes
+ *                            (t31-glm41-6, verdict-identical: the resumed
+ *                            walk answers the same state a fresh walk to the
+ *                            same offset answers — every byte the loop reads
+ *                            is a function of the view/source bytes, never of
+ *                            anything a prior walk consumed).
+ * @param-out array $walker The walk's state after the call — always an
+ *                          initialized state array (null never survives).
  * @return bool True when no non-namespace block encloses the statement
  *              AND the statement sits in PHP code, never inline HTML.
  */
-function wp_connectors_use_statement_in_import_position(string $code_view, int $offset, string $source): bool
+function wp_connectors_use_statement_in_import_position(string $code_view, int $offset, string $source, ?array &$walker = null): bool
 {
-    $frames = array();
-    $run_start = 0;
+    if (null === $walker || $walker['view'] !== $code_view || $walker['source'] !== $source || $walker['i'] > $offset) {
+        $walker = array('view' => $code_view, 'source' => $source, 'i' => 0, 'frames' => array(), 'run_start' => 0, 'in_html' => true);
+    }
+    $frames = &$walker['frames'];
+    $run_start = &$walker['run_start'];
     // The engine starts in HTML mode: a file's leading bytes are
     // inline HTML until the first real open tag (t31-ocr63-2).
-    $in_html = true;
+    $in_html = &$walker['in_html'];
     $length = min($offset, strlen($code_view));
-    for ($i = 0; $i < $length; ++$i) {
+    for ($i = $walker['i']; $i < $length; ++$i) {
         $byte = $code_view[$i];
         if ('?' === $byte) {
             if (0 < $i && '<' === $code_view[$i - 1]) {
@@ -858,6 +881,7 @@ function wp_connectors_use_statement_in_import_position(string $code_view, int $
     // A match that lands in HTML is inline text, never an import
     // statement — the region judgment the r63 boundary anchor left
     // for this fence to own.
+    $walker['i'] = $length;
     if ($in_html) {
         return false;
     }
