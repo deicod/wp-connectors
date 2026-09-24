@@ -428,11 +428,29 @@ final class SecretMask {
 		 * doctrine applied to the embedded code), a long one keeping
 		 * the correlation tail (a long query-embedded token
 		 * correlates the same way a long bare value does).
+		 *
+		 * t31-glm49-5 [R49-7, driven — the credential rides the
+		 * FRAGMENT and the equals-less parameter too]: the round-48
+		 * guard keyed on the LAST '?' plus a following '=', so the
+		 * RFC 6749 implicit-flow fragment spelling
+		 * ('…/cb#code=BCJK-3502') and an equals-less final parameter
+		 * ('…/cb?BCJK-3502') still rendered four of the code's nine
+		 * characters. The boundary is the LAST of '?' and '#'
+		 * (whichever delimiter opens the tail), the credential run
+		 * after the last '=' beyond it — or after the delimiter
+		 * itself when no '=' follows: a short trailing run the bare
+		 * mask, a long one keeping the tail.
 		 */
-		$query_at = strrpos( $value, '?' );
-		if ( false !== $query_at ) {
+		$query_at  = strrpos( $value, '?' );
+		$frag_at   = strrpos( $value, '#' );
+		$tail_open = max( (int) $query_at, (int) $frag_at );
+		if ( false !== $query_at || false !== $frag_at ) {
+			$credential_at = $tail_open;
 			$assignment_at = strrpos( $value, '=' );
-			if ( false !== $assignment_at && $assignment_at > $query_at && self::count_characters( substr( $value, $assignment_at + 1 ) ) <= self::MIN_LENGTH_FOR_VISIBLE_TAIL ) {
+			if ( false !== $assignment_at && $assignment_at > $tail_open ) {
+				$credential_at = $assignment_at;
+			}
+			if ( self::count_characters( substr( $value, $credential_at + 1 ) ) <= self::MIN_LENGTH_FOR_VISIBLE_TAIL ) {
 				return self::MASK;
 			}
 		}

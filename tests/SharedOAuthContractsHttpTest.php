@@ -3136,6 +3136,20 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('https://client.example/cb?code=BCJK-3502'), 'A short code embedded in a query renders the bare mask — the container length never answers for the credential (red at HEAD: …3502).');
         $this->assertSame('…7710', SecretMask::mask('https://x.example/cb?access_token=' . 'ghp_' . '16C7e42F292c6912E7710'), 'A LONG trailing parameter keeps the correlation tail — the doctrine\'s tail clause stands where the credential is long.');
         $this->assertSame('…', SecretMask::mask('https://client.example/cb?code=BCJK-3502&state=y'), 'The FINAL parameter judges — a short trailing state renders the bare mask the same way.');
+
+        /*
+         * t31-glm49-5 (R49-7, driven — the credential rides the
+         * FRAGMENT and the equals-less parameter too): the round-48
+         * guard keyed on the last '?' plus a following '=', so the
+         * RFC 6749 implicit-flow fragment spelling and an
+         * equals-less final parameter still rendered four of the
+         * code's nine characters. The boundary is the last of '?'
+         * and '#', the run after the last '=' beyond it — or after
+         * the delimiter itself when none follows.
+         */
+        $this->assertSame('…', SecretMask::mask('https://client.example/cb#code=BCJK-3502'), 'A short code embedded in the FRAGMENT renders the bare mask — the implicit-flow spelling judged the same as the query one (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('https://client.example/cb?BCJK-3502'), 'An equals-less final parameter renders the bare mask — the run after the delimiter judges when no \'=\' follows (red at HEAD: …3502).');
+        $this->assertSame('…7710', SecretMask::mask('https://x.example/cb#access_token=' . 'ghp_' . '16C7e42F292c6912E7710'), 'A LONG fragment parameter keeps the correlation tail.');
     }
 
     /**
