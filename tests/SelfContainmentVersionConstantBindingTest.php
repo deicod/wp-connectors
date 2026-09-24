@@ -581,6 +581,47 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         WpHarness::releaseScratch($base);
     }
 
+    public function testTheDecoyConsultsRound51Gaps(): void
+    {
+        /*
+         * R51-5+R51-6+R51-7 (all driven at HEAD, php -l clean): a
+         * trait adaptation aliasing a method as 'define' ('use T {
+         * m as define; }') group-parsed as an import binding the
+         * name — the phantom shadow falsely refusing a working
+         * plugin (the group-use brace rides a NAMESPACE SEPARATOR,
+         * a trait adaptation's a class NAME); imports are
+         * BLOCK-scoped, not name-scoped — a shadowing import in one
+         * braced block applying to a call in ANOTHER braced block
+         * declaring the SAME namespace (the R50-13 intent spelled
+         * per-arm: the DECLARATION match stays name-based, functions
+         * name-scoped across same-name blocks per R50-7); and the
+         * consult's two hand-rolled trivia walks were
+         * whitespace-only — a comment between '::' and 'class' or
+         * between the declaration name and its '(' breaking them,
+         * the walks riding the ONE owner now.
+         */
+        $b = chr(92);
+        $base = sys_get_temp_dir() . '/wp-connectors-version-r51-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        foreach (array(
+            'trait-adaptation-alias' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ntrait T { public function m() { return 1; } }\nclass C { use T { m as define; } }\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'same-name-blocks-import' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E { use function Foo{$b}define; }\nnamespace E { define( 'MYPLUG_VERSION', '1.2.3' ); }\n",
+            'two-unbraced-regions' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\nuse function Foo{$b}define;\nnamespace E;\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+        ) as $name => $source) {
+            file_put_contents($base . '/myplug/myplug.php', $source);
+            $this->assertSame(array(), wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php')), "The {$name} shape binds — the false refusal dead (red at HEAD: must-define).");
+        }
+        foreach (array(
+            'comment-in-::class' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\n\$n = Foo:: /* c */ class;\nif (true) { function define(\$n, \$v) {} }\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'comment-before-decl-paren' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\nfunction define /* c */ (\$n, \$v) {}\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+        ) as $name => $source) {
+            file_put_contents($base . '/myplug/myplug.php', $source);
+            $v = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+            $this->assertStringContainsString('must define constant', implode("\n", $v), "The {$name} shape launders no more — the ONE-owner walk skips the comment (red at HEAD: binds clean).");
+        }
+        WpHarness::releaseScratch($base);
+    }
+
     public function testTightGlueAndCommentGlueDefineShapes(): void
     {
         /*

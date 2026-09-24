@@ -6610,7 +6610,25 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
             foreach ($imports[1] as $import_statement) {
                 $statement_offset = $import_statement[1];
                 $statement_text = trim($import_statement[0]);
-                $group_statement = false !== strpos($statement_text, '{');
+                /*
+                 * t31-glm51-3 [R51-5, driven FALSE REFUSAL — the trait
+                 * adaptation fence]: the regex reads EVERY 'use' tail,
+                 * and a trait adaptation aliasing a method as 'define'
+                 * ('class C { use T { m as define; } }') group-parsed
+                 * as an import binding the name — the phantom shadow
+                 * skipping the real define() call and refusing a
+                 * working plugin (driven end-to-end: must-define at
+                 * the gate where require answers defined() === true).
+                 * A GROUP-use's brace rides a NAMESPACE SEPARATOR
+                 * ('use Foo\{…}'); a trait adaptation's brace rides a
+                 * class NAME ('use T {…}') — the byte before '{'
+                 * decides, the adaptation skipped wholesale.
+                 */
+                $brace_at = strpos($statement_text, '{');
+                if (false !== $brace_at && '\\' !== substr($statement_text, $brace_at - 1, 1)) {
+                    continue; // A trait/class use statement — never a function import.
+                }
+                $group_statement = false !== $brace_at;
                 $statement_is_function = false;
                 if (1 === preg_match('/^(?i:function|const)\s+/s', $statement_text, $statement_kind)) {
                     $statement_is_function = 0 === strcasecmp('function', trim($statement_kind[0]));
@@ -6726,11 +6744,17 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
                  * ubiquitous idiom). The probe reads the PRECEDING
                  * significant token.
                  */
-                $previous_significant = $i - 1;
-                while ($previous_significant >= 0 && T_WHITESPACE === ($tokens[ $previous_significant ][0] ?? null)) {
-                    --$previous_significant;
-                }
-                if ($previous_significant >= 0 && is_array($tokens[ $previous_significant ]) && T_DOUBLE_COLON === $tokens[ $previous_significant ][0]) {
+                /*
+                 * t31-glm51-3 [R51-7, driven — the hand-rolled trivia
+                 * walk, whitespace-only]: a comment between '::' and
+                 * 'class' stopped the walk at the comment's own token,
+                 * the T_DOUBLE_COLON never seen, the PHANTOM class
+                 * frame pushed and every later decoy skipped as a
+                 * method (the R50-3 class one spelling over). The walk
+                 * rides the ONE owner, which skips the comment tokens.
+                 */
+                $previous_significant = wp_connectors_previous_code_token_index($tokens, $i - 1);
+                if (null !== $previous_significant && is_array($tokens[ $previous_significant ]) && T_DOUBLE_COLON === $tokens[ $previous_significant ][0]) {
                     continue; // A '::class' spelling — a constant, never a body opener.
                 }
                 $class_frames[] = $brace_depth; // The frame opens at the NEXT '{', depth+1 there.
@@ -6769,11 +6793,14 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
              * statement's member the fence above should have fenced
              * (belt beside the fence).
              */
-            $after_name = $name_index + 1;
-            while ($after_name < $count && T_WHITESPACE === ($tokens[ $after_name ][0] ?? null)) {
-                ++$after_name;
-            }
-            if ($after_name >= $count || ! is_string($tokens[ $after_name ]) || '(' !== $tokens[ $after_name ]) {
+            /*
+             * t31-glm51-3 [R51-7's forward half]: the same hand-rolled
+             * whitespace-only walk — a comment between the name and its
+             * '(' broke the requirement and the declaration was never
+             * recorded. The ONE owner (comment-skipping) answers.
+             */
+            $after_name = wp_connectors_next_code_token_index($tokens, $name_index + 1);
+            if (null === $after_name || ! is_string($tokens[ $after_name ]) || '(' !== $tokens[ $after_name ]) {
                 continue;
             }
             /*
@@ -6840,13 +6867,29 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
     }
 
     $call_scope = $in_effect($call_offset);
+    /*
+     * t31-glm51-3 [R51-6, driven false refusal — imports are
+     * BLOCK-scoped, not name-scoped]: the round-50 name match let a
+     * shadowing import in one braced block apply to a call in
+     * ANOTHER braced block declaring the SAME namespace (one name,
+     * two import scopes — 'namespace E { use function Foo\define; }
+     * namespace E { define(...); }' refused while executing binds,
+     * the import never reaching block 2). The import's scope is its
+     * ledger ENTRY (offset identity within the block; null-to-null
+     * the one global region); the DECLARATION arm below keeps the
+     * name match — functions ARE name-scoped across same-name
+     * blocks (R50-7), only imports block-scoped (R50-13's intent,
+     * spelled correctly per-arm now).
+     */
     foreach ($import_shadows as $import_offset) {
         if ($import_offset >= $call_offset) {
             continue;
         }
         $import_scope = $in_effect($import_offset);
-        if ((null === $import_scope ? null : $import_scope['lower']) === (null === $call_scope ? null : $call_scope['lower'])) {
-            return true; // A shadowing import in the call's own namespace scope, preceding the call.
+        $import_scope_id = null === $import_scope ? null : $import_scope['offset'];
+        $call_scope_id = null === $call_scope ? null : $call_scope['offset'];
+        if ($import_scope_id === $call_scope_id) {
+            return true; // A shadowing import in the call's own braced block (or the global region), preceding the call.
         }
     }
 
