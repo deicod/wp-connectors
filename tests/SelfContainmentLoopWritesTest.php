@@ -39,12 +39,12 @@ final class SelfContainmentLoopWritesTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_file($entry)) {
-                @unlink($entry);
-            }
-        }
-        @rmdir($this->root);
+        // t31-glm42-6 [R42-15, the regrowing-hand-copy re-open condition
+        // fired — the glm39-13 class]: the hand-rolled flat walk unlinked
+        // only top-level files, stranding the root over any nested or
+        // locked fixture; the ONE scratch-release owner the six sibling
+        // SelfContainment suites ride owns every exit.
+        WpHarness::releaseScratch($this->root);
     }
 
     public function testAnUnreadableSubdirectoryConvertsTheWalkAbortIntoANamedViolation(): void
