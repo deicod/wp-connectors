@@ -3809,7 +3809,15 @@ FIXTURE;
             $zipBefore = (string) file_get_contents($zipPath);
             $sidecarBefore = (string) file_get_contents($zipPath . '.sha256');
             $manifestBefore = (string) file_get_contents($manifestPath);
-            file_put_contents($scratch . '/shared/src/Broken.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock /* interrupted */ as C;\ninterface Broken {}\n");
+            // The planted trip is the STRING-VALUE family reference
+            // (php -l clean, refused at the postcondition's 'string
+            // position'): the (d) leg's former spelling — a comment
+            // before 'as' — is engine-legal trivia the seat pass now
+            // OWNS over the comment-blanked twin (t31-glm42-3), so it
+            // rewrites clean where it once rode verbatim into this
+            // refusal; the postcondition trip itself is the leg's
+            // subject and rides a spelling no seat owns.
+            file_put_contents($scratch . '/shared/src/Broken.php', "<?php\nnamespace Deicod\\WpConnectors\\Shared;\n\$x = 'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\ninterface Broken {}\n");
             $refusal = $this->refusalOf(
                 fn() => WpConnectorsBuild::buildPlugin($scratch . '/plugin/example-connector', $scratch . '/dist'),
                 'A postcondition-tripping shared source must fail the build mid-staging.', \RuntimeException::class
@@ -7381,6 +7389,37 @@ FIXTURE;
         $this->assertStringContainsString('use Deicod\\WpConnectors\\{OpenAiOauth\\Shared\\Clock, OpenAiOauth\\Shared\\Now};', $comment_member, 'A trailing comment is legal trivia — the member rewrites clean, the comment riding neither verdict nor output (red at HEAD: the grammar threw).');
 
         /*
+         * t31-glm42-3 (R42-4+R42-5, driven false refusals — the
+         * ledger's deferred seat-matching question, re-driven as a
+         * real defect): glm41-2's per-member strip could not reach a
+         * body the SEAT patterns never captured — a ';'/'}' inside a
+         * comment killed the brace tail's own body match and the
+         * statement rode verbatim into the postcondition's refusal,
+         * a ',' inside a comment split a member mid-comment into the
+         * grammar's refusal, and the vendor seat's inter-token
+         * comment shapes missed the same way — all php -l clean on
+         * 8.5.10, all REFUSED at HEAD while the conventions gate
+         * answered 0 violations on the identical bytes. Both seats
+         * run over the COMMENT-BLANKED twin now
+         * (replaceOverCommentBlanked): every comment a space run the
+         * patterns' classes span, the reassembly from the blanked
+         * match (comments riding neither verdict nor output), the
+         * real bytes outside matched spans untouched.
+         */
+        foreach (array(
+            'family tail, semicolon in comment' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\{Clock /* ; */};\nclass SeatStore\n{\n}\n",
+            'family tail, brace in comment' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\{Clock /* } */};\nclass SeatStore\n{\n}\n",
+            'vendor comment before brace' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\ /* c */ {Shared\\Clock};\nclass SeatStore\n{\n}\n",
+            'vendor comment before semicolon' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\{Shared\\Clock} /* c */;\nclass SeatStore\n{\n}\n",
+            'comma inside a block comment' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\{Clock, /* a, b */ Now};\nclass SeatStore\n{\n}\n",
+            'comma inside a line comment' => "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\{Clock, // note, with comma\n Now};\nclass SeatStore\n{\n}\n",
+        ) as $name => $source) {
+            $rewritten_seat = WpConnectorsBuild::rewriteSharedNamespace($source, 'OpenAiOauth', 'shared/src/SeatStore.php');
+            $this->assertStringContainsString('OpenAiOauth\\Shared', $rewritten_seat, sprintf('The %s spelling rewrites clean at the SEAT — engine-legal trivia never refuses the build (red at HEAD: the refusal).', $name));
+            $this->assertStringNotContainsString('/*', substr($rewritten_seat, (int) strpos($rewritten_seat, 'use ')), sprintf('The %s comment rides neither verdict nor output — the matched span\'s reassembly drops it.', $name));
+        }
+
+        /*
          * OCR round 68 (t31-ocr68-1 — the t31-ocr60-1 sweep's
          * straggler): the dangling-alias probe once rode PCRE's
          * ASCII \b, and in byte mode every high byte is a NON-word
@@ -7810,10 +7849,16 @@ FIXTURE;
                 "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock ?>\n<p>x</p>\n<?php\nclass TagStore\n{\n}\n",
                 'close-tag-terminated import',
             ),
-            'comment inside the import statement' => array(
-                "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nuse Deicod\\WpConnectors\\Shared\\Clock /* pick one */;\nclass CommentStore\n{\n}\n",
-                'a comment inside the use statement',
-            ),
+            /*
+             * SUPERSEDED by t31-glm42-3 (the ocr35-1 keyword-row
+             * pattern): the 'comment inside the import statement' row
+             * moved to the OWNED side — the seat pass runs over the
+             * comment-blanked twin now, so the trailing-comment
+             * spelling (and every inter-token comment shape) rewrites
+             * clean where it once rode verbatim into this refusal
+             * (pinned at the seat rows above). Every remaining row
+             * refuses through a cause the blanked twin cannot bridge.
+             */
             /*
              * Verifier-pass fix (t31-ocr7-9, the refutation lens's
              * driven counterexample): the case-insensitivity axis.
@@ -7982,10 +8027,14 @@ FIXTURE;
         $this->assertStringContainsString('survived the rewrite', $refusal->getMessage());
         $this->assertStringContainsString('WidgetStore.php', $refusal->getMessage());
 
-        // The postcondition: a spelling the pattern does not know (a
-        // comment-interrupted use line) refuses the rewrite loudly —
-        // never ships a broken import silently.
-        $interrupted = "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\nuse Deicod\\WpConnectors\\Shared\\Clock /* timing */ as C;\nclass ClockStore\n{\n}\n";
+        // The postcondition: a spelling the pattern does not know
+        // refuses the rewrite loudly — never ships a broken import
+        // silently. The planted trip is the STRING-VALUE family
+        // reference: the leg's former spelling (a comment before 'as')
+        // is engine-legal trivia the seat pass now OWNS over the
+        // comment-blanked twin (t31-glm42-3), so it rewrites clean
+        // where it once rode verbatim into this refusal.
+        $interrupted = "<?php\nnamespace Deicod\\WpConnectors\\Shared\\Storage;\n\$x = 'Deicod\\\\WpConnectors\\\\Shared\\\\Clock';\nclass ClockStore\n{\n}\n";
         $refusal = $this->refusalOf(
             fn() => WpConnectorsBuild::rewriteSharedNamespace($interrupted, 'OpenAiOauth', 'shared/src/Storage/ClockStore.php'),
             'An unhandled shared-namespace spelling must refuse the rewrite, never survive it.', \RuntimeException::class

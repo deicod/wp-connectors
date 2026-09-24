@@ -350,8 +350,28 @@ final class WpConnectorsBuild
          * extraction would hand it 'self' out of the legal
          * 'Grüself').
          */
-        $rewritten = self::replaceOrThrow(
-            preg_replace_callback(
+        /*
+         * t31-glm42-3 [R42-4+R42-5, driven false refusals over legal
+         * input — the seat patterns and the body comma split were
+         * comment-blind over RAW bytes]: a ';'/'}' inside a comment
+         * killed the optional brace tail's [^;}]* body match (the
+         * statement riding verbatim into the postcondition's
+         * 'survived the rewrite' refusal over php -l-clean input —
+         * driven: a block comment carrying a semicolon or a closing
+         * brace inside the brace tail, and the vendor seat's comment-
+         * before-brace and comment-before-semicolon inter-token shapes)
+         * and a ',' inside a comment split a member mid-comment, the
+         * unclosed half surviving the strip into the grammar's own
+         * refusal (driven: a comma inside a block comment, and the
+         * line-comment twin) — while the conventions gate answered 0
+         * violations on the identical bytes. The seat pass runs over
+         * the COMMENT-BLANKED twin (replaceOverCommentBlanked): every
+         * comment a space run the patterns' classes already span, the
+         * replacement built from the blanked match (the glm41-2
+         * doctrine at the seat — comments ride neither verdict nor
+         * output), the real bytes outside matched spans untouched.
+         */
+        $rewritten = self::replaceOverCommentBlanked(
                 /*
                  * The lookbehind owns the r49-1 LEFT-ANCHOR census
                  * (t31-ocr49-2): word bytes alone never covered the
@@ -509,10 +529,9 @@ final class WpConnectorsBuild
                     // this through the replacement parser).
                     return $matches[1] . $vendor . '\\' . $pluginSuffix . '\\' . $family_leaf . ($matches[2] ?? '') . $alias_group . $brace_tail . ';';
                 },
-                $rewritten
-            ),
-            'use-statement rewrite',
-            $sourceVersion
+                $rewritten,
+                'use-statement rewrite',
+                $sourceVersion
         );
         /*
          * Group-use MEMBER spellings (round t31-r4, K1's t31-r4-4 half):
@@ -554,8 +573,11 @@ final class WpConnectorsBuild
          * seam, its byte class the LABEL_BYTES owner's since
          * t31-ocr60-3).
          */
-        $rewritten = self::replaceOrThrow(
-            preg_replace_callback(
+        /* t31-glm42-3 [R42-4+R42-5]: this seat rides the comment-blanked
+         * twin too — the inter-token and in-body comment shapes refused
+         * php -l-clean input here while the conventions gate answered 0
+         * (see the plain seat's census note above). */
+        $rewritten = self::replaceOverCommentBlanked(
                 '/(' . $statement_start . '(?i:use)\s+(?:(?i:function)\s+|(?i:const)\s+)?\\\\?' . $vendor_pattern . '\\\\)\s*(\{)([^{}]*)(\})\s*;/',
                 static function ($matches) use ($pluginSuffix, $sourceVersion, $shared_leaf) {
                     $members = array();
@@ -610,10 +632,9 @@ final class WpConnectorsBuild
 
                     return $matches[1] . $matches[2] . implode(', ', $members) . $matches[4] . ';';
                 },
-                $rewritten
-            ),
-            'group-use member rewrite',
-            $sourceVersion
+                $rewritten,
+                'group-use member rewrite',
+                $sourceVersion
         );
 
         /*
@@ -2307,6 +2328,74 @@ final class WpConnectorsBuild
     }
 
     /**
+     * Runs ONE rewrite pass's pattern over the COMMENT-BLANKED twin of the
+     * source and splices each replacement into the REAL bytes at the match
+     * offsets (t31-glm42-3, R42-4+R42-5 — driven false refusals over legal
+     * input): the group seats' patterns and their body comma split were
+     * comment-blind over RAW bytes, so a ';'/'}' inside a comment killed the
+     * seat match (the statement riding verbatim into the postcondition's
+     * 'survived the rewrite' refusal over php -l-clean input) and a ','
+     * inside a comment split a member mid-comment, the unclosed half
+     * surviving the strip into the grammar's own refusal — while the
+     * conventions gate answered 0 violations on the identical bytes, the
+     * one-verdict doctrine violated. Over the BLANKED twin (comments to
+     * spaces, length-preserved — the strip owner the conventions gate
+     * rides) every comment is a space run the patterns' classes already
+     * span; the replacement bytes are built from the BLANKED match (the
+     * glm41-2 doctrine at the seat: comments ride neither verdict nor
+     * output), and every byte OUTSIDE a matched statement keeps its real
+     * comment bytes — only matched spans are replaced.
+     *
+     * @param string $pattern       The pass's callback pattern.
+     * @param callable $callback    Receives the match texts (the
+     *                              preg_replace_callback shape).
+     * @param string $source        The real source bytes.
+     * @param string $pass_name     Abort-vocabulary provenance.
+     * @param string $sourceVersion Provenance string (refusal context).
+     * @return string The source with each matched span replaced.
+     * @throws RuntimeException When the match walk aborts (PCRE).
+     */
+    private static function replaceOverCommentBlanked($pattern, $callback, $source, $pass_name, $sourceVersion)
+    {
+        $blanked = wp_connectors_strip_comments($source);
+        $hits = preg_match_all($pattern, $blanked, $matches, PREG_OFFSET_CAPTURE);
+        if (false === $hits) {
+            throw new RuntimeException("build: the {$pass_name} pass aborted (PCRE: " . preg_last_error_msg() . ") in {$sourceVersion} — the rewrite cannot run over unscanned bytes");
+        }
+        if (0 === $hits) {
+            return $source;
+        }
+        $out = '';
+        $at = 0;
+        foreach ($matches[0] as $index => $whole) {
+            $texts = array();
+            foreach ($matches as $group => $set) {
+                $texts[$group] = $set[$index][0];
+            }
+            $out .= (string) substr($source, $at, $whole[1] - $at);
+            $out .= (string) $callback($texts);
+            $at = $whole[1] + strlen($whole[0]);
+        }
+
+        return $out . (string) substr($source, $at);
+    }
+
+    /**
+     * Strips comment trivia (block or line) from a group-use member piece —
+     * engine-legal in EVERY position of a group body (leading after '{' or a
+     * comma, mid-member before 'as', trailing after a trailing comma), php -l
+     * clean on 8.5.10 where glm40-4's trailing-only strip refused them with
+     * messages claiming parse errors (t31-glm41-2, R41-4). The reassembly
+     * rebuilds from the parsed pieces: the comments ride neither verdict nor
+     * output. Shared by the grammar head and both call sites' trailing-comma
+     * drop test (a comment-only final piece IS the legal trailing comma).
+     */
+    private static function stripMemberCommentTrivia($member)
+    {
+        return (string) preg_replace('/(?:\/\*\*?.*?\*\/|\/\/[^\n]*|#(?!\[)[^\n]*)/s', '', $member);
+    }
+
+    /**
      * Validates ONE group-use member against the member grammar and
      * returns its parsed pieces — the ONE owner of the member
      * validation every seam that re-emits a group BODY rides (OCR
@@ -2368,21 +2457,6 @@ final class WpConnectorsBuild
      * @return list<string> The parsed member: [kind prefix, name, alias tail].
      * @throws RuntimeException When the member is a spelling the engine rejects.
      */
-    /**
-     * Strips comment trivia (block or line) from a group-use member piece —
-     * engine-legal in EVERY position of a group body (leading after '{' or a
-     * comma, mid-member before 'as', trailing after a trailing comma), php -l
-     * clean on 8.5.10 where glm40-4's trailing-only strip refused them with
-     * messages claiming parse errors (t31-glm41-2, R41-4). The reassembly
-     * rebuilds from the parsed pieces: the comments ride neither verdict nor
-     * output. Shared by the grammar head and both call sites' trailing-comma
-     * drop test (a comment-only final piece IS the legal trailing comma).
-     */
-    private static function stripMemberCommentTrivia($member)
-    {
-        return (string) preg_replace('/(?:\/\*\*?.*?\*\/|\/\/[^\n]*|#(?!\[)[^\n]*)/s', '', $member);
-    }
-
     private static function groupUseMemberGrammar($member, $body, $member_index, $piece_count, $sourceVersion)
     {
         /*
