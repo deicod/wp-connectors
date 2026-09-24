@@ -6,6 +6,77 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 49)
+
+Thirty-fifth claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first; the convergence round ordered — still not
+zero, and nine of the eleven correctness findings sit in the
+round-48 commits' own machinery): the define collector's escaping
+accident reopening the identifier-glued laundering wholesale, the
+scanner's chunked-entropy laundering on both sides of the word, the
+decoy consult's five gaps, the heredoc arm's three defects and the
+grammar's remaining legal spellings, the mask's fragment spelling,
+the compile-warning capture's missed build seat, the text lens's
+stem prescreen, and two stranded docblocks. Eight fix commits
+t31-glm49-1..8 plus the docs close, the full offline check green
+after every commit. Suite 1977 → 1978 tests, 48571 → 48590
+assertions, 3 skipped unchanged.
+
+- **The define collector's glue class is the LABEL owner's
+  (t31-glm49-1, driven fail-open; bin/lib/plugin-tools.php)** — the
+  round-48 rewrite embedded the constant NAME inside the
+  single-quoted pattern, the class shrinking to its literal letters
+  and every identifier-glued call outside them laundering at zero
+  violations; the concatenation restored, the round-40 pin now
+  driving letter-outside spellings.
+
+- **The fake-secret judge's unified budget (t31-glm49-2, driven
+  through the real CLI; bin/lib/secret-scanner.php)** — a live
+  credential chunked into four-byte dash-separated pieces shipped as
+  fake; both sides of the word ride one walker and one bound (9, the
+  pinned corpus' own maximum), the hyphenated dictionary words
+  honored as consecutive-segment windows.
+
+- **The decoy consult's five gaps closed in one restructure
+  (t31-glm49-3, driven; bin/lib/plugin-tools.php)** — the bound
+  name computed (alias-else-leaf, group-use aware), the declarations
+  from the token stream (the named ampersand, conditional and
+  nested declarations, class-frames excluding methods), the
+  qualification walked backward (the global escape never a decoy, a
+  foreign qualified name refusing), the import arm judged over the
+  flat view, and everything once-per-file cached — the 500-decoy
+  hostile shape 9ms.
+
+- **The mask's embedded-credential boundary is the last of '?' and
+  '#' (t31-glm49-4, driven; shared/src/Support/SecretMask.php)** —
+  the implicit-flow fragment and the equals-less final parameter
+  rendered four of a nine-character code's characters; both spell
+  ings judge the trailing run now, long trailing tokens keeping the
+  correlation tail.
+
+- **The heredoc arm's three corrections and the grammar's remaining
+  spellings (t31-glm49-5, driven; bin/lib/plugin-tools.php)** — the
+  anchored closer killing the label-continuation version-mismatch
+  laundering, the closer-indentation de-indent and the CR-only
+  opener binding, the double-quoted label and the parenthesized and
+  concatenated NAME argument admitted, the decode ONE helper riding
+  the shared arm.
+
+- **The compile-warning capture's missed build seat
+  (t31-glm49-6, driven via reflection; bin/build.php)** — the
+  rewrite's own walk over rewritten plugin bytes captured like the
+  lib seats.
+
+- **The text lens rides the stem prescreen (t31-glm49-7,
+  pre-measured ~80%; bin/lib/plugin-tools.php)** — every battery
+  pattern requires the vendor stem; a token not carrying it skips
+  the up-to-six PCRE runs, sound by construction.
+
+- **Two stranded docblocks relocated (t31-glm49-8)** — the
+  version-constant gate's glm25-9 record (stranded by the round-48
+  insertion) and the decoy helper's (stranded by this round's own
+  decode insertion), all three functions verified attaching.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 48)
 
 Thirty-fourth claude-glm pass (/code-review max over the FULL branch
