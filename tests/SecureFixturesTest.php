@@ -2967,6 +2967,62 @@ CHILD;
     }
 
     /**
+     * Round-60 pin (t31-glm60-4/6 [R60-1+R60-6+R60-2] — the marker
+     * consult seats, all driven at HEAD by both the review and the
+     * driver): the round-58 ';' enclosure arm reached the CODE-view
+     * consult ungated (';' is a statement terminator in PHP code
+     * bytes, never a comment — a marker spelled after a statement
+     * inside an embedded sample laundered a live credential in
+     * .ini/.conf/.config payloads while the byte-identical .txt/.php
+     * twins flagged); the round-59 '.dist' family re-derivation
+     * reached the prose consult only (the code consult's raw
+     * extension splitting the two labels); and the line-initial '*'
+     * arm served the code consult without the token verdict (an
+     * operator-line 'secrets:allow' laundering in any markup-family
+     * payload with an embedded sample). ';' is prose-consult-alone
+     * now, the family extension threads both seats, and the star arm
+     * fires on the code consult only inside a real comment token.
+     */
+    public function testTheMarkerConsultSeatsGateIniSemicolonsAndTheStarArm(): void
+    {
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-seats');
+        try {
+            $this->assertTrue(@mkdir($tempDir, 0755, true), "staging: {$tempDir} must create.");
+            $writes = array(
+                // The code-bytes '; marker' — flags at every label now.
+                'code.ini' => "<?php \$k = 'TOKEN' ; secrets:allow ?>\n",
+                'code.txt' => "<?php \$k = 'TOKEN' ; secrets:allow ?>\n",
+                // The honest prose rows — exempt at their labels.
+                'prose.ini' => "key = \"TOKEN\" ; secrets:allow\n",
+                'prow.ini.dist' => "key = \"TOKEN\" ; secrets:allow\n",
+                // The '#' comment inside a sample — a real comment, exempt at both labels.
+                'hash.ini' => "# deploy\n<?php \$t = \"TOKEN\"; # secrets:allow ?>\n",
+                'hash.ini.dist' => "# deploy\n<?php \$t = \"TOKEN\"; # secrets:allow ?>\n",
+                // The star-operator line — flags; the real docblock row — exempts.
+                'star.md' => "guide\n<?php\n\$r = 1\n* secrets:allow; \$k = 'TOKEN';\n?>\n",
+                'doc.md' => "<?php\n/**\n * secrets:allow 'TOKEN'\n */\n?>\n",
+            );
+            $token = 'ghp_' . str_repeat('abcd', 9);
+            foreach ($writes as $name => $body) {
+                $this->assertNotFalse(file_put_contents($tempDir . '/' . $name, str_replace('TOKEN', $token, $body)), "staging: {$name} must write.");
+            }
+
+            $findings = wp_connectors_scan_paths(array( $tempDir ));
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+        $report = implode("\n", $findings);
+        $this->assertStringContainsString('/code.ini:', $report, 'A \'\' after a statement inside a sample is CODE, never a comment — the token flags exactly like its .txt twin (red at HEAD: laundered).');
+        $this->assertStringContainsString('/code.txt:', $report, 'The .txt twin flags identically — one verdict across the labels.');
+        $this->assertStringNotContainsString('/prose.ini:', $report, 'The honest prose \'\' row keeps its exemption.');
+        $this->assertStringNotContainsString('/prow.ini.dist:', $report, 'The .dist prose row exempts — the family serves both seats.');
+        $this->assertStringNotContainsString('/hash.ini:', $report, 'A real \'#\' comment inside a sample exempts.');
+        $this->assertStringNotContainsString('/hash.ini.dist:', $report, 'The .dist twin exempts identically — the code consult carries the family extension.');
+        $this->assertStringContainsString('/star.md:', $report, 'An operator-line star marker is CODE — the token flags (red at HEAD: laundered).');
+        $this->assertStringNotContainsString('/doc.md:', $report, 'A real docblock continuation keeps its exemption — the token verdict holds the honest rows.');
+    }
+
+    /**
      * Round-59 pin (t31-glm59-5 [R59-7+R59-1] — the round-58 head-shape
      * clause was the wrong owner, both legs): a php-HEADED
      * extension-less prose doc (a fenced sample first, prose after)

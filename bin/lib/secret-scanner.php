@@ -146,6 +146,67 @@ function wp_connectors_secret_patterns()
 }
 
 /**
+ * Whether a byte span of a payload sits inside a COMMENT token
+ * (t31-glm60-6 [R60-2, the token verdict for the star arm]): the
+ * engine's own lexing decides comment-ness — a line-initial '*'
+ * inside a T_COMMENT/T_DOC_COMMENT span is a docblock continuation;
+ * inside code, heredoc, or inline-HTML bytes it is an operator or
+ * data, and no grammar can tell them apart. The tokenize follows
+ * the t31-glm48-7 compile-warning capture doctrine (hostile bytes
+ * must never leak a raw engine Warning); the token map is cached
+ * per payload content (the marker consult is rare, but a hostile
+ * many-star file must not re-tokenize per line).
+ *
+ * @param string $contents The payload's raw bytes.
+ * @param int    $start    Absolute start of the span.
+ * @param int    $end      Absolute end of the span (inclusive).
+ * @return bool True when any comment token overlaps the span.
+ */
+function wp_connectors_span_sits_in_comment($contents, $start, $end)
+{
+    static $token_cache = array();
+    $key = crc32($contents);
+    if (! isset($token_cache[$key])) {
+        ob_start();
+        $tokens = token_get_all($contents);
+        ob_end_clean();
+        $comments = array();
+        $offset = 0;
+        foreach ($tokens as $token) {
+            $text = is_array($token) ? $token[1] : $token;
+            $id = is_array($token) ? $token[0] : null;
+            if (T_COMMENT === $id || T_DOC_COMMENT === $id) {
+                $comments[] = array( $offset, $offset + strlen($text) - 1 );
+            }
+            $offset += strlen($text);
+        }
+        $token_cache[$key] = $comments;
+        if (count($token_cache) > 4) {
+            unset($token_cache[array_key_first($token_cache)]);
+        }
+    }
+    foreach ($token_cache[$key] as $span) {
+        if ($start <= $span[1] && $end >= $span[0]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * The line-initial MARKER-RUN + STAR opener arm (t31-glm53-8's
+ * anchor, extracted at t31-glm60-6): the docblock-continuation
+ * grammar the prose consult serves directly — and the CODE consult
+ * serves only on the TOKEN VERDICT (R60-2: in code bytes a
+ * line-initial '*' can be a multiplication continuation, so the
+ * arm's match alone proves nothing about comment-ness; the pinned
+ * docblock rows keep exempting through the verdict, the operator
+ * shape refuses).
+ */
+const WP_CONNECTORS_MARKER_STAR_ARM = '^(?:[-*+> \t]|\d+\.)*\*';
+
+/**
  * The strict line-exemption marker for deliberate fixture/example secrets.
  *
  * A line is exempt ONLY when the marker appears inside a comment on that
@@ -270,7 +331,7 @@ function wp_connectors_allow_marker_pattern($extension = '', $with_markup_arm = 
      * * secrets:allow' keeps its mid-line flag (the '1' carries no
      * dot and 'note' is no marker).
      */
-    $line_comment_openers = '\/\/|#|\/\*|^(?:[-*+> \t]|\d+\.)*\*';
+    $line_comment_openers = '\/\/|#|\/\*|' . WP_CONNECTORS_MARKER_STAR_ARM;
     /*
      * t31-glm58-7 [R58-8, driven at the real CLI by both the review
      * and the driver — the INI family's own comment character one
@@ -282,8 +343,20 @@ function wp_connectors_allow_marker_pattern($extension = '', $with_markup_arm = 
      * is a property of the payload's comment grammar (glm23-6):
      * toml/properties/env keep '#' (their own grammars — ';' is a
      * value byte in a dotenv value, not a comment there).
+     *
+     * t31-glm60-4 [R60-1, driven — the PROSE consult's arm reached
+     * the CODE consult ungated]: ';' is a statement terminator in
+     * PHP code bytes, never a comment, so a marker spelled after a
+     * statement inside an embedded sample laundered a live
+     * credential in .ini/.conf/.config payloads while the
+     * byte-identical .txt/.php twins flagged — the R51-3 'the code
+     * consult rides the line-comment arms alone' doctrine one
+     * vocabulary member over, in the round-58 commit's own
+     * machinery. ';' serves the PROSE consult alone
+     * ($with_markup_arm true); the code consult's arm set never
+     * carries it.
      */
-    if (in_array($extension, array( 'ini', 'conf', 'config' ), true)) {
+    if (true === $with_markup_arm && in_array($extension, array( 'ini', 'conf', 'config' ), true)) {
         $line_comment_openers .= '|;';
     }
     if (! $with_markup_arm) {
@@ -1640,7 +1713,30 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                 }
                 if ($in_code) {
                     if (null === $code_marker) {
-                        $code_marker = 1 === preg_match(wp_connectors_allow_marker_pattern($label_ext, false), $code_view);
+                        $code_marker = 1 === preg_match(wp_connectors_allow_marker_pattern($marker_family_ext, false), $code_view);
+                        /*
+                         * t31-glm60-6 [R60-2, driven — the star arm
+                         * served the code consult ungated]: in code
+                         * bytes a line-initial '*' can be a
+                         * multiplication continuation ('<?php $r = 1
+                         * * secrets:allow; $k = …;' — engine-legal),
+                         * so the arm's match alone launders (driven:
+                         * star.md clean where the one-byte-different
+                         * xmark.md flagged). When the star arm is the
+                         * only carrier (the marker match dies with
+                         * the star-led prefix stripped), the TOKEN
+                         * VERDICT decides: a real T_COMMENT/
+                         * T_DOC_COMMENT span keeps the exemption
+                         * (the pinned docblock rows), code or string
+                         * data refuses.
+                         */
+                        if ($code_marker) {
+                            $star_stripped = preg_replace('/' . WP_CONNECTORS_MARKER_STAR_ARM . '[ \t]*/', ' ', $code_view, 1);
+                            if (1 !== preg_match(wp_connectors_allow_marker_pattern($marker_family_ext, false), $star_stripped)
+                                && ! wp_connectors_span_sits_in_comment($contents, $line_start, $line_start + max(0, strlen($line) - 1))) {
+                                $code_marker = false;
+                            }
+                        }
                     }
                     if ($code_marker) {
                         continue;
