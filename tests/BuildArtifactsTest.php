@@ -2655,6 +2655,18 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
                 'channel-eval.php' => "<?php\neval( file_get_contents( __DIR__ . '/vendor/autoload.php' ) );\n",
                 // The channel-seat prose immunity: the note's string rides NO operand.
                 'channel-prose.php' => "<?php\n\$note = 'see the vendor/autoload docs elsewhere';\nfile_get_contents( __DIR__ . '/data/local.json' );\n",
+                /*
+                 * R55-3 (driven A/B vs master): the 'composer' needle
+                 * missed the channel operands the R54-2 fix collected —
+                 * a Composer reference riding a file/exec operand was
+                 * invisible where master's raw scan refused it.
+                 * R55-4 (driven): the channel operands got NO variable
+                 * resolution — a vendor/autoload path reaching a
+                 * channel through a variable was silent at every depth.
+                 */
+                'channel-composer.php' => "<?php\nrequire_once __DIR__ . '/includes/foo.php';\n\$body = file_get_contents( __DIR__ . '/composer.json' );\n",
+                'var-channel.php' => "<?php\nrequire_once __DIR__ . '/includes/foo.php';\n\$p = __DIR__ . '/vendor/autoload.php';\nreadfile( \$p );\n",
+                'two-hop-var-channel.php' => "<?php\nrequire_once __DIR__ . '/includes/foo.php';\n\$src = __DIR__ . '/vendor/autoload.php';\n\$p = \$src;\nreadfile( \$p );\n",
             );
             foreach ($legs as $relative => $body) {
                 $this->assertNotFalse(file_put_contents($tempPlugin . '/' . $relative, $body), "staging: {$tempPlugin}/{$relative} must write — a staging failure fails as staging, never as the gate verdict.");
@@ -2679,6 +2691,9 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('channel-shell.php references vendor/autoload', $report, 'The shell_exec channel refuses — the two-view doctrine at the channel seat.');
         $this->assertStringContainsString('channel-eval.php references vendor/autoload', $report, 'The eval(file_get_contents(...)) chain refuses — the depth-matched span judges the nested call\'s operand.');
         $this->assertStringNotContainsString('channel-prose.php references', $report, 'A prose literal carrying the needle beside a clean channel call stays clean — the operand, never the file, is judged.');
+        $this->assertStringContainsString('channel-composer.php references Composer at runtime', $report, 'The COMPOSER needle judges the channel operands too — the R54-2 wiring one needle short (red at HEAD: 0 where master flags).');
+        $this->assertStringContainsString('var-channel.php references vendor/autoload', $report, 'The variable-mediated CHANNEL operand resolves — the worklist rides the channel seat (red at HEAD: 0 where the direct spelling flags).');
+        $this->assertStringContainsString('two-hop-var-channel.php references vendor/autoload', $report, 'The two-hop channel chain resolves — transitive at the channel seat as at the include seat.');
     }
 
     /*

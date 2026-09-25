@@ -5088,21 +5088,42 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                 );
             } else {
                 foreach ($channel_calls[0] as $channel_call) {
+                    /*
+                     * t31-glm55-13 [R55-13, verdict-identical hoist —
+                     * the round-54 seat's private walk was a THIRD
+                     * copy of the ONE depth loop (glm20-10's 'exactly
+                     * one depth loop' pin): the channel span rides
+                     * wp_connectors_matching_delimiter_end() now, the
+                     * EOF-on-unbalanced POLICY stated here at the
+                     * seat the matching_brace_end shape spells —
+                     * over-judging more raw bytes, never fewer, the
+                     * over-refuse direction the round-54 seat chose.
+                     */
                     $span_open = (int) strpos($channel_call[0], '(') + $channel_call[1];
-                    $span_depth = 0;
-                    $span_end = strlen($masked) - 1;
-                    for ($span_at = $span_open, $span_max = strlen($masked); $span_at < $span_max; ++$span_at) {
-                        if ('(' === $masked[ $span_at ]) {
-                            ++$span_depth;
-                        } elseif (')' === $masked[ $span_at ]) {
-                            --$span_depth;
-                            if (0 === $span_depth) {
-                                $span_end = $span_at;
-                                break;
-                            }
-                        }
-                    }
-                    $channel_operands .= "\n" . substr($code, $channel_call[1], $span_end + 1 - $channel_call[1]);
+                    $span_close = wp_connectors_matching_delimiter_end($masked, $span_open, '(', ')');
+                    $span_end = false === $span_close ? strlen($masked) - 1 : $span_close;
+                    $span_text = (string) substr($code, $channel_call[1], $span_end + 1 - $channel_call[1]);
+                    $channel_operands .= "\n" . $span_text;
+                    /*
+                     * t31-glm55-4 [R55-4, driven fail-open — the
+                     * channel operands got NO variable resolution]:
+                     * the R53-1/R44-1 worklist threaded only the
+                     * include statements — a vendor/autoload path
+                     * reaching a file/exec channel through a VARIABLE
+                     * was invisible ('$p = __DIR__ .
+                     * "/vendor/autoload.php"; readfile($p);' at 0
+                     * violations where the direct spelling flags and
+                     * master's raw scan refused, the two-hop chain
+                     * silent at every depth). The worklist resolves
+                     * each channel span's own variables the same way
+                     * the include seat's do — an operand path is
+                     * never prose, whatever channel carries it.
+                     */
+                    wp_connectors_each_transitive_assignment_value($code, $masked, $span_text, $channel_call[1], static function ($assignment_value) use (&$channel_operands) {
+                        $channel_operands .= "\n" . $assignment_value;
+
+                        return true;
+                    });
                 }
             }
             /*
@@ -5137,7 +5158,18 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
             if (stripos($include_statements . $channel_operands, 'vendor/autoload') !== false || stripos($masked, 'vendor/autoload') !== false) {
                 $violations[] = sprintf('%s: %s references vendor/autoload (no Composer at runtime).', $slug, $relative);
             }
-            if ((stripos($include_statements, 'composer') !== false || stripos($masked, 'composer') !== false) && preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $masked)) {
+            /*
+             * t31-glm55-3 [R55-3, driven A/B vs master — the 'composer'
+             * needle missed the channel operands]: the R54-2 fix wired
+             * $channel_operands into the sibling 'vendor/autoload'
+             * needle one line up but not into this one, so a Composer
+             * reference riding a file/exec channel operand —
+             * file_get_contents(__DIR__ . '/composer.json') beside an
+             * include statement satisfying the keyword conjunct —
+             * answered 0 violations at HEAD where master's raw scan
+             * refused it. Both needles judge the same operand span.
+             */
+            if ((stripos($include_statements . $channel_operands, 'composer') !== false || stripos($masked, 'composer') !== false) && preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $masked)) {
                 $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
             }
             /*
