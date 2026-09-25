@@ -6,6 +6,72 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 53)
+
+Thirty-ninth claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first; the convergence round ordered — still not
+zero, every production finding in the round-52 commits' own
+machinery, the loop's shadow eighteen generations on): the composer
+screens' dataflow edge, the decoy consult's three further gaps and
+one refuted-as-fixable bridge, the mask's padding arm versus the
+encoded boundary, the b/B heredoc prefix, the star anchor's bullet
+collateral, the value-level walker delegation, and five one-owner
+hoists. Five fix commits t31-glm53-1..14 plus the docs close, the
+full offline check green after every commit. The walk-start trivia
+bridge refuted on its own safety leg and recorded. Suite 1985 →
+1986 tests, 48663 → 48687 assertions, 3 skipped unchanged.
+
+- **The composer screens' variable-mediated operand
+  (t31-glm53-1, driven fail-open; bin/lib/plugin-tools.php)** —
+  the R43-1/R44-1 transitive worklist at the second seat: every
+  position-filtered include's variables resolve through the
+  same-file assignment machinery, the resolved values joining the
+  operand span the screens judge; '$p = __DIR__ .
+  "/vendor/autoload.php"; require_once $p;' refuses again where
+  master refused and the round-52 revival was silent.
+
+- **The decoy consult's three further gaps and one refutation
+  (t31-glm53-2..5, driven; bin/lib/plugin-tools.php)** — the
+  import-shadow tail composes the tail grammar with the ONE
+  terminator constant (a close-tag-terminated 'use function
+  Foo\define ?>' no longer glues into the next block); the
+  declaration walk carries the interpolation-frame and
+  inline-HTML disciplines (the '${x}' closer and the '?>}<?php'
+  byte never corrupt the class-frame depth); the round-52
+  region-end namespace-keyword arm deleted (dead as spelled —
+  stripos with an offset answers the absolute position — and
+  unreachable by grammar, the engine refusing mixed braced and
+  unbraced declarations); the walk-start trivia bridge refuted
+  on the legal 'return \define(' keyword-operand leg and
+  recorded (the interrupted spellings are parse errors the lint
+  gate owns).
+
+- **The mask's padding arm versus the encoded boundary
+  (t31-glm53-6, driven leak; shared/src/Support/SecretMask.php)**
+  — the '=' stays the gate's anchor; the round-52 non-empty-run
+  refinement yields when an encoded delimiter triple rides the
+  raw view (a trailing-pad spelling whose decode carries the real
+  delimiters renders the bare mask again), while the pure
+  padding shape and the '='-less opaque key keep their tails.
+
+- **The b/B heredoc prefix and the star anchor's bullets
+  (t31-glm53-7..9, driven; bin/lib/plugin-tools.php,
+  bin/lib/secret-scanner.php)** — the binary-string prefix rides
+  the ONE shared heredoc arm (the R48-6 class one spelling
+  over); the bare '\*' anchor admits line-initial list markers
+  ('- *', '1. *', '> *') never a plain label byte; the
+  value-level all-fake pass delegates to the spans walker — one
+  placeholder predicate under every separator.
+
+- **Five one-owner hoists (t31-glm53-10..14; shared/src/
+  Support/SecretMask.php, bin/lib/plugin-tools.php,
+  bin/build.php)** — the stranded suffix-class history docblock
+  merged (the R52-11 class in round 52's own file), the
+  upward-dirname predicate, the compound-assignment operator
+  class, the include-argument strip, and the build CLI's option
+  vocabulary each riding one owner; verdicts byte-identical by
+  construction.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 52)
 
 Thirty-eighth claude-glm pass (/code-review max over the FULL branch
