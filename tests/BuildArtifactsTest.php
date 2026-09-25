@@ -1930,6 +1930,52 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * Round-58 pin (t31-glm58-1 [R58-1] — the artifact-name family's
+     * DEV-ENTRY member, the R57-1 one-verdict class one vocabulary
+     * member over, falsifying ocr10-8's recorded premise that 'no
+     * builder-produced zip can carry a dev-entry root'): every
+     * development-entry name ('tools', 'tests', 'dist', ...) is
+     * grammar-legal, and a connector directory NAMED one passed
+     * conventions at 0 violations and published
+     * 'connectors-tools-0.1.0.zip' at exit 0 while the inspector
+     * rejected every entry of the same zip (it judges
+     * wp_connectors_is_development_entry() over parts[0] too —
+     * driven at HEAD by both the review and the driver:
+     * conventions 0 / build 0 / inspect REJECTED ×3). The dev-entry
+     * owner now consults beside the grammar owner at the build and
+     * conventions seams: one vocabulary, three seats.
+     */
+    public function testADevelopmentEntryNamedConnectorDirectoryRefusesSoAllFencesAnswerOneVerdict(): void
+    {
+        $scratch = self::scratchPath('deventry-slug');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        try {
+            mkdir($scratch . '/dist', 0755, true);
+            $plugin = $this->makeMinimalPlugin($scratch . '/plugin', 'tools');
+            $this->assertFileExists($plugin . '/tools.php', 'staging: the dev-entry-named fixture must land — a staging failure fails as staging, never as the refusal verdict.');
+            try {
+                WpConnectorsBuild::buildPlugin($plugin, $scratch . '/dist');
+                $this->fail('A connector directory named a development entry must REFUSE the build (red at HEAD: the build published connectors-tools-0.1.0.zip at exit 0 while the inspector rejected its every entry).');
+            } catch (RuntimeException $refusal) {
+                $this->assertStringContainsString('development-entry', $refusal->getMessage(), 'The refusal names the dev-entry class.');
+                $this->assertStringContainsString('tools', $refusal->getMessage(), 'The refusal names the offending slug.');
+            }
+            $this->assertSame(array(), glob($scratch . '/dist/*'), 'Nothing lands — the refusal fires before any artifact, sidecar, or manifest line is composed.');
+
+            // The conventions seat consults the same owner (the
+            // source pin: the walk carries the consult beside the
+            // grammar consult).
+            $conventions_source = (string) file_get_contents(__DIR__ . '/../bin/check-conventions.php');
+            $this->assertNotSame('', $conventions_source, 'The conventions gate source must be readable for the consult pin.');
+            $this->assertStringContainsString('wp_connectors_is_development_entry', $conventions_source, 'The conventions gate consults the dev-entry owner beside the grammar owner.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * Round-57 pin (t31-glm57-1 [R57-1] — the slug grammar's
      * one-verdict close, the t31-ocr63-3 class never closed for the
      * slug itself): the inspector screened the EXTRACTED top-level

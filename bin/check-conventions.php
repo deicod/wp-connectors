@@ -58,6 +58,16 @@ if (wp_connectors_cli_entry(__FILE__)) {
         if (! wp_connectors_slug_is_legal_artifact_name($slug)) {
             $violations[] = sprintf('%s: the connector directory name is outside the artifact grammar [A-Za-z0-9_.-] — bin/inspect-artifact.php rejects every artifact composed under this name; rename the connector directory.', $slug);
         }
+        /*
+         * t31-glm58-1 [R58-1]: the dev-entry owner beside the
+         * grammar owner — a connector directory NAMED 'tools' or
+         * 'tests' certified green here while the inspector rejected
+         * the published zip's every entry (driven: conventions 0 /
+         * build 0 / inspect REJECTED). One vocabulary, three seats.
+         */
+        if (wp_connectors_is_development_entry($slug)) {
+            $violations[] = sprintf('%s: the connector directory name IS a development-entry name — bin/inspect-artifact.php rejects every artifact composed under it; rename the connector directory.', $slug);
+        }
 
         $mainFiles = wp_connectors_find_main_plugin_files($pluginRoot);
         if ($mainFiles === array()) {
