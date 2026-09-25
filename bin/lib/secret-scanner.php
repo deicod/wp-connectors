@@ -443,10 +443,27 @@ function wp_connectors_fake_secret_placeholder_spans(array $segments)
      * candidate value).
      */
     $dictionary_alternation = implode( '|', wp_connectors_fake_secret_dictionary_words() );
+    /*
+     * t31-glm55-14 [R55-14, verdict-identical hoist — the windows
+     * spelled their own separator vocabulary one seat over from the
+     * R54-15 split owner]: strpos('-')/explode('-') derived the
+     * hyphenated windows beside the ONE separator owner — a future
+     * separator widening (admitting '.' for 'not.a.real' token
+     * bodies) landing at the split owner with the dictionary gaining
+     * the word would find the window derivation still probing '-'
+     * only, the exempt fixture false-flagging — the
+     * one-value-two-verdicts-by-separator-spelling class R53-8
+     * drove red and R54-15 closed, reborn in the new owner's own
+     * neighbor. The pieces derive through the owner; a word
+     * contributes a window exactly when it carries a separator.
+     */
     $hyphenated_windows = array();
     foreach (wp_connectors_fake_secret_dictionary_words() as $word) {
-        if (false !== strpos($word, '-')) {
-            $hyphenated_windows[] = array_map('wp_connectors_ascii_lower', explode('-', $word));
+        $pieces = array_values(array_filter(wp_connectors_fake_secret_segments($word), static function ($piece) {
+            return '' !== $piece;
+        }));
+        if (count($pieces) > 1) {
+            $hyphenated_windows[] = array_map('wp_connectors_ascii_lower', $pieces);
         }
     }
     for ($i = 0; $i < $count; ++$i) {
