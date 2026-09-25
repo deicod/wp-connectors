@@ -3192,6 +3192,27 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('PHPSESSID=abcdefgh'), 'Half an eight-character session id never renders (red at HEAD: …efgh).');
         $this->assertSame('…' . 'uvwx', SecretMask::mask('abcdefghijklmnop%3Fqrstuvwx'), 'A bare opaque key containing an encoded-delimiter TRIPLE keeps its correlation tail — the gate rides the raw view (red at HEAD: the bare mask).');
         $this->assertSame('…1234', SecretMask::mask('Bearer ey1234'), 'The space-delimited scheme prefix stays OUTSIDE the boundary — recorded, no assignment byte to anchor on.');
+
+        /*
+         * t31-glm52-5 (R52-6+R52-7+R52-8, driven — the boundary's
+         * three further arms): the gate's '=' conjunct armed on an '='
+         * ANYWHERE, so a long opaque base64 token's PADDING rendered
+         * the bare mask (the arm requires a non-empty run after the
+         * '=' now — an '=' mid-token with a short run behind it the
+         * conscious err-safe trade, recorded); the no-opener branch
+         * sliced substr($value, false + 1) — the false+1 coercion
+         * judging the value-minus-first-byte as the run and masking a
+         * 13-character scheme-bearing value with no query, fragment,
+         * or assignment; and the decoded view judged exactly ONE
+         * rawurldecode, a TRIPLE-encoded delimiter ('%25253F', the
+         * proxy-chain shape) decoding to '%253F', matching no encoded
+         * arm, and leaking the same four characters — the decode runs
+         * to fixpoint now.
+         */
+        $this->assertSame('…qrs=', SecretMask::mask('abcdefghijklmnopqrs='), 'A long opaque token\'s trailing PADDING never arms the assignment gate — the correlation tail stands (red at HEAD: the bare mask).');
+        $this->assertSame('…', SecretMask::mask('AbCd=EFGH'), 'An \'=\' mid-token with a short run behind it still arms — the conscious err-safe trade, recorded with the round.');
+        $this->assertSame('…ghij', SecretMask::mask('a://bcdefghij'), 'A scheme-bearing value with no query, fragment, or assignment carries no embedded credential — the false+1 slice dead (red at HEAD: the bare mask).');
+        $this->assertSame('…', SecretMask::mask('https://cb%25253Fcode%25253DBCJK-3502'), 'A TRIPLE-encoded delimiter judges through the fixpoint decode — every layer, by construction (red at HEAD: …3502).');
     }
 
     /**

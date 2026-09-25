@@ -493,10 +493,44 @@ final class SecretMask {
 		 * never arm the boundary on a value the raw spelling never
 		 * shaped); within the gate, BOTH views judge, the decoded
 		 * one resolving every encoding layer by construction.
+		 *
+		 * t31-glm52-5 [R52-6+R52-8+R52-10, driven — the gate's three
+		 * further arms]: (1) the '=' conjunct armed on an '=' ANYWHERE
+		 * — a long opaque base64 token's PADDING ('abcdefghijklmnopqrs=')
+		 * carried its '=' at the very end, the empty run after it judged
+		 * short, and the correlation tail died through every safe debug
+		 * surface (driven: the bare mask where the unpadded twin keeps
+		 * its tail). The assignment arm requires a NON-EMPTY run after
+		 * the '=' — trailing padding never arms the gate; an '=' mid-
+		 * token with a short run behind it still does (the conscious
+		 * err-safe trade, recorded with the round). (2) The decoded
+		 * view judged exactly ONE rawurldecode — a TRIPLE-encoded
+		 * delimiter ('%25253F', the shape a proxy chain re-encoding an
+		 * already-re-encoded parameter produces) decoded to '%253F',
+		 * matched no encoded arm, and leaked the same four characters
+		 * (driven). The decode runs to FIXPOINT now — each layer
+		 * strictly shrinks the bytes, the loop terminating on the first
+		 * unchanged pass. (3) The decoded pass is SKIPPED when the raw
+		 * value carries no '%' byte — rawurldecode returns such a view
+		 * unchanged and the helper judged the identical string twice.
 		 */
-		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || false !== strrpos( $value, '=' );
-		if ( $raw_gated && ( self::value_carries_short_embedded_credential( $value ) || self::value_carries_short_embedded_credential( rawurldecode( $value ) ) ) ) {
+		$eq_at     = strrpos( $value, '=' );
+		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || ( false !== $eq_at && $eq_at + 1 < \strlen( $value ) );
+		if ( $raw_gated && self::value_carries_short_embedded_credential( $value ) ) {
 			return self::MASK;
+		}
+		if ( $raw_gated && false !== strpos( $value, '%' ) ) {
+			$decoded = $value;
+			while ( true ) {
+				$next_decode = rawurldecode( $decoded );
+				if ( $next_decode === $decoded ) {
+					break;
+				}
+				$decoded = $next_decode;
+			}
+			if ( self::value_carries_short_embedded_credential( $decoded ) ) {
+				return self::MASK;
+			}
 		}
 
 		// The last VISIBLE_TAIL characters, then shed leading characters
@@ -748,29 +782,23 @@ final class SecretMask {
 
 	/**
 	 * Whether ONE view of a value carries a short credential at its
-	 * tail (t31-glm51-2): the gate is URL-SHAPE or ASSIGNMENT —
-	 * '://' or a literal '?'/'#' present, or an '=' anywhere — so a
-	 * bare opaque key whose own bytes spell an encoded delimiter
-	 * ('%3F' residue in a provider-issued key) never arms the
-	 * encoded arms and keeps its correlation tail. Within the gate,
-	 * the boundary is the LAST opener-equivalent ('?','#','%3f',
-	 * '%23') and the last assignment-equivalent ('=','%3d') beyond
-	 * it, the run sliced after the WINNING delimiter's own byte
-	 * length (one or three — the round-50 inflation closing), and
-	 * the run judged against MIN_LENGTH_FOR_VISIBLE_TAIL.
+	 * tail (t31-glm51-2): the caller's RAW GATE owns the value-shape
+	 * question — this helper judges only views already URL-shaped or
+	 * assignment-bearing (the internal gate the round-52 fold removed
+	 * answered both conjuncts true for every reachable call, the
+	 * decoded view preserving the raw literals rawurldecode cannot
+	 * touch). The boundary is the LAST opener-equivalent ('?','#',
+	 * '%3f','%23') and the last assignment-equivalent ('=','%3d')
+	 * beyond it, the run sliced after the WINNING delimiter's own
+	 * byte length (one or three — the round-50 inflation closing),
+	 * and the run judged against MIN_LENGTH_FOR_VISIBLE_TAIL.
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param string $value One view of the value (raw or decoded-once).
+	 * @param string $value One view of the value (raw, or decoded to fixpoint).
 	 * @return bool True when the trailing run is a short embedded credential.
 	 */
 	private static function value_carries_short_embedded_credential( string $value ): bool {
-		$url_shaped = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' );
-		$has_assign = false !== strrpos( $value, '=' );
-		if ( ! $url_shaped && ! $has_assign ) {
-			return false; // Not the helper's caller's concern when direct — the raw gate owns the value-shape question.
-		}
-
 		$query_at  = strrpos( $value, '?' );
 		$encoded_q = strripos( $value, '%3f' );
 		$frag_at   = strrpos( $value, '#' );
@@ -802,8 +830,21 @@ final class SecretMask {
 		} elseif ( $open_at >= 0 ) {
 			$run = (string) substr( $value, $open_at + $open_len );
 		} else {
-			// An '='-bearing value with no opener: the assignment IS the boundary.
-			$run = (string) substr( $value, $assign_at + $assign_len );
+			/*
+			 * t31-glm52-5 [R52-7, driven over-mask — the branch's
+			 * $assign_at is ALWAYS false here]: the no-opener arm is
+			 * reachable only for a '://'-SHAPED view (no '?', no '#',
+			 * no '=' — the gate's other conjuncts answered for it),
+			 * and the old spelling sliced substr($value, false + 1) —
+			 * the false+1 coercion dropping the FIRST byte and judging
+			 * the remainder as the run, a 13-character scheme-bearing
+			 * value with no query, no fragment, and no assignment
+			 * rendering the bare mask (driven) where its 14-character
+			 * twin kept its tail. No opener and no assignment means no
+			 * embedded credential at any boundary — the view keeps its
+			 * tail.
+			 */
+			return false;
 		}
 
 		return self::count_characters( $run ) <= self::MIN_LENGTH_FOR_VISIBLE_TAIL;
