@@ -6,6 +6,57 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 59)
+
+Forty-fifth claude-glm pass (/code-review max over the full branch
+diff, ledger-read first — the convergence round ordered and answered
+still not zero, seven of the eleven correctness findings in the
+round-58 commits' own machinery and one landed record falsified):
+the artifact-name family's near-source member, the container
+vocabulary completed, the Shopify HMAC headers, the composer
+rework's own four gaps, the bare-tag opener following the engine,
+the '.dist' compound family, the dot-led census, and the two
+per-segment fold seats. Eight fix commits t31-glm59-1..8 plus the
+docs close, the full offline check green. Two members recorded as
+Task 3.3 inheritance (one re-classified during the driver's own
+verification). Suite 1996 → 2000 tests,
+49073 → 49118 assertions, 3 skipped unchanged.
+
+- `t31-glm59-1` — a grammar-legal trailing-junk slug ('zai.php.')
+  built green while the inspector rejected every entry of the same
+  zip (driven: conventions 0 / build 0 / inspect REJECTED ×64); the
+  near-source owner consults beside the grammar and dev-entry
+  owners — the artifact-name family's third member in three rounds.
+- `t31-glm59-2` — the embedded-container gate arms on the R56-1
+  separator family WHOLE (%3b beside %26, raw beside encoded, mixed
+  spellings, every decode layer): three driven leak shapes mask
+  now, the R51-15 opaque-key trade and the alone-spelling keys keep
+  their tails.
+- `t31-glm59-3` — Shopify's documented 'X-Shopify-Hmac-Sha256' and
+  -Sha512 webhook headers mask (their own two-token suffix entries;
+  five vendor spellings, four boundary neighbors pinned).
+- `t31-glm59-4` — the round-58 composer rework's own gaps closed:
+  the loader-class names arm the operand seat, the literal spine
+  serves the autoloader gate too, the spine composes only
+  concatenation chains (array elements never fabricate a path), and
+  one contribution helper owns the four join points.
+- `t31-glm59-5` — a bare '<?' opener follows the ENGINE's own
+  lexing (the pre-screen's engine-probe arm; the region walk's
+  token-id admission): a marker riding heredoc string data behind a
+  host-lexed open tag no longer launders a live key, the
+  production-default host's prose verdicts unchanged.
+- `t31-glm59-6` — the ini ';' enclosure serves the '.ini.dist'
+  compound spelling (the family re-derived beneath the trailing
+  meta extension; the dotenv boundary holds).
+- `t31-glm59-7` — the connector census reads the directory
+  (scandir, never glob): a dot-led '.wip' connector is judged, no
+  longer invisible to conventions or silently omitted from
+  build-all.
+- `t31-glm59-8` — the two per-segment fold seats the hostile walk
+  rides: the dev-entry membership answers a flipped isset (6.5x,
+  the landed record's residue claim corrected in place) and
+  is_php_source folds only the tail it judges.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 58)
 
 Forty-fourth claude-glm pass (/code-review max over the full branch
