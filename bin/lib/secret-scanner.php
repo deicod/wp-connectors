@@ -888,19 +888,18 @@ function wp_connectors_scan_token_memory_headroom()
 }
 
 /**
- * Whether a payload carries an INI-independent sample open at BYTE
- * level (glm19-1) — the pre-screen that gates a text-family payload's
- * token passes.
- *
- * The region walk itself rides the tokenizer now (the engine's own
- * close), but the token-memory census must judge BEFORE any token
- * pass, so this boolean carries the old walk's open classification:
- * '<?=' or '<?php' with core's follower class ([ \t\r\n] or end of
- * input). A payload without one never reaches a token pass at all —
- * exactly the pre-screening shape the byte walk gave.
+ * Whether a payload carries a sample open at BYTE level (glm19-1,
+ * the pre-screen gating a text-family payload's token passes) — the
+ * ENGINE-AWARE spelling set of t31-glm59-5: '<?=' and '<?php' with
+ * core's follower class under every INI, plus every '<?' spelling on
+ * a host whose own engine opens short tags (the probe arm — on the
+ * production-default host the engine refuses the bare spelling
+ * itself and the boolean answers exactly the INI-independent set
+ * glm19-1 defined; on a short_open_tag host the pre-screen follows
+ * the engine, the same admission the region walk below rides).
  *
  * @param string $contents File contents.
- * @return bool True when an INI-independent open spelling exists.
+ * @return bool True when an open spelling THIS ENGINE would lex exists.
  */
 function wp_connectors_payload_has_sample_open($contents)
 {
@@ -1019,10 +1018,13 @@ function wp_connectors_line_split($text)
  * through the region walk. Every matched open-close pair is a region;
  * an open with no close names the unclosed TAIL (open→EOF) the engine
  * lexes as code — the tail region glm18-1 routed onto the masked
- * view. The INI-dependent spellings (a bare '<?', the glued opener)
- * stay the recorded lexer-refused-opener corner, never a new class
- * here — on a short_open_tag host those bytes lex as PHP mode to the
- * tokenizer, and the walk simply does not open a region at them.
+ * view. Admission is by the ENGINE'S OWN token verdict
+ * (t31-glm59-5): a bare '<?' or glued opener opens exactly where
+ * this host's engine mints T_OPEN_TAG — prose on the
+ * production-default host (the glm18-11/ocr64-1 doctrine stands
+ * there), a real region on a short_open_tag host (the walk agrees
+ * with the tokenizer it already pays for, glm17-1's standing ON-host
+ * corner closed for this walk).
  *
  * @param string $contents File contents.
  * @return list<array{int, int}> The sorted inclusive [start, end] byte spans.
