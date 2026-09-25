@@ -1930,6 +1930,92 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * Round-57 pin (t31-glm57-1 [R57-1] — the slug grammar's
+     * one-verdict close, the t31-ocr63-3 class never closed for the
+     * slug itself): the inspector screened the EXTRACTED top-level
+     * name under [A-Za-z0-9_.-]+/D since t31-ocr67-1 while the
+     * builder and the conventions gate derived the same slug
+     * unjudged, so a connector directory spelled 'zai copy' passed
+     * conventions at 0 violations and published
+     * 'connectors-zai copy-0.1.0.zip' at exit 0 whose top level the
+     * inspector rejected (driven at HEAD by both the review and the
+     * driver: conventions 0 / build 0 / inspect REJECTED — no CI
+     * run satisfiable). The ONE owner
+     * (wp_connectors_slug_is_legal_artifact_name) refuses at the
+     * build and conventions seams BEFORE an artifact is composed;
+     * the inspector's fence rides the same owner as defense in
+     * depth.
+     */
+    public function testTheSlugGrammarScreenRefusesIllegalSlugsSoAllFencesAnswerOneVerdict(): void
+    {
+        // The owner's grammar rows — the inspector's own screen
+        // since t31-ocr67-1, verdict-identical by construction.
+        foreach (array('zai', 'openai-oauth', 'a.b_c-d', 'Zai', '3cx-oauth') as $legal) {
+            $this->assertTrue(wp_connectors_slug_is_legal_artifact_name($legal), "{$legal} is legal artifact vocabulary.");
+        }
+        foreach (array('zai copy', "zai\nx", 'zai:x', 'zai/x', '', '.', '..', 'zäi', 'zai..x ') as $illegal) {
+            $this->assertFalse(wp_connectors_slug_is_legal_artifact_name($illegal), 'The out-of-grammar spelling refuses: ' . wp_connectors_printable($illegal));
+        }
+
+        $scratch = self::scratchPath('slug-grammar');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        try {
+            mkdir($scratch . '/dist', 0755, true);
+            $plugin = $this->makeMinimalPlugin($scratch . '/plugin', 'zai copy');
+            /*
+             * The staging asserts its own landing (the t31-ocr53-9
+             * doctrine): makeMinimalPlugin's failure surfaces as a
+             * named staging assert, never as the refusal verdict it
+             * exists to drive.
+             */
+            $this->assertFileExists($plugin . '/zai copy.php', 'staging: the space-slug fixture must land — a staging failure fails as staging, never as the refusal verdict.');
+            try {
+                WpConnectorsBuild::buildPlugin($plugin, $scratch . '/dist');
+                $this->fail('A space-slug connector must REFUSE the build (red at HEAD: the build published connectors-zai copy-0.1.0.zip at exit 0 while the inspector rejected it).');
+            } catch (RuntimeException $refusal) {
+                $this->assertStringContainsString('artifact grammar', $refusal->getMessage(), 'The refusal names the grammar class.');
+                $this->assertStringContainsString('zai copy', $refusal->getMessage(), 'The refusal names the offending slug.');
+                $this->assertStringContainsString('inspect', $refusal->getMessage(), 'The refusal names the gate the drift sat against — the errand names the inspector contract.');
+            }
+            $this->assertSame(array(), glob($scratch . '/dist/*'), 'Nothing lands — the refusal fires before any artifact, sidecar, or manifest line is composed.');
+
+            /*
+             * Control: the legal twin of the same staged tree builds
+             * and inspects green — the refusal owns exactly the
+             * out-of-grammar class.
+             */
+            $legal_plugin = $this->makeMinimalPlugin($scratch . '/plugin', 'example-connector');
+            $this->assertFileExists($legal_plugin . '/example-connector.php', 'staging: the legal twin must land.');
+            $zipPath = WpConnectorsBuild::buildPlugin($legal_plugin, $scratch . '/dist');
+            $this->assertIsString($zipPath, 'The legal twin builds — the refusal owns exactly the out-of-grammar class.');
+            /*
+             * The exec-capability guard (t31-ocr26-9, the ocr20-5
+             * doctrine): the green inspector verdict rides the
+             * internal php -l spawn over the extracted tree — the
+             * refusal legs above already passed on any host.
+             */
+            if (! self::canSpawnChildren()) {
+                $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the one-verdict inspect leg (the inspector\'s internal php -l spawn) cannot run; the refusal legs above already passed.');
+            }
+            $this->assertSame(array(), wp_connectors_inspect_artifact($zipPath, $scratch . '/.inspect-slugpair'), 'Build and inspect answer one verdict over the slug grammar — never build-ships-what-inspect-rejects.');
+
+            /*
+             * The conventions seat consults the same owner (the
+             * source pin: the walk carries the consult — the third
+             * seat of the one class, refusing before the tree is
+             * certified).
+             */
+            $conventions_source = (string) file_get_contents(__DIR__ . '/../bin/check-conventions.php');
+            $this->assertNotSame('', $conventions_source, 'The conventions gate source must be readable for the consult pin.');
+            $this->assertStringContainsString('wp_connectors_slug_is_legal_artifact_name', $conventions_source, 'The conventions gate consults the one grammar owner — no gate derives the slug unjudged.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
      * OCR-round-66 pin (t31-ocr66-1 — the r63-3 stream screen's EMBED
      * twin, the one-verdict drift one collection seam over): the
      * t31-ocr63-3 screen answers only the plugin tree's collectFiles()

@@ -476,9 +476,13 @@ function wp_connectors_inspect_artifact($zipPath, $workDir)
      * file's grammar anchors: ONE '$' rider existed — this screen;
      * the other anchors are \A/\z-spelled (the rrmdir owner's two
      * drive/root fences), immune to the pre-newline fold by
-     * construction.
+     * construction. t31-glm57-1: the grammar itself is hoisted to
+     * the ONE owner (wp_connectors_slug_is_legal_artifact_name,
+     * bin/lib/plugin-tools.php) the build and conventions seats
+     * now refuse by too — this fence stays as defense in depth
+     * over the archive-controlled names no build composed.
      */
-    if ($slug === '.' || $slug === '..' || ! preg_match('/^[A-Za-z0-9_.-]+$/D', $slug)) {
+    if (! wp_connectors_slug_is_legal_artifact_name($slug)) {
         // The name that FAILED the grammar prints through the seam (see
         // the dev-entry site): pre-grammar, its bytes are unjudged.
         $violations[] = sprintf('inspect: invalid top-level plugin directory name "%s".', wp_connectors_printable($slug));

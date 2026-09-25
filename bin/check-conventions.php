@@ -48,6 +48,16 @@ if (wp_connectors_cli_entry(__FILE__)) {
     foreach ($pluginRoots as $pluginRoot) {
         $slug = basename($pluginRoot);
         $violations = array();
+        /*
+         * t31-glm57-1 [R57-1]: the conventions gate certified trees
+         * whose directory name the inspector's own grammar rejects —
+         * the same 'zai copy' shape that built green and inspected
+         * REJECTED. The owner is the one grammar all three seats
+         * ride; the gate refuses before certifying the tree.
+         */
+        if (! wp_connectors_slug_is_legal_artifact_name($slug)) {
+            $violations[] = sprintf('%s: the connector directory name is outside the artifact grammar [A-Za-z0-9_.-] — bin/inspect-artifact.php rejects every artifact composed under this name; rename the connector directory.', $slug);
+        }
 
         $mainFiles = wp_connectors_find_main_plugin_files($pluginRoot);
         if ($mainFiles === array()) {

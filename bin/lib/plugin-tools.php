@@ -6793,6 +6793,36 @@ function wp_connectors_ascii_upper($value)
 }
 
 /**
+ * Whether a connector slug (the top-level plugin directory name) is
+ * legal ARTIFACT vocabulary — ONE owner of the grammar every gate
+ * judges the name by (t31-glm57-1 [R57-1, the one-verdict drift
+ * driven end-to-end by both the review and the driver]).
+ *
+ * The bytes [A-Za-z0-9_.-] exactly, anchored both ends with /D ('$'
+ * never matches before a final newline, the t31-ocr67-1 anchor), and
+ * '.'/'..' refuse by name (each matches the byte class yet names a
+ * relative component, never a top-level directory). The inspector
+ * has screened the EXTRACTED tree's top-level name under exactly
+ * this grammar since t31-ocr67-1 while the builder and the
+ * conventions gate derived the same slug unjudged, so a connector
+ * directory spelled 'zai copy' passed conventions at 0 violations
+ * and published 'connectors-zai copy-0.1.0.zip' at exit 0 whose top
+ * level the inspector refused — the one-verdict drift class
+ * t31-ocr63-3 closed for file-name bytes, never for the slug
+ * itself. All three seats consult this owner now: the build refuses
+ * before composing an artifact, the conventions gate refuses before
+ * certifying the tree, the inspector keeps its fence as defense in
+ * depth over the archive-controlled names no build composed.
+ *
+ * @param string $slug The directory basename under connectors/.
+ * @return bool True when every byte of the name is grammar-legal.
+ */
+function wp_connectors_slug_is_legal_artifact_name($slug)
+{
+    return '.' !== $slug && '..' !== $slug && 1 === preg_match('/^[A-Za-z0-9_.-]+$/D', (string) $slug);
+}
+
+/**
  * The slug's identifier segments: lowercased, '-' AND '.' separated
  * (t31-r5-12 — a dotted slug's naive spellings are not legal labels, so
  * the dot separates like the dash and every derived segment stays a

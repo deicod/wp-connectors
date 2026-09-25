@@ -2953,6 +2953,19 @@ final class WpConnectorsBuild
     {
         $pluginDir = rtrim($pluginDir, '/');
         $slug = basename($pluginDir);
+        /*
+         * t31-glm57-1 [R57-1, driven end-to-end at HEAD by both the
+         * review and the driver]: the slug carried no grammar screen
+         * at this seam, so 'zai copy' built green here while the
+         * inspector rejected the published zip's top level — the
+         * one-verdict drift class t31-ocr63-3 closed for file-name
+         * bytes, never for the slug. The owner is the inspector's
+         * own grammar (hoisted); the build refuses BEFORE composing
+         * an artifact under a name its own inspector would reject.
+         */
+        if (! wp_connectors_slug_is_legal_artifact_name($slug)) {
+            throw new RuntimeException("build: {$slug}: the connector directory name is outside the artifact grammar [A-Za-z0-9_.-] — bin/inspect-artifact.php rejects every zip composed under this name, so the build refuses before composing it; rename the connector directory");
+        }
         $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
         if ($mainFiles === array()) {
             throw new RuntimeException("build: no main plugin file with a Plugin Name header in {$pluginDir}");
@@ -4620,7 +4633,12 @@ if (wp_connectors_cli_entry(__FILE__)) {
             // unreadable published artifact refuses through the catch —
             // exit non-zero, reason named — instead of printing a
             // blank sha256= at exit 0.
-            echo 'build: ' . basename($zipPath) . ' sha256=' . WpConnectorsBuild::publishedChecksum($zipPath) . "\n";
+            // t31-glm57-1: the success line's basename carries the
+            // slug — wrapped through the ONE printable seam like
+            // every build print (t31-glm42-2 swept the refusals;
+            // this success echo was the seam's last bare
+            // caller-path interpolation).
+            echo 'build: ' . wp_connectors_printable(basename($zipPath)) . ' sha256=' . WpConnectorsBuild::publishedChecksum($zipPath) . "\n";
         } catch (RuntimeException $e) {
             // t31-glm42-2 [R42-2]: the refusal messages embed the shared
             // builders' violation bytes (include operands, landed paths) —
