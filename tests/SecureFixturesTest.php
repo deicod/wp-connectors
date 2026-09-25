@@ -1652,6 +1652,31 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         );
 
         /*
+         * R53-6 (driven at HEAD): the round-52 anchor's BULLET
+         * collateral — the line-initial list/quote/ordered markers a
+         * marked bullet legitimately carries all false-flagged
+         * (exempt at master); the anchor admits the marker run, the
+         * mid-line multiplication shapes keeping their flags.
+         */
+        $this->assertSame(array(), wp_connectors_scan_string("- * secrets:allow {$key}\n", 'dash.txt'), 'The dash-bullet marker before the star keeps its exemption (red at HEAD: flagged).');
+        $this->assertSame(array(), wp_connectors_scan_string("1. * secrets:allow {$key}\n", 'ord.txt'), 'The ordered-list marker keeps its exemption (red at HEAD: flagged).');
+        $this->assertSame(array(), wp_connectors_scan_string("> * secrets:allow {$key}\n", 'quote.txt'), 'The blockquote marker keeps its exemption (red at HEAD: flagged).');
+        $this->assertNotEmpty(wp_connectors_scan_string("5 * secrets:allow {$key}\n", 'five.txt'), 'A bare digit before the star is multiplication, never a marker — still flags.');
+        $this->assertNotEmpty(wp_connectors_scan_string("note 1 * secrets:allow {$key}\n", 'mid.txt'), 'The mid-line multiplication shape keeps its flag — the marker class admits markers only at the line start.');
+
+        /*
+         * R53-8 (driven): the value-level final pass re-derived the
+         * per-segment predicate without the derived hyphenated
+         * windows — one value, two verdicts by separator spelling
+         * ('not_a_real' live, 'not-a-real' fake). The final pass
+         * delegates to the walker; entropy beside the window keeps
+         * its live verdict.
+         */
+        $this->assertTrue(wp_connectors_is_recognizably_fake_secret('not_a_real'), 'The window pieces under an underscore separator read as placeholder — the walker\'s empty-span answer everywhere (red at HEAD: live).');
+        $this->assertTrue(wp_connectors_is_recognizably_fake_secret('test_value'), 'The test-value window the same way.');
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-not_a_real-9f3k9q2m'), 'Entropy beside the window keeps its live verdict — the delegation launders nothing.');
+
+        /*
          * R52-9 (the fourth seat's closure, the R44-9 two-arm-copy
          * class at the round-51 owner's own neighbor): the
          * hyphenated dictionary words are WINDOW-spelled at the

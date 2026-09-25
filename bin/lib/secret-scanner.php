@@ -209,12 +209,20 @@ function wp_connectors_allow_marker_pattern($extension = '', $with_markup_arm = 
      * line (driven: the .txt shape answered exempt where the
      * no-marker control flags) while a real docblock continuation is
      * always LINE-INITIAL. The bare '\*' arm carries its own line
-     * anchor: '^\\s*\\*' — leading whitespace then the star, never
-     * a mid-line operator. (Every consult matches this pattern
-     * against ONE line's view — the composed code slice or the
-     * line-local prose — so '^' is the line start at every seat.)
+     * anchor — never a mid-line operator.
+     *
+     * t31-glm53-8 [R53-6, driven false refusal — the anchor's BULLET
+     * collateral]: '^\s*\*' refused the line-initial LIST MARKERS a
+     * marked bullet legitimately carries ('- * secrets:allow …',
+     * '1. * …', '> * …' — all exempt at master, all false-flagged by
+     * the round-52 anchor, driven). The anchor admits a run of
+     * marker bytes and whitespace between the line start and the
+     * star — the list/quote/ordered vocabulary ('-', '+', '>', the
+     * bullet star itself, '\d+.'), never a plain label byte: 'note 1
+     * * secrets:allow' keeps its mid-line flag (the '1' carries no
+     * dot and 'note' is no marker).
      */
-    $line_comment_openers = '\/\/|#|\/\*|^\s*\*';
+    $line_comment_openers = '\/\/|#|\/\*|^(?:[-*+> \t]|\d+\.)*\*';
     if (! $with_markup_arm) {
         return '/(?:^|\s)(?:' . $line_comment_openers . ')\s*secrets:allow\b/';
     }
@@ -578,20 +586,20 @@ function wp_connectors_is_recognizably_fake_secret($value)
      * The value-level twin's own alternation hoist (R52-15): the
      * implode rode inside the per-segment loop here too — one
      * stringing per segment, the same fold the spans walker took.
+     *
+     * t31-glm53-9 [R53-8, driven inconsistency — the twin re-derived
+     * the per-segment predicate WITHOUT the windows]: this loop
+     * judged dictionary word and sequential filler per segment while
+     * the spans walker (round 52's derived windows) honored the
+     * hyphenated dictionary words as consecutive-segment spellings —
+     * 'not_a_real' answered LIVE here (each piece outside the
+     * single-segment dictionary) while 'not-a-real' answered fake
+     * and the head/tail budget arms rode the walker: one value, two
+     * verdicts by separator spelling. The final pass delegates to
+     * the walker — its empty-span answer IS the all-placeholder
+     * verdict, one predicate everywhere.
      */
-    $dictionary_alternation = implode( '|', wp_connectors_fake_secret_dictionary_words() );
-    foreach (preg_split('/[-_\s]+/', $value) as $segment) {
-        $folded_value = wp_connectors_ascii_lower($segment);
-        if ('' === $folded_value) {
-            continue;
-        }
-        if (1 !== preg_match('/^(?:' . $dictionary_alternation . ')$/i', $segment)
-            && ! wp_connectors_segment_is_sequential_filler($folded_value)) {
-            return false;
-        }
-    }
-
-    return true;
+    return array() === wp_connectors_fake_secret_placeholder_spans(preg_split('/[-_\s]+/', $value));
 }
 
 /**
