@@ -614,9 +614,42 @@ final class SecretMask {
 		 * into the boundary judgment, whose decoded view resolves
 		 * every layer and whose run restarts after the R56-1
 		 * separator.
+		 *
+		 * t31-glm59-2 [R59-5, driven — the round-58 signature one
+		 * vocabulary member and one layer short]: the pair-separator
+		 * class is the R56-1 family WHOLE ('&' the query/cookie-pair
+		 * separator, ';' the cookie/matrix one — %3b beside %26, the
+		 * raw spellings of both beside the encoded), the layers EVERY
+		 * one (a double-encoded container leaking where its
+		 * single-encoded control masked — the fixpoint walk the
+		 * decode pass itself rides), and the spellings MIXED (a raw
+		 * '&' beside an encoded assignment: 'state%3Dxyz&code=X'
+		 * leaking where its raw twin masked). The walk judges each
+		 * layer's own spelling, either arm enough — the R51-15 row
+		 * (a lone opener triple, no assignment, no separator at ANY
+		 * layer) stays outside every shape.
 		 */
-		$container_armed = false !== stripos( $value, '%3d' ) && false !== stripos( $value, '%26' );
-		$raw_gated       = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || $eq_armed || $container_armed;
+		$container_armed = false;
+		$container_view  = $value;
+		while ( true ) {
+			if ( false !== stripos( $container_view, '%3d' )
+				&& ( false !== stripos( $container_view, '%26' )
+					|| false !== stripos( $container_view, '%3b' )
+					|| false !== strpos( $container_view, '&' )
+					|| false !== strpos( $container_view, ';' ) ) ) {
+				$container_armed = true;
+				break;
+			}
+			if ( false === strpos( $container_view, '%' ) ) {
+				break;
+			}
+			$container_next = rawurldecode( $container_view );
+			if ( $container_next === $container_view ) {
+				break;
+			}
+			$container_view = $container_next;
+		}
+		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || $eq_armed || $container_armed;
 		if ( $raw_gated && self::value_carries_short_embedded_credential( $value ) ) {
 			return self::MASK;
 		}

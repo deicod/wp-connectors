@@ -3286,6 +3286,21 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…uvwx', SecretMask::mask('abcdefghijklmnop%3Fqrstuvwx'), 'The R51-15 opaque-key row keeps its correlation tail — a lone opener triple is not a container.');
         $this->assertSame('…uvwx', SecretMask::mask('abcdefghijklmnop%3Dqrstuvwx'), 'An encoded assignment ALONE is not a container — the opaque key without a pair-separator keeps its tail (the err-safe direction stands).');
         $this->assertSame('…ghij', SecretMask::mask('state%3Dxyz%26code%3DBCJK3502abcdefghij'), 'A LONG encoded container credential keeps the correlation tail — the separator bounds the run, never the tail clause.');
+
+        /*
+         * t31-glm59-2 (R59-5, driven at HEAD by both the review and
+         * the driver — the round-58 container signature one
+         * vocabulary member and one layer short): the pair-separator
+         * class is the R56-1 family WHOLE (%3b beside %26, the raw
+         * spellings beside the encoded), the layers EVERY one (the
+         * double-encoded container), and the spellings MIXED (a raw
+         * '&' beside an encoded assignment) — the R51-15 row and the
+         * alone-spelling keys stay outside every shape.
+         */
+        $this->assertSame('…', SecretMask::mask('theme%3Ddark%3Bsid%3Dabcdefghi'), 'The encoded COOKIE/MATRIX separator (%3b) is a container separator too — the R56-1 family whole (red at HEAD: …fghi).');
+        $this->assertSame('…', SecretMask::mask('state%3Dxyz&code%3DBCJK-3502'), 'A RAW separator beside an encoded assignment is a container — the spellings mix (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('state%253Dxyz%2526code%253DBCJK-3502'), 'A DOUBLE-encoded container arms through the layer walk — every encoding layer judged in turn, the decode pass\'s own doctrine (red at HEAD: …3502).');
+        $this->assertSame('…uvwx', SecretMask::mask('abcdefghijklmnop%26qrstuvwx'), 'A separator ALONE is not a container either — the opaque key without an assignment keeps its tail (the err-safe mirror).');
     }
 
     /**
