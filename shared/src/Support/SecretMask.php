@@ -514,8 +514,27 @@ final class SecretMask {
 		 * value carries no '%' byte — rawurldecode returns such a view
 		 * unchanged and the helper judged the identical string twice.
 		 */
+
+		/*
+		 * t31-glm53-6 [R53-4, driven leak — the padding arm disarmed
+		 * the ENCODED boundary too]: 'redirect%3Fcode%3DBCJK3502='
+		 * carries its only raw literal '=' at the very end, so the
+		 * round-52 non-empty-run refinement left the gate unarmed
+		 * and the fixpoint-decode pass never judged the view whose
+		 * decode spells the real delimiters — '…502=' rendered
+		 * where the round-51 code (an '=' anywhere arming) rendered
+		 * the bare mask. The '=' stays the ANCHOR the round-51
+		 * doctrine demands (an '='-less opaque key with an encoded
+		 * triple never arms — R51-15's pinned tail, untouched); the
+		 * non-empty-run refinement yields only when an encoded
+		 * delimiter triple rides the raw view — the decoded shape
+		 * is real whatever the raw '=' placement — while the pure
+		 * padding shape ('abcdefghijklmnopqrs=', no '%' byte) keeps
+		 * its correlation tail exactly as round 52 pinned.
+		 */
 		$eq_at     = strrpos( $value, '=' );
-		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || ( false !== $eq_at && $eq_at + 1 < \strlen( $value ) );
+		$eq_armed  = false !== $eq_at && ( $eq_at + 1 < \strlen( $value ) || false !== stripos( $value, '%3f' ) || false !== stripos( $value, '%23' ) || false !== stripos( $value, '%3d' ) );
+		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || $eq_armed;
 		if ( $raw_gated && self::value_carries_short_embedded_credential( $value ) ) {
 			return self::MASK;
 		}

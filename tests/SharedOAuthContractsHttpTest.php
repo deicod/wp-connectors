@@ -3213,6 +3213,16 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('AbCd=EFGH'), 'An \'=\' mid-token with a short run behind it still arms — the conscious err-safe trade, recorded with the round.');
         $this->assertSame('…ghij', SecretMask::mask('a://bcdefghij'), 'A scheme-bearing value with no query, fragment, or assignment carries no embedded credential — the false+1 slice dead (red at HEAD: the bare mask).');
         $this->assertSame('…', SecretMask::mask('https://cb%25253Fcode%25253DBCJK-3502'), 'A TRIPLE-encoded delimiter judges through the fixpoint decode — every layer, by construction (red at HEAD: …3502).');
+        /*
+         * t31-glm53-6 (R53-4, driven leak): the round-52 padding
+         * refinement disarmed the '=' whose run was empty even when
+         * an ENCODED delimiter rode the raw view — the fixpoint
+         * decode never judged it and '…502=' rendered. The '='
+         * stays the anchor (the '='-less opaque key of R51-15 keeps
+         * its tail); the refinement yields to the encoded triple.
+         */
+        $this->assertSame('…', SecretMask::mask('redirect%3Fcode%3DBCJK3502='), 'A trailing-pad spelling whose decode carries the real delimiters renders the bare mask — the non-empty-run refinement yields to the encoded triple (red at HEAD: …502=).');
+        $this->assertSame('…' . 'qrs=', SecretMask::mask('abcdefghijklmnopqrs='), 'The PURE padding shape — no encoded triple, no literal shape — keeps its correlation tail exactly as round 52 pinned.');
     }
 
     /**
