@@ -448,6 +448,21 @@ final class SecretMask {
 	const ENCODED_PAIR_SEPARATORS = array( '%26', '%3b' );
 
 	/**
+	 * The RAW pair-separator bytes (t31-glm61-3 [R61-6]): '&' the
+	 * query/cookie-pair separator, ';' the cookie/matrix one — the
+	 * R56-1 family's raw members beside their encoded spellings
+	 * above, ONE list serving the container arm's per-layer
+	 * predicate AND the boundary scan's separator-restart consult
+	 * (both hand-spelled the pair before; the round-60 commit
+	 * closed the encoded half of the drift seam its own citation
+	 * names — the R54-1 'a widening lands at the list or nowhere'
+	 * doctrine now holds for the whole family).
+	 *
+	 * @since 0.1.0
+	 */
+	const RAW_PAIR_SEPARATORS = array( '&', ';' );
+
+	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
 	 *
 	 * Null and short values (at or below the minimum length, counted in
@@ -688,7 +703,14 @@ final class SecretMask {
 		$container_armed          = self::any_layer_carries(
 			$value,
 			static function ( string $view ) use ( &$container_saw_assignment, &$container_saw_separator ): bool {
-				if ( false !== stripos( $view, '%3d' ) ) {
+				/*
+				 * t31-glm61-3 [R61-7]: the encoded assignment rides
+				 * the indexed-composition idiom the boundary walk's
+				 * own consults spell (ENCODED_DELIMITER_TRIPLES[2], the
+				 * R54-1 idiom) — never an inline spelling the next
+				 * list widening strands.
+				 */
+				if ( false !== stripos( $view, self::ENCODED_DELIMITER_TRIPLES[2] ) ) {
 					$container_saw_assignment = true;
 				}
 				foreach ( self::ENCODED_PAIR_SEPARATORS as $separator ) {
@@ -697,16 +719,28 @@ final class SecretMask {
 						break;
 					}
 				}
-				if ( false !== strpos( $view, '&' ) || false !== strpos( $view, ';' ) ) {
-					$container_saw_separator = true;
+				foreach ( self::RAW_PAIR_SEPARATORS as $separator ) {
+					if ( false !== strpos( $view, $separator ) ) {
+						$container_saw_separator = true;
+						break;
+					}
 				}
 
 				return $container_saw_assignment && $container_saw_separator;
 			}
 		);
-		if ( ! $container_armed && $container_saw_assignment && $container_saw_separator ) {
-			$container_armed = true;
-		}
+
+		/*
+		 * t31-glm61-3 [R61-5, mechanically dead — 400k fuzz shapes,
+		 * 0 fires, and dead by construction]: the round-60 rework
+		 * left a post-walk belt behind ($armed ||= saw_assignment &&
+		 * saw_separator) — the walker returns true the moment the
+		 * closure's conjunction holds and the flags are monotone, so
+		 * at walk exit the conjunction is provably false whenever
+		 * the walker answered false. Deleted (the glm36-1 deletion
+		 * disposition): one less belt a future reader must prove
+		 * dead again.
+		 */
 		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || $eq_armed || $container_armed;
 		if ( $raw_gated && self::value_carries_short_embedded_credential( $value ) ) {
 			return self::MASK;
@@ -1134,7 +1168,7 @@ final class SecretMask {
 		 * can close (every earlier row's run carries no separator).
 		 */
 		$separator_at = false;
-		foreach ( array( '&', ';' ) as $separator ) {
+		foreach ( self::RAW_PAIR_SEPARATORS as $separator ) {
 			$found = strrpos( $value, $separator, $run_at );
 			if ( false !== $found && ( false === $separator_at || $found > $separator_at ) ) {
 				$separator_at = $found;
