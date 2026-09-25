@@ -160,6 +160,16 @@ final class SelfContainmentAutoloaderPrefixBindingTest extends TestCase
             'high-byte glued helper' => "\xC3\xA4file_get_contents(__DIR__ . \"/assets/vendor-notes.txt\");",
             'right-edge high byte' => "eval\xFC(__DIR__ . \"/assets/x.php\");",
             'ASCII glued control' => 'my_file_get_contents(__DIR__ . "/assets/vendor-notes.txt");',
+            /*
+             * R55-8 (driven): the gate's bare stripos consults — the
+             * masked CODE bytes, the operand statement text, and the
+             * resolved values — refused a WORKING autoloader whose
+             * only 'vendor' bytes rode the variable name
+             * $vendor_dir. Every consult matches the needle as a
+             * whole word over the label-byte and '$' boundaries.
+             */
+            'vendor-named variable' => '$vendor_dir = __DIR__ . "/lib";',
+            'vendor-named variable used' => '$vendor_dir = __DIR__ . "/lib"; require $vendor_dir . "/x.php";',
             'plain valid' => '',
         );
         foreach ($clean_shapes as $name => $leg) {

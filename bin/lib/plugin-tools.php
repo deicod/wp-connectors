@@ -5249,6 +5249,32 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
  * @param string $pluginDir Absolute plugin directory.
  * @return list<string> Violation messages.
  */
+/**
+ * Whether a text names 'composer' or 'vendor' as a WHOLE WORD — the
+ * ONE word-boundary owner the autoloader gate's every consult rides
+ * (t31-glm55-7): the needle bounded by label bytes and '$' on both
+ * sides, so an IDENTIFIER interior ('$vendor_dir', 'ComposerLoader'-
+ * shaped names, a 'vendorNotes' helper) is not a reference while a
+ * string operand's '/vendor/' path and a bare code-bytes call keep
+ * matching — the R42-6 label-byte class both edges, the R39-3 prose
+ * immunity untouched (the callers judge masked views or operand
+ * text, never prose).
+ *
+ * glm34-2: an abort answers 'cannot prove the reference absent' —
+ * the fail-closed verdict (the bounded pattern cannot realistically
+ * abort, glm28-1's posture; the spelling is the doctrine, never a
+ * (bool) cast).
+ *
+ * @param string $text The masked code view, an operand statement, or a resolved assignment value.
+ * @return bool True when the text carries a whole-word composer/vendor reference.
+ */
+function wp_connectors_text_names_vendor_or_composer($text)
+{
+    $hit = preg_match('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:composer|vendor)(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', (string) $text);
+
+    return false === $hit || 1 === $hit;
+}
+
 function wp_connectors_autoloader_violations($pluginDir)
 {
     $slug = basename(rtrim($pluginDir, '/'));
@@ -5345,7 +5371,25 @@ function wp_connectors_autoloader_violations($pluginDir)
     if (1 !== $register_count) {
         $violations[] = sprintf('%s: src/autoload.php must register exactly one autoloader.', $slug);
     }
-    if (stripos($masked, 'composer') !== false || stripos($masked, 'vendor') !== false) {
+    /*
+     * t31-glm55-7 [R55-8, driven false refusal — the identifier-
+     * substring class the sibling probes fixed (R40-3/R42-6/R45-1's
+     * label-byte boundaries) never reached this gate]: the bare
+     * stripos consults — the masked view's CODE bytes here and the
+     * operand probe's statement text and resolved values below —
+     * refused a demonstrably WORKING autoloader whose only 'vendor'
+     * bytes were the variable name $vendor_dir (driven: the refused
+     * file loads a real class; the byte-identical $base_dir control
+     * passed), the masked view blanking strings and comments but
+     * preserving identifier bytes with no boundary check armed on
+     * the substring. Every consult rides the ONE word-boundary
+     * owner — the needle as a whole word over label bytes and '$'
+     * both sides — while a string operand's '/vendor/' path keeps
+     * matching (the quote and slash are boundaries) and the R39-3
+     * division of labor stands: prose immunity from the mask,
+     * whole-word identifiers not references.
+     */
+    if (wp_connectors_text_names_vendor_or_composer($masked)) {
         $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
     } else {
         /*
@@ -5519,7 +5563,7 @@ function wp_connectors_autoloader_violations($pluginDir)
                 continue;
             }
             $statement_text = (string) substr($code, $operand_start, strlen($extent[0]));
-                if (false === stripos($statement_text, 'vendor') && false === stripos($statement_text, 'composer')) {
+                if (! wp_connectors_text_names_vendor_or_composer($statement_text)) {
                     /*
                      * t31-glm43-1 [R43-1, security:medium, driven
                      * fail-open — the variable-mediated spelling of
@@ -5566,7 +5610,7 @@ function wp_connectors_autoloader_violations($pluginDir)
                      */
                     $resolved_hit = false;
                     wp_connectors_each_transitive_assignment_value($code, $masked, $statement_text, $operand_start, static function ($assignment_value) use (&$resolved_hit) {
-                        if (false !== stripos($assignment_value, 'vendor') || false !== stripos($assignment_value, 'composer')) {
+                        if (wp_connectors_text_names_vendor_or_composer($assignment_value)) {
                             $resolved_hit = true;
 
                             return false;
