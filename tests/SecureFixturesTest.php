@@ -2943,6 +2943,8 @@ CHILD;
             $this->assertNotFalse(file_put_contents($tempDir . '/hash.ini', "github_token = \"{$token}\" # secrets:allow\n"), 'staging: hash.ini must write.');
             $this->assertNotFalse(file_put_contents($tempDir . '/bare.ini', "github_token = \"{$token}\"\n"), 'staging: bare.ini must write.');
             $this->assertNotFalse(file_put_contents($tempDir . '/app.env', "github_token = \"{$token}\" ; secrets:allow\n"), 'staging: app.env must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/app.ini.dist', "github_token = \"{$token}\" ; secrets:allow\n"), 'staging: app.ini.dist must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/app.env.dist', "github_token = \"{$token}\" ; secrets:allow\n"), 'staging: app.env.dist must write.');
 
             $findings = wp_connectors_scan_paths(array( $tempDir ));
         } finally {
@@ -2954,6 +2956,11 @@ CHILD;
         $this->assertStringNotContainsString('/hash.ini:', $report, 'The \'#\' spelling keeps its exemption.');
         $this->assertStringContainsString('/bare.ini:', $report, 'The unmarked control still flags.');
         $this->assertStringContainsString('/app.env:', $report, 'The family boundary holds — \';\' is a value byte in a dotenv value, not a comment there.');
+        /*
+         * t31-glm59-6 [R59-9]: the '.dist' meta extension re-derives
+         * the marker family from the base beneath it — '.ini.dist'
+         * keeps the ini grammar's ';' (the phpunit.xml.dist
+         * convention), '.env.dist' keeps the dotenv boundary.
          */
         $this->assertStringNotContainsString('/app.ini.dist:', $report, 'The compound ini-DISTRIBUTION spelling keeps its base grammar\'s comment character (red at HEAD: FAIL app.ini.dist:1 github-token).');
         $this->assertStringContainsString('/app.env.dist:', $report, 'The compound dotenv spelling keeps the dotenv boundary — \';\' stays a value byte there.');

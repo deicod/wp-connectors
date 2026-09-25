@@ -1323,7 +1323,20 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
     // glm23-6: the marker grammar is extension-aware — the '<!--'
     // enclosure's glue-broadened boundary is the markup family's alone
     // (the owner's own split, stated in its docblock).
-    $allowMarker = wp_connectors_allow_marker_pattern($label_ext);
+    /*
+     * t31-glm59-6 [R59-9, driven — R58-8's class one compound
+     * spelling short]: '.ini.dist' is the ini-DISTRIBUTION
+     * convention (the phpunit.xml.dist family) and the walk READS it
+     * (the allowlist admits 'dist') — the marker family consult
+     * re-derives beneath the trailing meta extension so the payload
+     * keeps its base grammar's comment vocabulary ('.ini.dist' →
+     * 'ini', ';' honored; '.env.dist' → 'env', '#' only — the
+     * boundary preserved).
+     */
+    $marker_family_ext = 'dist' === $label_ext
+        ? wp_connectors_ascii_lower((string) pathinfo(pathinfo($label, PATHINFO_FILENAME), PATHINFO_EXTENSION))
+        : $label_ext;
+    $allowMarker = wp_connectors_allow_marker_pattern($marker_family_ext);
     /*
      * glm18-2: a DIRECTLY-NAMED file is judged by content shape, not
      * extension — 'scan-secrets.php config.inc' over pure-PHP bytes
