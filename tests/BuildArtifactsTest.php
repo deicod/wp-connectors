@@ -2607,6 +2607,48 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /*
+     * Round 52, t31-glm52-1 (R52-1, driven fail-open): the round-51
+     * masked-view re-confirmation killed both composer screens — an
+     * include's OPERAND is string bytes the masker blanks, so the
+     * conjuncts were always false for exactly the references the
+     * screens refuse.
+     */
+    public function testTheComposerScreensFireOnRealIncludesAndStayCleanOverProse()
+    {
+        $tempPlugin = self::scratchPath('composer-gates-test') . '/composer-demo';
+        if (is_dir(dirname($tempPlugin))) {
+            WpHarness::releaseScratch(dirname($tempPlugin));
+        }
+        try {
+            $this->assertTrue(mkdir($tempPlugin, 0755, true), "staging: {$tempPlugin} must create — a staging failure fails as staging, never as the gate verdict.");
+            $legs = array(
+                // Red at HEAD: 0 violations — the masked conjunct blanked the operand.
+                'vendor-include.php' => "<?php\nrequire_once __DIR__ . '/vendor/autoload.php';\n",
+                'composer-include.php' => "<?php\n\$loader = require_once __DIR__ . '/composer/autoload_real.php';\n",
+                // The class-reference channel: code bytes on the masked view.
+                'composer-class.php' => "<?php\n\$loader = ComposerAutoloaderInit3f9c1a::getLoader();\n",
+                // The round-51 prose-immunity legs stay clean beside the revival.
+                'prose-note.php' => "<?php\n\$note = 'self-contained: must not require composer or any vendor tree';\n",
+                'prose-vendor.php' => "<?php\n\$note = 'see the vendor/autoload docs elsewhere';\n",
+            );
+            foreach ($legs as $relative => $body) {
+                $this->assertNotFalse(file_put_contents($tempPlugin . '/' . $relative, $body), "staging: {$tempPlugin}/{$relative} must write — a staging failure fails as staging, never as the gate verdict.");
+            }
+
+            $violations = wp_connectors_self_containment_violations($tempPlugin);
+        } finally {
+            WpHarness::releaseScratch(dirname($tempPlugin));
+        }
+
+        $report = implode("\n", $violations);
+        $this->assertStringContainsString('vendor-include.php references vendor/autoload', $report, 'A genuine vendor/autoload include is refused (red at HEAD: the masked conjunct blanked the operand — 0 violations).');
+        $this->assertStringContainsString('composer-include.php references Composer at runtime', $report, 'A composer autoload_real include is refused on its own message (red at HEAD: only the include scan\'s unanchored flag fired, never this screen).');
+        $this->assertStringContainsString('composer-class.php references Composer at runtime', $report, 'A ComposerAutoloader class reference rides the masked view\'s code bytes — real code, never prose.');
+        $this->assertStringNotContainsString('prose-note.php references', $report, 'The prose words stay clean — the round-51 immunity intact beside the revival.');
+        $this->assertStringNotContainsString('prose-vendor.php references', $report, 'A prose literal naming vendor/autoload exempts nothing and flags nothing — string data is never an operand.');
+    }
+
+    /*
      * Includes hidden behind variables (finding: `require $dependency;`
      * carries no quoted literal, so an indirectly assigned escaping path
      * reported nothing and shipped in artifacts).

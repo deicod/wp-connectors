@@ -4737,6 +4737,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * helper's pair judgments).
              */
             $scanned = preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:require|include)(?i:_once)?(?![' . WP_CONNECTORS_LABEL_BYTES . '])' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $includes, PREG_OFFSET_CAPTURE);
+            $include_statements = '';
             if (false === $scanned) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for includes — the self-containment scan aborted (PCRE: %s)',
@@ -4752,6 +4753,23 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                         continue;
                     }
                     $include = array(substr($code, $include_match[1], strlen($include_match[0])), $include_match[1]);
+                    /*
+                     * t31-glm52-1 [R52-1, driven fail-open — the
+                     * round-51 masked conjuncts KILLED both composer
+                     * screens]: an include's OPERAND is string bytes,
+                     * blanked on the masked view by construction, so
+                     * the round-51 re-confirm conjuncts (stripos over
+                     * $masked) were always false for every real
+                     * 'vendor/autoload'/'composer' reference the
+                     * screens exist to refuse (driven: a genuine
+                     * 'require_once __DIR__ . "/vendor/autoload.php";'
+                     * answered 0 violations). The needles are judged
+                     * where they legitimately ride: the position-
+                     * filtered include statements' RAW spans — operand
+                     * paths are never prose (R39-3) — beside the
+                     * masked conjunct that owns non-string code bytes.
+                     */
+                    $include_statements .= "\n" . $include[0];
                     $quoted_literals = wp_connectors_quoted_literals($include[0]);
                     if ($quoted_literals !== array()) {
                         /*
@@ -4837,11 +4855,28 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * re-confirmation (glm40-3/glm45-3) sitting one screen
              * up. Both re-confirm on the MASKED view: prose blanks
              * there, real code bytes stay.
+             *
+             * t31-glm52-1 [R52-1, driven fail-open — the round-51
+             * masked conjuncts killed both screens]: the needles
+             * 'vendor/autoload' and 'composer' ride the include
+             * OPERAND — string bytes the masker blanks — so the
+             * masked re-confirm was ALWAYS false for exactly the
+             * references the screens refuse (driven at HEAD: a
+             * genuine 'require_once __DIR__ .
+             * "/vendor/autoload.php";' answered 0 violations). The
+             * needles now judge where they legitimately ride: the
+             * position-filtered include statements' RAW spans
+             * ($include_statements, operand paths never prose per
+             * R39-3) OR the masked view's non-string code bytes;
+             * the composer keyword conjunct stays on the MASKED
+             * view alone — real code bytes spell require/include
+             * and the ComposerAutoloader/ComposerLoader class
+             * names, prose blanks.
              */
-            if (stripos($code, 'vendor/autoload') !== false && stripos($masked, 'vendor/autoload') !== false) {
+            if (stripos($include_statements, 'vendor/autoload') !== false || stripos($masked, 'vendor/autoload') !== false) {
                 $violations[] = sprintf('%s: %s references vendor/autoload (no Composer at runtime).', $slug, $relative);
             }
-            if (preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $code) && stripos($code, 'composer') !== false && stripos($masked, 'composer') !== false && preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $masked)) {
+            if ((stripos($include_statements, 'composer') !== false || stripos($masked, 'composer') !== false) && preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $masked)) {
                 $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
             }
             /*
