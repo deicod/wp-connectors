@@ -1693,6 +1693,17 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertNotEmpty(wp_connectors_scan_string("<?php \$x=1; ?> > * secrets:allow {$key}\n", 'slice-quote.md'), 'The quote-marker run after a sample judges the same.');
         $this->assertNotEmpty(wp_connectors_scan_string("<?php \$x=1; ?> 1. * secrets:allow {$key}\n", 'slice-ord.md'), 'The ordered-list run after a sample judges the same.');
         $this->assertSame(array(), wp_connectors_scan_string("guide <?php \$x=1; ?> done\n- * secrets:allow {$key}\n", 'slice-clean.md'), 'A genuinely line-initial marked bullet on its own line keeps its exemption — the sentinel rides only the slice that FOLLOWS a region on the same line.');
+        /*
+         * R55-5 (driven at HEAD): the round-54 sentinel guarded only
+         * empty-prose heads — the JOIN between two prose slices
+         * dropped the region bytes and re-supplied whitespace
+         * adjacency the source never had, a head slice's trailing
+         * space riding the (?:^|\s) \s arm across the seam. Every
+         * seam takes the sentinel now.
+         */
+        $this->assertNotEmpty(wp_connectors_scan_string("x <?php \$x=1; ?>// secrets:allow {$key}\n", 'seam-open.md'), 'A glued \'//\' after a region preceded by whitespace PROSE never rides the manufactured adjacency — the seam sentinel breaks it (red at HEAD: exempt).');
+        $this->assertNotEmpty(wp_connectors_scan_string("x <?php \$x=1; ?> mid <?php \$y=2; ?>// secrets:allow {$key}\n", 'seam-mid.md'), 'A mid-slice seam launders identically — every join drops region bytes.');
+        $this->assertSame(array(), wp_connectors_scan_string("<?php \$x=1; ?> // secrets:allow {$key}\n", 'seam-legit.md'), 'A marker after a region preceded by its OWN real whitespace keeps the (?:^|\s) arm — the honest spelling still exempts.');
 
         /*
          * R54-6 (driven at HEAD): an ODD count of unescaped quotes

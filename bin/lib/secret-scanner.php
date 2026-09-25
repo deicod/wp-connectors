@@ -970,6 +970,27 @@ function wp_connectors_sample_region_line_view($line, $line_start, array $region
      * the marked bullet stays exempt. The sentinel is a plain 'x':
      * inert to quote pairing (blank_quoted_strings at the consult)
      * and outside every marker-run class.
+     *
+     * t31-glm55-3 [R55-5, driven fail-open — the sentinel guarded
+     * only empty-prose HEADS, never JOIN SEAMS]: the round-54
+     * sentinel prefixed a view whose head followed a region, but a
+     * NON-empty prose view followed by a region followed by more
+     * prose concatenated the slices bare — the join re-supplied
+     * adjacency the source never had ('x <?php $x=1; ?>// secrets:
+     * allow ghp_…' built the view 'x // secrets:allow …', the head
+     * slice's trailing whitespace riding the (?:^|\s) guard's \s
+     * arm ACROSS the dropped region, the glued '//' honored and the
+     * credential exempted — while the region-first spelling flagged
+     * through the round-54 sentinel and the no-whitespace-head
+     * control through the grammar, the exemption turning exactly on
+     * the manufactured adjacency; a mid-slice seam laundered
+     * identically). Every contribution whose cursor a region
+     * advanced takes the sentinel now — each join seam sits where a
+     * region's bytes were dropped, so the manufactured adjacency is
+     * always spurious — while the genuinely line-initial head
+     * (cursor 0, nothing dropped before it) still carries none and
+     * a marker after a region preceded by its OWN real whitespace
+     * keeps the (?:^|\s) arm's honest spelling.
      */
     $code = '';
     $spans = array();
@@ -989,7 +1010,9 @@ function wp_connectors_sample_region_line_view($line, $line_start, array $region
             continue;
         }
         if ($start > $cursor) {
-            $prose .= ('' === $prose && $cursor > 0 ? 'x' : '') . wp_connectors_line_without_string_literals((string) substr($line, $cursor, $start - $cursor));
+            // t31-glm55-3: $cursor > 0 means a region was served
+            // before this gap — the seam drops its bytes.
+            $prose .= ($cursor > 0 ? 'x' : '') . wp_connectors_line_without_string_literals((string) substr($line, $cursor, $start - $cursor));
         }
         $from = max($start, $cursor);
         $through = min($end, $len - 1);
@@ -1009,7 +1032,10 @@ function wp_connectors_sample_region_line_view($line, $line_start, array $region
     return array(
         // t31-glm54-3: the tail append takes the same sentinel — a
         // prose view whose head follows a consumed region is mid-line.
-        'prose' => $prose . ('' === $prose && $cursor > 0 ? 'x' : '') . wp_connectors_line_without_string_literals((string) substr($line, $cursor)),
+        // t31-glm55-3: and so does EVERY seam — $cursor > 0 means a
+        // region's bytes were dropped before this tail (the empty-
+        // prose condition was the round-54 half of the rule).
+        'prose' => $prose . ($cursor > 0 ? 'x' : '') . wp_connectors_line_without_string_literals((string) substr($line, $cursor)),
         'code' => $code,
         'spans' => $spans,
     );
