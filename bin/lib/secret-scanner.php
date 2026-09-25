@@ -475,7 +475,18 @@ function wp_connectors_line_without_string_literals($line)
  */
 function wp_connectors_segment_is_sequential_filler($folded)
 {
-    if (false !== strpos($folded, '0123456789abcdef')) {
+    /*
+     * t31-glm62-2 [R62-3, driven at the real CLI by both the review
+     * and the driver — the R50-9 contains class left in the 16-run
+     * member]: an unanchored strpos exempted any segment merely
+     * EMBEDDING the run (a slack-shaped body with the run riding
+     * mid-segment between entropy flanks scanning clean where the
+     * 10-run control flagged), the exact
+     * class t31-glm50-4 drove red and removed for the shorter runs
+     * — the 16-run member is the segment WHOLE, its own docblock's
+     * word.
+     */
+    if ('0123456789abcdef' === $folded) {
         return true;
     }
     foreach (array('0123456789', 'abcdefgh') as $run) {
@@ -1419,9 +1430,18 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * 'ini', ';' honored; '.env.dist' → 'env', '#' only — the
      * boundary preserved).
      */
-    $marker_family_ext = 'dist' === $label_ext
-        ? wp_connectors_ascii_lower((string) pathinfo(pathinfo($label, PATHINFO_FILENAME), PATHINFO_EXTENSION))
-        : $label_ext;
+    $marker_family_ext = $label_ext;
+    if ('dist' === $label_ext) {
+        /*
+         * t31-glm62-7 [R62-13 — the fold+pathinfo composition
+         * hand-spelled at the two adjacent PATHINFO seats]: strip
+         * ONE trailing meta extension; the label's own derivation
+         * fifteen lines above spells the same composition (the
+         * file's only two) — this local keeps the marker-family
+         * seat self-contained beside it.
+         */
+        $marker_family_ext = wp_connectors_ascii_lower((string) pathinfo(pathinfo($label, PATHINFO_FILENAME), PATHINFO_EXTENSION));
+    }
     $allowMarker = wp_connectors_allow_marker_pattern($marker_family_ext);
     /*
      * glm18-2: a DIRECTLY-NAMED file is judged by content shape, not
@@ -1726,7 +1746,8 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                 }
                 if ($in_code) {
                     if (null === $code_marker) {
-                        $code_marker = 1 === preg_match(wp_connectors_allow_marker_pattern($marker_family_ext, false), $code_view, $marker_match, PREG_OFFSET_CAPTURE);
+                        $code_marker_pattern = wp_connectors_allow_marker_pattern($marker_family_ext, false);
+                        $code_marker = 1 === preg_match($code_marker_pattern, $code_view, $marker_match, PREG_OFFSET_CAPTURE);
                         /*
                          * t31-glm60-6 [R60-2, driven — the star arm
                          * served the code consult ungated]: in code
@@ -1768,7 +1789,7 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                              */
                             $marker_span_start = $line_start + (int) $marker_match[0][1];
                             $marker_span_end = $marker_span_start + strlen($marker_match[0][0]) - 1;
-                            if (1 !== preg_match(wp_connectors_allow_marker_pattern($marker_family_ext, false), $star_stripped)
+                            if (1 !== preg_match($code_marker_pattern, $star_stripped)
                                 && ! wp_connectors_span_sits_in_comment($contents, $marker_span_start, $marker_span_end)) {
                                 $code_marker = false;
                             }
@@ -2072,7 +2093,24 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                  * actually read — the over-refusal direction of the cap's
                  * own memory-bound purpose (glm14-3/glm20-1).
                  */
-                $extension = strtolower($file->getExtension());
+                /*
+                 * t31-glm62-2 [R62-2, driven both directions by both
+                 * the review and the driver — the r12 recorded
+                 * residual's re-open condition FIRED with the
+                 * demanded producer]: the read allowlist judged the
+                 * extension byte-exactly, so a trailing edge-junk
+                 * byte (space/tab/control) made a credential-bearing
+                 * file of a scanned family invisible to the walk AND
+                 * to artifact inspection (a shipped
+                 * 'docs/notes.md\x20' carrying a live token ACCEPTED
+                 * where the clean-named twin REJECTED). The gate
+                 * folds TRAILING edge junk — the
+                 * wp_connectors_path_edge_junk class MINUS THE DOT:
+                 * a dot is the near-source grammar's own byte (the
+                 * inspector's fence owns that class; folding it here
+                 * would re-adjudicate near-source verdicts).
+                 */
+                $extension = rtrim(strtolower($file->getExtension()), " \t\n\r\v\f\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f");
                 /*
                  * t31-glm38-2 [R38-2, security:medium, driven end-to-end]:
                  * the walk's extension allowlist omitted html/htm/xhtml

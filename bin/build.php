@@ -2977,6 +2977,22 @@ final class WpConnectorsBuild
         if ($slug_screen_violations !== array()) {
             throw new RuntimeException('build: ' . implode("; ", $slug_screen_violations));
         }
+        /*
+         * t31-glm62-1 [R62-1, driven end-to-end at HEAD by both the
+         * review and the driver — the connector ROOT carried no
+         * symlink fence]: is_dir() follows a resolving link, so a
+         * plugin tree OUTSIDE the repo built through a connectors/
+         * link shipped its unscanned bytes through every green gate
+         * while the inspector rejected the published zip (the
+         * out-of-tree includes/creds.php carrying a live key, unzip
+         * -p verified); a DANGLING link silently vanished from
+         * build-all. A link is never silently skipped and never read
+         * through (the ocr3-3 build.json fence's own vocabulary) —
+         * the fence sits at the root, dangling and resolving alike.
+         */
+        if (is_link($pluginDir)) {
+            throw new RuntimeException("build: {$slug}: the connector directory is a symlink — dangling or resolving, a link is never silently skipped and never read through; make the connector a real directory under connectors/");
+        }
         $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
         if ($mainFiles === array()) {
             throw new RuntimeException("build: no main plugin file with a Plugin Name header in {$pluginDir}");

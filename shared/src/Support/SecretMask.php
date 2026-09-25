@@ -698,20 +698,36 @@ final class SecretMask {
 		 * assignment at ANY layer, no separator at ANY layer) and the
 		 * alone-spelling keys staying outside every shape.
 		 */
+
+		/*
+		 * t31-glm62-3 [R62-4+R62-7, driven at the class by both the
+		 * review and the driver — the round-60 cross-layer doctrine
+		 * one and two conjuncts short]: the gate never composed an
+		 * encoded OPENER with anything — '%3Fcode%3DBCJK-3502'
+		 * (opener+assignment, no pair-separator, no raw anchor byte)
+		 * and '%3Fstate%26BCJK-3502' (opener+separator, the
+		 * equals-less R49-7 shape in its encoded spelling) both left
+		 * the gate unarmed and printed four of nine device-code
+		 * characters while every raw-anchor and separator twin
+		 * masked. The structural-byte composition: ANY layer spelled
+		 * an opener beside ANY layer spelling an assignment OR a
+		 * pair-separator (the round-60 arm composed
+		 * assignment+separator only) — monotone mask-more, the
+		 * protected rows LONE triples at every layer (no second
+		 * structural byte anywhere) keeping their tails. The
+		 * assignment keeps its t31-glm61-3 indexed idiom.
+		 */
 		$container_saw_assignment = false;
 		$container_saw_separator  = false;
+		$container_saw_opener     = false;
 		$container_armed          = self::any_layer_carries(
 			$value,
-			static function ( string $view ) use ( &$container_saw_assignment, &$container_saw_separator ): bool {
-				/*
-				 * t31-glm61-3 [R61-7]: the encoded assignment rides
-				 * the indexed-composition idiom the boundary walk's
-				 * own consults spell (ENCODED_DELIMITER_TRIPLES[2], the
-				 * R54-1 idiom) — never an inline spelling the next
-				 * list widening strands.
-				 */
+			static function ( string $view ) use ( &$container_saw_assignment, &$container_saw_separator, &$container_saw_opener ): bool {
 				if ( false !== stripos( $view, self::ENCODED_DELIMITER_TRIPLES[2] ) ) {
 					$container_saw_assignment = true;
+				}
+				if ( false !== stripos( $view, self::ENCODED_DELIMITER_TRIPLES[0] ) || false !== stripos( $view, self::ENCODED_DELIMITER_TRIPLES[1] ) ) {
+					$container_saw_opener = true;
 				}
 				foreach ( self::ENCODED_PAIR_SEPARATORS as $separator ) {
 					if ( false !== stripos( $view, $separator ) ) {
@@ -726,7 +742,8 @@ final class SecretMask {
 					}
 				}
 
-				return $container_saw_assignment && $container_saw_separator;
+				return ( $container_saw_assignment && $container_saw_separator )
+					|| ( $container_saw_opener && ( $container_saw_assignment || $container_saw_separator ) );
 			}
 		);
 

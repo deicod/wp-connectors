@@ -500,6 +500,13 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         $interleaved = wp_connectors_joined_literal_pieces("\$parts = array('/notes'); file_get_contents( __DIR__ . '/vendor' . \$parts[0] . '/autoload.php' );");
         $this->assertSame("/notes\n/vendor\n/autoload.php", $interleaved, 'An operand between literals BREAKS the spine — the pieces never compose across it (red at HEAD: the fabricated /vendor/autoload.php).');
         $this->assertSame('/vendor/autoload.php', wp_connectors_joined_literal_pieces("\$p = __DIR__ . '/ven' . 'dor/autoload.php';"), 'The all-literal chain still composes the runtime spelling.');
+        /*
+         * t31-glm62-4 (R62-6, driven): the exact-glue check broke on
+         * a parenthesized operand — a legal php -l-clean chain whose
+         * runtime value composes vendor/autoload laundered at both
+         * gates. The R48-6 paren tolerance at the spine.
+         */
+        $this->assertSame('/vendor/autoload.php', wp_connectors_joined_literal_pieces("\$x = file_get_contents((__DIR__ . '/vendor') . '/autoload.php');"), 'A parenthesized operand chain composes the runtime spelling — the glue may wrap either side in parens (red at HEAD: the spine split, the reference laundered).');
     }
 
     /**

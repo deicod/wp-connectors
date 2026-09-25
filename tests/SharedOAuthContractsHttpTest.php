@@ -3345,6 +3345,17 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('state%3Dxyz%2526code%3DBCJK-3502'), 'A cross-layer container arms — the assignment at one layer, the separator one deeper (red at HEAD: …3502).');
         $this->assertSame('…', SecretMask::mask('state%3Dxyz%253Bcode%3DBCJK-3502'), 'The %3b cross-layer spelling arms identically.');
         $this->assertSame('…', SecretMask::mask('theme%3Ddark%253Bsid%3Dabcdefghi'), 'The cookie/matrix cross-layer shape arms (red at HEAD: …fghi).');
+
+        /*
+         * t31-glm62-3 (R62-4+R62-7, driven at the class by both the
+         * review and the driver): the gate never composed an encoded
+         * OPENER with anything — opener+assignment and
+         * opener+separator (the equals-less R49-7 shape in its
+         * encoded spelling) both leaking where every raw twin masked.
+         */
+        $this->assertSame('…', SecretMask::mask('%3Fcode%3DBCJK-3502'), 'An encoded opener beside an encoded assignment arms — the single-parameter query (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('%3Fstate%26BCJK-3502'), 'An encoded opener beside an encoded separator arms — the equals-less shape (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('%23state%3BBCJK-3502'), 'The fragment-opener + cookie-separator spelling arms identically.');
     }
 
     /**

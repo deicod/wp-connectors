@@ -2461,7 +2461,25 @@ function wp_connectors_plugin_file_head($file, $bytes = 8192)
 function wp_connectors_find_main_plugin_files($pluginDir)
 {
     $mainFiles = array();
-    foreach (glob(rtrim($pluginDir, '/') . '/*.php') ?: array() as $candidate) {
+    /*
+     * t31-glm62-6 [R62-10, driven A/B by both the review and the
+     * driver — the glob-parity class at the fourth seat]: glob
+     * silently skips dot-led names, so a second
+     * 'Plugin Name:'-bearing dot-led root file escaped the
+     * exactly-one-main-file rule and shipped unjudged in the zip
+     * ('.second.php' beside the real main file at 0 violations
+     * where the visible twin answered 'exactly one is allowed').
+     * The listing reads the directory, dot-led included; the
+     * exactly-one gate stays the verdict.
+     */
+    foreach (@scandir(rtrim($pluginDir, '/')) ?: array() as $name) {
+        if ('.' === $name || '..' === $name || '.php' !== substr($name, -4)) {
+            continue;
+        }
+        $candidate = rtrim($pluginDir, '/') . '/' . $name;
+        if (! is_file($candidate)) {
+            continue;
+        }
         $head = wp_connectors_plugin_file_head($candidate);
         if (strpos($head, 'Plugin Name:') !== false) {
             $mainFiles[] = $candidate;
@@ -4692,8 +4710,21 @@ function wp_connectors_joined_literal_pieces($expression)
              * glue breaking the spine', the contract this loop's
              * own census states.
              */
+            /*
+             * t31-glm62-5 [R62-6, driven — the exact-glue check
+             * broke on a parenthesized operand]: '(__DIR__ .
+             * '/vendor') . '/autoload.php'' is a legal php -l-clean
+             * chain whose runtime value composes vendor/autoload,
+             * but the glue bytes between the literals are ') . (' —
+             * the spine split and no arm ever carried the composed
+             * spelling (fail-open). The R48-6 paren tolerance at the
+             * spine: the glue may wrap either side in parens —
+             * whitespace and parens around the one '.' compose, the
+             * dot still required (a glue without a dot never
+             * composes — the R61-F4 recorded edge stands).
+             */
             $between = substr($expression, $previous_end, $match[1] - $previous_end);
-            if (1 !== preg_match('/\A\s*\.\s*\z/', $between)) {
+            if (1 !== preg_match('/\A[\s()]*\.[\s()]*\z/', $between)) {
                 $spines[] = $joined;
                 $joined = '';
             }
@@ -4747,8 +4778,22 @@ function wp_connectors_text_names_composer($text)
     if (wp_connectors_text_names_vendor_or_composer($text, 'composer')) {
         return true;
     }
+    /*
+     * t31-glm62-4 [R62-9, driven — the R55-7 identifier-interior
+     * doctrine reached the word arm but not the class arm]: a bare
+     * stripos flagged any identifier merely CONTAINING a loader
+     * class name ('class MyComposerAutoloaderShim' minting the
+     * violation where 'MyComposerBridgeHelper' — the R58-3 doctrine's
+     * own 'names anything else' example — stayed clean). The class
+     * names are identifiers: the boundary refuses a label byte on
+     * the LEFT alone — the identifier-HEAD test. The right side
+     * stays open BY PIN: Composer's own generated loader spells
+     * 'ComposerAutoloaderInit<hash>' (suffix-glued by the vendor,
+     * the round-51 pin's own fixture), a prefix-glued user name
+     * refusing through the head.
+     */
     foreach (WP_CONNECTORS_COMPOSER_CLASS_REFERENCES as $composer_class) {
-        if (false !== stripos($text, $composer_class)) {
+        if (1 === preg_match('/(?<![\$' . WP_CONNECTORS_LABEL_BYTES . '])' . preg_quote($composer_class, '/') . '/i', $text)) {
             return true;
         }
     }
@@ -5293,7 +5338,21 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * regex arm here where the token walk below judges it by
              * T_EVAL id.
              */
-            $channel_scanned = preg_match_all('/(?<![\\$:>' . WP_CONNECTORS_LABEL_BYTES . '])(?i:' . implode('|', WP_CONNECTORS_CHANNEL_FUNCTIONS) . '|eval)\s*\(/', $masked, $channel_calls, PREG_OFFSET_CAPTURE);
+            /*
+             * t31-glm62-4 [R62-5, driven — the static ':'/'>' refusal
+             * is glm46-1's pre-doctrine spelling one seat over]: the
+             * class refused ':' and '>' wholesale, so a REAL channel
+             * call glued tight to '=>' (array value) or ':' (case
+             * label / alternative syntax / ternary else) was never
+             * collected — 'array(\'fetch\' =>file_get_contents(…vendor…))'
+             * certifying clean where its one-space twin flagged. The
+             * refusal is the BYTE PAIR now (the member glue alone):
+             * '->' and '?->' and '::' refuse, a lone '>' (the '=>'
+             * tail) and a lone ':' (every statement position)
+             * admit — the collector-must-not-pre-answer doctrine at
+             * the R54-2 channel screen.
+             */
+            $channel_scanned = preg_match_all('/(?<!->)(?<!\?->)(?<!::)(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:' . implode('|', WP_CONNECTORS_CHANNEL_FUNCTIONS) . '|eval)\s*\(/', $masked, $channel_calls, PREG_OFFSET_CAPTURE);
             if (false === $channel_scanned) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for channel calls — the self-containment scan aborted (PCRE: %s)',
@@ -5456,9 +5515,19 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * operand ('ComposerAutoloader.php' riding an include
              * or channel span) certified clean where master flagged.
              */
+            /*
+             * t31-glm62-4 [R62-12 — the conjunct double-spelled
+             * $operand_names_composer across both operands]: by
+             * distributivity the verdict is the operand arm OR
+             * (masked arm AND the invocation conjunct) — the
+             * R58-6 doctrine's own sentence — and the masked
+             * consult (a boundary walk plus the class stripos family
+             * over the whole view) computes ONLY when the operand
+             * arm has not already decided.
+             */
             $operand_names_composer = wp_connectors_text_names_composer($include_statements . $channel_operands);
-            $masked_names_composer = wp_connectors_text_names_composer($masked);
-            if (($operand_names_composer || $masked_names_composer) && ($operand_names_composer || 0 !== preg_match('/(?:require|include|' . implode('|', WP_CONNECTORS_COMPOSER_CLASS_REFERENCES) . ')/i', $masked))) {
+            if ($operand_names_composer
+                || (wp_connectors_text_names_composer($masked) && 0 !== preg_match('/(?:require|include|' . implode('|', WP_CONNECTORS_COMPOSER_CLASS_REFERENCES) . ')/i', $masked))) {
                 $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
             }
             /*
@@ -7110,8 +7179,21 @@ function wp_connectors_child_directories($dir)
     }
     $children = array();
     foreach ($entries as $name) {
-        if ('.' !== $name && '..' !== $name && is_dir($dir . '/' . $name)) {
-            $children[] = $dir . '/' . $name;
+        /*
+         * t31-glm62-1 [R62-1, driven end-to-end by both the review
+         * and the driver — the connector ROOT carried no symlink
+         * fence]: is_dir() FOLLOWS a resolving link (out-of-tree
+         * content packaged unscanned through the green pipeline)
+         * and EXCLUDES a dangling one (silently omitted from
+         * build-all — omission, not absence). The census LISTS links
+         * (is_link beside is_dir — the dangling link reaches the
+         * screens, never vanishes); the fence itself is the screens'
+         * (a link is never silently skipped and never read through,
+         * the ocr3-3 build.json vocabulary).
+         */
+        $child = $dir . '/' . $name;
+        if ('.' !== $name && '..' !== $name && (is_dir($child) || is_link($child))) {
+            $children[] = $child;
         }
     }
 

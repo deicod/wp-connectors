@@ -84,6 +84,16 @@ if (wp_connectors_cli_entry(__FILE__)) {
         foreach (wp_connectors_slug_name_screen_violations($slug) as $screen_violation) {
             $violations[] = $screen_violation . '.';
         }
+        /*
+         * t31-glm62-1 [R62-1]: the root symlink fence at the census
+         * seat — a resolving link certified green here while the
+         * inspector rejected the published zip; a dangling link
+         * silently vanished. Never silently skipped, never read
+         * through.
+         */
+        if (is_link($pluginRoot)) {
+            $violations[] = sprintf('%s: the connector directory is a symlink — dangling or resolving, a link is never silently skipped and never read through; make the connector a real directory under connectors/.', $slug);
+        }
         $mainFiles = wp_connectors_find_main_plugin_files($pluginRoot);
         if ($mainFiles === array()) {
             $violations[] = sprintf('%s: no main plugin file with a "Plugin Name:" header at the plugin root.', $slug);
