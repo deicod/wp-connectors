@@ -189,16 +189,12 @@ if (wp_connectors_cli_entry(__FILE__)) {
                      * spawned child with no staging hook a battery can
                      * plant deterministically; the readable-link
                      * battery of t31-ocr50-7 stays the green control
-                     * over the surviving happy path.
+                     * over the surviving happy path. ONE owner since
+                     * t31-glm52-9 — this inline try/catch was the
+                     * third spelling of the doctrine the two IIFE
+                     * twins rode.
                      */
-                    try {
-                        $link_target = $file->getLinkTarget();
-                        if (false === $link_target) {
-                            $link_target = '(unreadable target: readlink answered false)';
-                        }
-                    } catch (RuntimeException $unreadable_target) {
-                        $link_target = '(unreadable target: ' . $unreadable_target->getMessage() . ')';
-                    }
+                    $link_target = wp_connectors_link_target_or_unreadable($file);
                     fwrite(STDERR, sprintf(
                         "lint-php: FAIL %s: symlinked source (%s -> %s) — the no-symlinks doctrine refuses the charge instead of silently skipping a linked source that pre-change reached php -l\n",
                         $root,

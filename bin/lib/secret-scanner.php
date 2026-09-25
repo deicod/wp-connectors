@@ -41,13 +41,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/plugin-tools.php';
 
 /**
- * Returns the secret patterns this repository guards against.
- *
- * Each entry: name => [ regex, description ].
- *
- * @return array<string, list<string>>
- */
-/**
  * The placeholder DICTIONARY (t31-glm51-1, R51-1 — the ONE owner):
  * the words a segment (or a word-split region) must spell to count
  * as placeholder material. The list lived hand-spelled at three
@@ -74,6 +67,20 @@ function wp_connectors_fake_secret_dictionary_words()
     return array( 'not-a-real', 'notareal', 'test-value', 'placeholder', 'example', 'fixture', 'redacted', 'sample', 'dummy', 'fake', 'your', 'test', 'wpct', 'api', 'key', 'here' );
 }
 
+/*
+ * t31-glm52-12 [R52-11 — the stranded docblock, the R48-14 class at
+ * the round-51 insertion's own neighbor]: the round-51 dictionary
+ * owner landed BETWEEN this docblock and its function, stranding it
+ * above the owner's own (only the LAST docblock attaches — the
+ * patterns gate shipping bare). Relocated to its function.
+ */
+/**
+ * Returns the secret patterns this repository guards against.
+ *
+ * Each entry: name => [ regex, description ].
+ *
+ * @return array<string, list<string>>
+ */
 function wp_connectors_secret_patterns()
 {
     return array(
@@ -252,31 +259,12 @@ function wp_connectors_line_without_string_literals($line)
     );
 }
 
-/**
- * Whether a matched secret VALUE is recognizable as a fake.
- *
- * Recognizable fakes are verifiable from the value itself: placeholder
- * shapes wrapped entirely in ${…} or <…>, well-known dummy segments
- * bounded by separators (sk-proj-TEST-…, YOUR_API_KEY, test-key-…,
- * wpct_fixture_…, not-a-real-…), and obvious sequential filler. Anything
- * else must be treated as live. This mirrors the line-level marker rule:
- * prose words around the value never exempt it, only the value's own shape
- * can.
- *
- * @param string $value The matched secret text (never reported verbatim).
- * @return bool True when the value is verifiably not a live credential.
- */
-/**
- * The entropy byte-count of a side's segments, the ONE budget walker
- * (t31-glm49-2): every segment counts unless it is a dictionary WORD
- * — the HYPHENATED dictionary words honored as consecutive-segment
- * windows, 'not-a-real' and 'test-value' splitting into 'not'/'a'/
- * 'real' and 'test'/'value' pieces no single-segment judge ever saw —
- * or the sequential filler (the 16-char run anywhere, the pure
- * digit-flanked run). Empty segments carry nothing.
- *
- * @param list<string> $segments The side's dash/underscore/whitespace-split segments.
- * @return list<int> Per counted segment, its byte length (empty segments omitted).
+/*
+ * t31-glm52-12 [R52-11 — the stranded docblocks, the R48-14 class at
+ * this file's own budget-walker insertions]: the fake-value summary
+ * and the spans walker's own docblock once stacked HERE above the
+ * filler's (only the LAST docblock attaches — both functions shipping
+ * bare). Relocated to their functions.
  */
 /**
  * Whether a segment is SEQUENTIAL FILLER (t31-glm50-4): the 16-char
@@ -348,6 +336,18 @@ function wp_connectors_segment_is_sequential_filler($folded)
     return false;
 }
 
+/**
+ * The entropy byte-count of a side's segments, the ONE budget walker
+ * (t31-glm49-2): every segment counts unless it is a dictionary WORD
+ * — the HYPHENATED dictionary words honored as consecutive-segment
+ * windows, 'not-a-real' and 'test-value' splitting into 'not'/'a'/
+ * 'real' and 'test'/'value' pieces no single-segment judge ever saw —
+ * or the sequential filler (the 16-char run anywhere, the pure
+ * digit-flanked run). Empty segments carry nothing.
+ *
+ * @param list<string> $segments The side's dash/underscore/whitespace-split segments.
+ * @return list<int> Per counted segment, its byte length (empty segments omitted).
+ */
 function wp_connectors_fake_secret_placeholder_spans(array $segments)
 {
     $spans = array();
@@ -431,6 +431,20 @@ function wp_connectors_fake_secret_placeholder_spans(array $segments)
     return $spans;
 }
 
+/**
+ * Whether a matched secret VALUE is recognizable as a fake.
+ *
+ * Recognizable fakes are verifiable from the value itself: placeholder
+ * shapes wrapped entirely in ${…} or <…>, well-known dummy segments
+ * bounded by separators (sk-proj-TEST-…, YOUR_API_KEY, test-key-…,
+ * wpct_fixture_…, not-a-real-…), and obvious sequential filler. Anything
+ * else must be treated as live. This mirrors the line-level marker rule:
+ * prose words around the value never exempt it, only the value's own shape
+ * can.
+ *
+ * @param string $value The matched secret text (never reported verbatim).
+ * @return bool True when the value is verifiably not a live credential.
+ */
 function wp_connectors_is_recognizably_fake_secret($value)
 {
     if (preg_match('/^\$\{[^}]+\}$/', $value) || preg_match('/^<[^>]+>$/', $value)) {

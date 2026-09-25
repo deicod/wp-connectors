@@ -6040,17 +6040,11 @@ function wp_connectors_php_source_files($dir, ?array &$bytes = null)
                      * RuntimeException (ESTALE mid-walk) degrades to
                      * the named unreadable-target spelling, a false
                      * return to the same, never an escape from the
-                     * refusal the walk already decided on.
+                     * refusal the walk already decided on. ONE owner
+                     * since t31-glm52-9 (the round's third twin
+                     * folded with the others).
                      */
-                    (function () use ($file) {
-                        try {
-                            $target = $file->getLinkTarget();
-                        } catch (RuntimeException $unreadable) {
-                            return '(unreadable target: ' . $unreadable->getMessage() . ')';
-                        }
-
-                        return false === $target ? '(unreadable target: readlink answered false)' : (string) $target;
-                    })()
+                    wp_connectors_link_target_or_unreadable($file)
                 ));
             }
             if (! $file->isFile()) {
@@ -6330,6 +6324,35 @@ function wp_connectors_printable($value)
     }
 
     return (string) strtr((string) $value, $map);
+}
+
+/**
+ * The link target of a symlinked entry, or its named unreadable-target
+ * spelling — the ONE readlink owner (t31-glm52-9, R52-12).
+ *
+ * The read owns its Throwable shapes (the t31-ocr57-3 doctrine, ONE
+ * owner since this round): getLinkTarget() throws RuntimeException on
+ * error (the link removed between the iterator's yield and this
+ * readlink, NFS ESTALE, Windows directory-symlink shapes) and answers
+ * false on some builds — either degrades to the named
+ * '(unreadable target: …)' spelling, never an escape from the refusal
+ * the calling walk already decided on. The round-51 guards landed this
+ * read as two hand-copied IIFEs beside lint-php.php's inline
+ * try/catch (three spellings of one doctrine); every consumer rides
+ * this owner now.
+ *
+ * @param SplFileInfo $file The symlinked entry (the iterator's own yield).
+ * @return string The link target, or the named unreadable-target spelling.
+ */
+function wp_connectors_link_target_or_unreadable(SplFileInfo $file)
+{
+    try {
+        $target = $file->getLinkTarget();
+    } catch (RuntimeException $unreadable) {
+        return '(unreadable target: ' . $unreadable->getMessage() . ')';
+    }
+
+    return false === $target ? '(unreadable target: readlink answered false)' : (string) $target;
 }
 
 /**
@@ -6667,7 +6690,13 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
          * block is scoped to that block, an import in block A never
          * shadowing a bare define in block B — each shadow records
          * its OFFSET, applied per call only when its ledger scope's
-         * NAME matches the call's and the import precedes the call.
+         * ENTRY matches the call's by offset identity (the round-51
+         * R51-6 correction of this very sentence — the NAME match the
+         * round-50 revision described here is the DECLARATION arm's
+         * rule below, functions name-scoped across same-name blocks;
+         * imports are block-scoped, t31-glm52-11 restating the
+         * corrected rule at the seat the stale one narrated) and the
+         * import precedes the call within its region.
          */
         $import_shadows = array();
         $imports = array();

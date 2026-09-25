@@ -2870,17 +2870,11 @@ final class WpConnectorsBuild
                          * t31-glm51-6 [R51-14 — the ocr57-3 readlink
                          * doctrine at this seat]: the read owns its
                          * Throwable shapes exactly as bin/lint-php.php
-                         * does (t31-ocr57-3).
+                         * does (t31-ocr57-3). ONE owner since
+                         * t31-glm52-9 (the round's third twin folded
+                         * with the others).
                          */
-                        (function () use ($file) {
-                        try {
-                            $target = $file->getLinkTarget();
-                        } catch (RuntimeException $unreadable) {
-                            return '(unreadable target: ' . $unreadable->getMessage() . ')';
-                        }
-
-                        return false === $target ? '(unreadable target: readlink answered false)' : (string) $target;
-                    })()
+                        wp_connectors_link_target_or_unreadable($file)
                     ));
                 }
                 if (! $file->isFile()) {
@@ -4512,7 +4506,16 @@ if (wp_connectors_cli_entry(__FILE__)) {
          * semantically the valueless invocation the space-separated
          * form is refused for.
          */
-        if ('--slug=' === $arg || '--fixture=' === $arg) {
+        /*
+         * t31-glm52-10 [R52-13 — the spelling DERIVED from the name
+         * loop's own vocabulary]: the check once enumerated the
+         * hand-spelled '--slug='/'--fixture=' twins beside it — a
+         * future option joining the name loop's vocabulary would ride
+         * that loop's refusal but not this one's (the R44-9
+         * two-arm-copy class at the CLI seam). The empty-'=' spelling
+         * derives from the name the loop itself just parsed.
+         */
+        if ($arg === $name . '=') {
             fwrite(STDERR, "build: option {$name} needs its value in the {$name}=<value> spelling (an empty '='-value is the valueless invocation)\n");
             exit(1);
         }
