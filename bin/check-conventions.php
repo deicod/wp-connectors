@@ -34,7 +34,12 @@ if (wp_connectors_cli_entry(__FILE__)) {
      * census reads the directory: every child directory is a plugin
      * root, dot-led included, judged by the same screens.
      */
-    $pluginRoots = array_merge($pluginRoots, wp_connectors_child_directories($repoRoot . '/connectors'));
+    $connectors_census = wp_connectors_child_directories($repoRoot . '/connectors');
+    if (null === $connectors_census) {
+        fwrite(STDERR, "conventions: FAIL {$repoRoot}/connectors is unreadable — the connector census cannot run.\n");
+        exit(1);
+    }
+    $pluginRoots = array_merge($pluginRoots, $connectors_census);
     /*
      * t31-glm60-4 [R60-7, driven — the fixtures census kept glob,
      * the identical silent skip one line below the round-59 fix: a
@@ -42,7 +47,12 @@ if (wp_connectors_cli_entry(__FILE__)) {
      * its visible twin answered seven violations]: the ONE
      * directory-listing owner serves every census seat.
      */
-    $pluginRoots = array_merge($pluginRoots, wp_connectors_child_directories($repoRoot . '/tests/fixtures/plugins'));
+    $fixtures_census = wp_connectors_child_directories($repoRoot . '/tests/fixtures/plugins');
+    if (null === $fixtures_census) {
+        fwrite(STDERR, "conventions: FAIL {$repoRoot}/tests/fixtures/plugins is unreadable — the fixture-plugin census cannot run.\n");
+        exit(1);
+    }
+    $pluginRoots = array_merge($pluginRoots, $fixtures_census);
 
     /*
      * The closing summary counts by SOURCE (OCR round 5, t31-ocr5-2):

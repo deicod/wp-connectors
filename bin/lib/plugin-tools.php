@@ -7083,12 +7083,33 @@ function wp_connectors_ascii_upper($value)
  * stay the verdict.
  *
  * @param string $dir The directory to read.
- * @return list<string> Absolute child-directory paths, sorted.
+ * @return list<string>|null Absolute child-directory paths, sorted —
+ *                           NULL when the directory is unreadable.
  */
 function wp_connectors_child_directories($dir)
 {
+    /*
+     * t31-glm61-2 [R61-3, driven — the round-60 owner did not own
+     * its IO failure]: an UNREADABLE directory answered a silent
+     * empty census (build-all certifying 'no plugins to build' at
+     * exit 0 over a tree it never judged — against the census
+     * seats' own never-silently-omitted contract), and a MISSING
+     * directory leaked two raw engine warnings where the glob the
+     * owner replaced was silent. A missing directory is legitimately
+     * empty (the glob parity, verdicts unchanged); an unreadable one
+     * is the census's own loud refusal — NULL, each seat rendering
+     * it in its own vocabulary (the @-suppressed-false-plus-owned-
+     * return shape the lint-fleet seats spell).
+     */
+    if (! is_dir($dir)) {
+        return array();
+    }
+    $entries = @scandir($dir);
+    if (false === $entries) {
+        return null;
+    }
     $children = array();
-    foreach (scandir($dir) ?: array() as $name) {
+    foreach ($entries as $name) {
         if ('.' !== $name && '..' !== $name && is_dir($dir . '/' . $name)) {
             $children[] = $dir . '/' . $name;
         }

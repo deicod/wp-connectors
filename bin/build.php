@@ -4612,7 +4612,14 @@ if (wp_connectors_cli_entry(__FILE__)) {
         // directory-listing owner, dot-led included — glob('*')
         // silently skips dot-led names, omitting them from build-all
         // at exit 0 against this very contract.
-        foreach (wp_connectors_child_directories($repoRoot . '/connectors') as $plugin_dir) {
+        $census = wp_connectors_child_directories($repoRoot . '/connectors');
+        if (null === $census) {
+            // t31-glm61-2 [R61-3]: the census's own loud refusal — a
+            // release run never certifies an unreadable tree.
+            fwrite(STDERR, "build: {$repoRoot}/connectors is unreadable — the connector census cannot run.\n");
+            exit(1);
+        }
+        foreach ($census as $plugin_dir) {
             $targets[] = $plugin_dir;
         }
     }

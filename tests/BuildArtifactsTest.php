@@ -2048,6 +2048,36 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             $this->assertNotSame('', $source, "The census source must be readable: {$census_file}");
             $this->assertStringContainsString('wp_connectors_child_directories(', $source, "The census at {$census_file} rides the ONE directory-listing owner — glob('*') never matches dot-led names (the t31-glm60-4 hoist).");
         }
+
+        /*
+         * t31-glm61-2 (R61-3, driven in a repo copy by both the
+         * review and the driver): the round-60 owner did not own its
+         * IO failure — an UNREADABLE connectors/ directory answered
+         * a silent empty census, build-all certifying 'no plugins to
+         * build' at exit 0 against the seats' own
+         * never-silently-omitted contract (two raw warnings beside
+         * it, and a MISSING directory leaking two more where the
+         * glob was silent). The owner refuses loudly now (NULL, each
+         * seat rendering its own refusal); a missing directory stays
+         * legitimately empty (the glob parity).
+         */
+        if (self::runningAsRootRunner()) {
+            $this->markTestSkipped('uid 0 reads through chmod-0000 — the unreadable-census leg cannot construct its refusal on this runner (the t31-ocr4-1 doctrine).');
+        }
+        $unreadable_repo = $this->makeBuildCliRepo(array( 'any-demo' => true ));
+        try {
+            $this->assertTrue(@chmod($unreadable_repo . '/connectors', 0000), 'staging: the connectors tree must lock.');
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($unreadable_repo . '/bin/build.php') . ' 2>&1', $output, $exit);
+            $report = implode("\n", $output);
+            $this->assertSame(1, $exit, "An unreadable connectors census must REFUSE the release run — never 'no plugins to build' at exit 0:\n{$report}");
+            $this->assertStringContainsString('unreadable', $report, 'The refusal names the unreadable census (red at HEAD: exit 0 over a tree it never judged).');
+            $this->assertSame(0, preg_match('/Warning:/m', $report), 'No raw engine warning rides the refusal — the owner owns its IO.');
+        } finally {
+            @chmod($unreadable_repo . '/connectors', 0755);
+            WpHarness::releaseScratch($unreadable_repo);
+        }
     }
 
     /**
