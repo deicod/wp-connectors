@@ -4463,7 +4463,24 @@ if (wp_connectors_cli_entry(__FILE__)) {
 
     $repoRoot = dirname(__DIR__);
     $distDir = $repoRoot . '/dist';
-    $args = getopt('', array( 'slug::', 'fixture::' ));
+    /*
+     * t31-glm53-14 [R53-11 — the CLI option vocabulary as ONE list,
+     * the R44-9 class at the CLI seam]: the getopt spec
+     * ('slug::', 'fixture::') and the argv name loop's hand-listed
+     * '--slug' !== / '--fixture' !== pair were two spellings of the
+     * same vocabulary — a future option added to the loop but not
+     * the spec passes validation and is then silently DROPPED by
+     * getopt() (a no-op flag falling through to glob-everything,
+     * the silent-defaults class glm14-5 refuses); added to the spec
+     * alone it answers the unknown-option refusal instead. Both
+     * derive from the one list: the getopt spec maps the names, the
+     * validation loop consults the names, the refusal sentence
+     * spells them from the same source.
+     */
+    $knownLongOptions = array( 'slug', 'fixture' );
+    $args = getopt('', array_map(static function ( $optionName ) {
+        return $optionName . '::';
+    }, $knownLongOptions));
 
     /*
      * glm14-5: the invocation is VALIDATED against the known option
@@ -4484,10 +4501,13 @@ if (wp_connectors_cli_entry(__FILE__)) {
      */
     foreach (array_slice(wp_connectors_cli_args(), 1) as $arg) {
         $name = (string) strtok((string) $arg, '=');
-        if ('--slug' !== $name && '--fixture' !== $name) {
+        if (! in_array((string) substr($name, 2), $knownLongOptions, true)) {
+            $knownOptionsSentence = implode(', ', array_map(static function ( $optionName ) {
+                return '--' . $optionName . '=<' . (('slug' === $optionName) ? 'slug' : 'fixture-name') . '>';
+            }, $knownLongOptions));
             fwrite(STDERR, ('' !== $name && '-' === $name[0])
-                ? "build: unknown option {$name} (known options: --slug=<slug>, --fixture=<fixture-name>)\n"
-                : "build: unrecognized argument {$arg} (options ride --slug=<slug> / --fixture=<fixture-name>)\n");
+                ? "build: unknown option {$name} (known options: {$knownOptionsSentence})\n"
+                : "build: unrecognized argument {$arg} (options ride " . str_replace(', ', ' / ', $knownOptionsSentence) . ")\n");
             exit(1);
         }
         /*

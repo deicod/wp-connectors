@@ -78,6 +78,18 @@ const WP_CONNECTORS_LABEL_BYTES = 'A-Za-z0-9_\x80-\xff';
  */
 const WP_CONNECTORS_STATEMENT_TERMINATOR = '(?:;|\?>|$)';
 const WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR = '[^;?]*+(?:\?(?!>)[^;?]*+)*+' . WP_CONNECTORS_STATEMENT_TERMINATOR;
+/*
+ * t31-glm53-12 [R53-14 — the compound-assignment OPERATOR CLASS as
+ * ONE constant, the twins the file's own comments call 'the
+ * write-shape twin … the seats move together']: the alternation was
+ * hand-copied between wp_connectors_array_writes_recognized's
+ * write-shape check and wp_connectors_same_file_assignments'
+ * collector — adjacent rounds (glm29-3, glm39-2) already had to
+ * move the TERMINATOR class at both seats together by hand. The
+ * operator class rides ONE constant beside its terminator sibling:
+ * the next operator spelling is one edit, both seats.
+ */
+const WP_CONNECTORS_COMPOUND_ASSIGNMENT_OPERATORS = '(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))';
 
 /**
  * Strips docblock and line comments so checks only see functional code.
@@ -2610,7 +2622,7 @@ function wp_connectors_anchored_include_escapes_plugin($file, $include, array $l
     if (stripos($anchor_view, '__DIR__') === false) {
         return false;
     }
-    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view)) {
+    if (wp_connectors_anchor_walks_up($anchor_view)) {
         // Already flagged by the upward-dirname rule; do not double-report.
         return false;
     }
@@ -2670,7 +2682,7 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
     // t31-glm33-2: anchor consults judge the masked view (string data
     // never anchors) — see wp_connectors_anchor_view(), the ONE owner.
     $anchor_view = wp_connectors_anchor_view($expression);
-    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view)) {
+    if (wp_connectors_anchor_walks_up($anchor_view)) {
         return array( 'escapes upward through dirname()' );
     }
     if (stripos($anchor_view, '__DIR__') === false && strpos($anchor_view, 'ABSPATH') === false) {
@@ -2690,6 +2702,40 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
     }
 
     return array();
+}
+
+/**
+ * Whether the anchor-consult view carries an UPWARD-WALKING dirname
+ * call — the ONE owner of the 'dirname(__DIR__)'-family predicate
+ * (t31-glm53-11, R53-13): the pattern was hand-copied at four seats
+ * (the anchored-escape walk, the expression reasons, the runtime
+ * segments, the include loop's escapesUp pair) while every seat's
+ * comment named it 'the upward-dirname rule' as one rule — a grammar
+ * widening (a nested dirname, a comment-tolerant spelling, a
+ * basename() sibling) landing in one copy while the others keep the
+ * old class is the double-report/false-clear pair the 'already
+ * flagged; do not double-report' comments would silently falsify at
+ * whichever copies drifted. One spelling; the next correction is one
+ * edit, every seat.
+ *
+ * @param string $anchor_view The wp_connectors_anchor_view() bytes.
+ * @return bool True when the view spells a dirname() over __DIR__/__FILE__.
+ */
+function wp_connectors_anchor_walks_up($anchor_view)
+{
+    /*
+     * t31-glm34-2 (the review's R34-12): the explicit house form —
+     * an abort answers 'cannot prove it does not walk up', the
+     * fail-closed verdict (the bounded pattern cannot realistically
+     * abort, glm28-1's posture; the spelling is the doctrine, never
+     * a (bool) cast).
+     */
+    $walks_up = preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view);
+    if (false === $walks_up) {
+        $walks_up = 1;
+    }
+
+    return 1 === $walks_up;
 }
 
 /**
@@ -2797,17 +2843,38 @@ function wp_connectors_anchor_view($statement)
  * @param string $statement Include statement or plain expression.
  * @return list<string> Runtime segment expressions (empty when static).
  */
-function wp_connectors_include_runtime_segments($statement)
+/**
+ * The include statement's ARGUMENT bytes — the ONE strip owner
+ * (t31-glm53-13, R53-15): the keyword-prefix strip and the
+ * terminator-edge trim were byte-identical hand copies at
+ * wp_connectors_include_runtime_segments() and
+ * wp_connectors_hidden_include_reasons() while the strip's vocabulary
+ * must stay in step with the collector seat's keyword spelling — a
+ * new spelling or tightened boundary landing in one copy makes the
+ * two collectors disagree over the same statement's argument bytes
+ * (the double-report/false-clear pair t31-glm29-2 had to align by
+ * hand across exactly these copies).
+ *
+ * @param string $statement The include statement (starts at the keyword).
+ * @return string The argument bytes (keyword, trivia, and terminator edges stripped).
+ */
+function wp_connectors_include_argument($statement)
 {
     /*
-     * t31-glm29-2: the strip owns both terminator spellings — a close
-     * tag ends the statement exactly like the ';' PHP implies for it,
-     * so the close-tag tail must not ride the argument (a
-     * plain-variable close-tag-terminated require would otherwise fall
-     * off the variable arm and phantom-flag as unanchored where its
-     * ';' twin resolves clean).
+     * t31-glm29-2: both terminator spellings — the close tag ends
+     * the statement exactly like the ';' PHP implies for it, so the
+     * close-tag tail must not ride the argument (a plain-variable
+     * close-tag-terminated require would otherwise fall off the
+     * variable arm and phantom-flag as unanchored where its ';'
+     * twin resolves clean).
      */
-    $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($statement)), " \t\n\r();?>");
+    return trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($statement)), " \t\n\r();?>");
+}
+
+function wp_connectors_include_runtime_segments($statement)
+{
+    // t31-glm53-13: the strip rides its ONE owner — wp_connectors_include_argument().
+    $argument = wp_connectors_include_argument($statement);
     /*
      * glm29-3: an INTERPOLATED double-quoted literal stays visible.
      * Blanking every quoted string to '' classified the whole
@@ -3576,7 +3643,7 @@ function wp_connectors_array_writes_recognized($masked, $variable, $offset)
      * END OF INPUT beside the two terminators — an unterminated
      * write is still a write, its bytes collected to the last byte.
      */
-    $write_matches = preg_match_all('/' . $quoted . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))\s*([^;]+?)' . WP_CONNECTORS_STATEMENT_TERMINATOR . '/', $before, $writes, PREG_SET_ORDER);
+    $write_matches = preg_match_all('/' . $quoted . '\s*' . WP_CONNECTORS_COMPOUND_ASSIGNMENT_OPERATORS . '\s*([^;]+?)' . WP_CONNECTORS_STATEMENT_TERMINATOR . '/', $before, $writes, PREG_SET_ORDER);
     if (false === $write_matches) {
         return false; // A PCRE abort refuses the proof (glm36-8).
     }
@@ -3706,7 +3773,7 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
      */
     $assignments = array();
     // t31-glm39-2: the same END-OF-INPUT arm at this seat — see the write-shape twin at wp_connectors_array_writes_recognized.
-    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))[^;]+?' . WP_CONNECTORS_STATEMENT_TERMINATOR . '/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
+    if (preg_match_all('/' . '\$' . preg_quote(substr($variable, 1), '/') . '\s*' . WP_CONNECTORS_COMPOUND_ASSIGNMENT_OPERATORS . '[^;]+?' . WP_CONNECTORS_STATEMENT_TERMINATOR . '/', $masked, $matches, PREG_OFFSET_CAPTURE)) {
         foreach ($matches[0] as $assignment) {
             if (! $visible($assignment[1])) {
                 // Outside every region the include can read a write from.
@@ -3954,7 +4021,7 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
         // Unanchored statements are flagged by the literal analysis already.
         return array();
     }
-    if (preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view)) {
+    if (wp_connectors_anchor_walks_up($anchor_view)) {
         // Already flagged by the upward-dirname rule; do not double-report.
         return array();
     }
@@ -4035,7 +4102,7 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
 function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $pluginDir, $masked)
 {
     // t31-glm29-2: both terminator spellings — the include_runtime_segments() twin above.
-    $argument = trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($include)), " \t\n\r();?>");
+    $argument = wp_connectors_include_argument($include);
 
     if (preg_match('/^\$[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*$/', $argument)) {
         $assignments = wp_connectors_same_file_assignments($code, $masked, $argument, $offset);
@@ -4857,10 +4924,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                          * realistically abort, glm28-1's posture; the
                          * spelling is the doctrine, never a (bool) cast).
                          */
-                        $escapesUp = preg_match('/dirname\s*\(\s*__(?:DIR|FILE)__/i', $anchor_view);
-                        if (false === $escapesUp) {
-                            $escapesUp = 1;
-                        }
+                        $escapesUp = wp_connectors_anchor_walks_up($anchor_view) ? 1 : 0;
                         if (! $anchored || $escapesUp) {
                             $violations[] = sprintf('%s: %s includes a path not anchored to the plugin dir: %s', $slug, $relative, trim($include[0]));
                         }

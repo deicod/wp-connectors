@@ -365,11 +365,6 @@ final class SecretMask {
 	 * ('x-password-policy', 'x-passport') stays verbatim, the suffix
 	 * bytes never spanning the segment.
 	 *
-	 * @since 0.1.0
-	 *
-	 * @var list<string>
-	 */
-	/**
 	 * The session identifier joins the class (t31-glm43-8, R43-13 —
 	 * the review's PLAUSIBLE policy gap driven at HEAD): 'X-Session-
 	 * Id'/'Session-Id' — the final segment 'id' matching no suffix —
@@ -388,7 +383,15 @@ final class SecretMask {
 	 * curation bar met
 	 * the ocr57-2 way (the finding is the writer); the boundary
 	 * unchanged ('x-session-idle', 'x-session-count' — tails that are
-	 * not 'session-id' — stay verbatim).
+	 * not 'session-id' — stay verbatim). [t31-glm53-10: this session-id
+	 * narration rode a SECOND stacked docblock whose presence stranded
+	 * the 220-line history block and its @var above it — merged here
+	 * so the tag travels with the const, the R48-14/R52-11 class in
+	 * the very file round 52 fixed.]
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var list<string>
 	 */
 	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256', 'session-id', 'sessionid', 'jsessionid' );
 
