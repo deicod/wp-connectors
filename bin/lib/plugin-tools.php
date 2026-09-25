@@ -2901,18 +2901,6 @@ function wp_connectors_anchor_view($statement)
 }
 
 /**
- * Extracts the non-literal runtime segments of an include-target expression.
- *
- * String literals are blanked out, then the expression is split on '.'
- * concatenation operators at bracket depth zero. Everything left that is
- * neither the __DIR__/ABSPATH anchor nor a blanked literal — a variable, a
- * function call, an array access — is a segment the literal analysis cannot
- * see and wp_connectors_runtime_segment_reasons() must resolve separately.
- *
- * @param string $statement Include statement or plain expression.
- * @return list<string> Runtime segment expressions (empty when static).
- */
-/**
  * The include statement's ARGUMENT bytes — the ONE strip owner
  * (t31-glm53-13, R53-15): the keyword-prefix strip and the
  * terminator-edge trim were byte-identical hand copies at
@@ -2961,6 +2949,19 @@ function wp_connectors_assignment_value_expression($assignment)
 {
     return trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
 }
+
+/**
+ * Extracts the non-literal runtime segments of an include-target expression.
+ *
+ * String literals are blanked out, then the expression is split on '.'
+ * concatenation operators at bracket depth zero. Everything left that is
+ * neither the __DIR__/ABSPATH anchor nor a blanked literal — a variable, a
+ * function call, an array access — is a segment the literal analysis cannot
+ * see and wp_connectors_runtime_segment_reasons() must resolve separately.
+ *
+ * @param string $statement Include statement or plain expression.
+ * @return list<string> Runtime segment expressions (empty when static).
+ */
 
 function wp_connectors_include_runtime_segments($statement)
 {
@@ -5441,13 +5442,6 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
     return $violations;
 }
 
-/**
- * Checks that src/autoload.php registers exactly one Composer-free PSR-4
- * autoloader bound to the plugin's own Deicod\WpConnectors\<Ns>\ prefix.
- *
- * @param string $pluginDir Absolute plugin directory.
- * @return list<string> Violation messages.
- */
 /**
  * Whether a text names 'composer' or 'vendor' as a WHOLE WORD — the
  * ONE word-boundary owner the autoloader gate's every consult rides

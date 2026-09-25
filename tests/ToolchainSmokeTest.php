@@ -832,4 +832,24 @@ final class ToolchainSmokeTest extends TestCase
 
         return $files;
     }
+
+    /**
+     * Round-58 pin (t31-glm58-8 [R58-10] — the stranded-docblock
+     * class, R48-14/R52-11/R53-10, regrown THREE times in the loop's
+     * own fix commits and unswept by rounds 49-57): only the LAST
+     * docblock of a stack attaches, so a helper inserted between a
+     * docblock and its function ships the function BARE — verified
+     * by reflection for all three round-58 relocations (the
+     * round-53 case is the proof a future insertion cannot tell the
+     * stranded block belongs to the bare function).
+     */
+    public function testTheThreeRelocatedDocblocksAttachToTheirFunctions(): void
+    {
+        require_once __DIR__ . '/../bin/lib/plugin-tools.php';
+        foreach (array( 'wp_connectors_autoloader_violations', 'wp_connectors_include_runtime_segments' ) as $function) {
+            $this->assertNotFalse(( new ReflectionFunction($function) )->getDocComment(), "{$function} ships with its docblock attached — no helper insertion strands it again.");
+        }
+        require_once __DIR__ . '/../bin/build.php';
+        $this->assertNotFalse(( new ReflectionMethod('WpConnectorsBuild', 'braceOpensNamespaceBlock') )->getDocComment(), 'braceOpensNamespaceBlock ships with its docblock attached.');
+    }
 }

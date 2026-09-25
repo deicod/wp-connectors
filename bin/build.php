@@ -2025,23 +2025,6 @@ final class WpConnectorsBuild
     }
 
     /**
-     * Whether a '{' token at an index opens a BRACED NAMESPACE BLOCK
-     * (the classifier's brace-kind stack, t31-ocr7-7) — the one block
-     * kind inside which a use statement is still an IMPORT.
-     *
-     * The brace opens a namespace block exactly when walking back over
-     * code tokens crosses only the declaration's name run (name tokens
-     * and separators, `namespace X {` and `namespace Deicod \
-     * \ WpConnectors {` alike) and lands on the `namespace` keyword —
-     * which includes the run-less global block `namespace {`. Every
-     * other brace (a class, a function, a control block) is 'other',
-     * and a use statement under it is a trait clause list.
-     *
-     * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
-     * @param int                                             $at     Index of the '{' token.
-     * @return bool True when the brace opens a namespace block.
-     */
-    /**
      * The index of a top-level declare() construct's LAST token — the
      * ';' of the directive form or the matching '}' of the block form
      * (glm28-8, the statement-seen prelude's bounded swallow; both
@@ -2119,6 +2102,24 @@ final class WpConnectorsBuild
 
         return null;
     }
+
+        /**
+         * Whether a '{' token at an index opens a BRACED NAMESPACE BLOCK
+         * (the classifier's brace-kind stack, t31-ocr7-7) — the one block
+         * kind inside which a use statement is still an IMPORT.
+         *
+         * The brace opens a namespace block exactly when walking back over
+         * code tokens crosses only the declaration's name run (name tokens
+         * and separators, `namespace X {` and `namespace Deicod \
+         * \ WpConnectors {` alike) and lands on the `namespace` keyword —
+         * which includes the run-less global block `namespace {`. Every
+         * other brace (a class, a function, a control block) is 'other',
+         * and a use statement under it is a trait clause list.
+         *
+         * @param array<int, array{0:int,1:string,2?:int}|string> $tokens Token stream.
+         * @param int                                             $at     Index of the '{' token.
+         * @return bool True when the brace opens a namespace block.
+         */
 
     private static function braceOpensNamespaceBlock(array $tokens, $at)
     {
