@@ -331,6 +331,19 @@ function wp_connectors_line_without_string_literals($line)
  * non-sequential entropy around the run ('abcdefgh9f3kq2mz4n' is
  * ENTROPY, the R48-3 contract's own words).
  *
+ * t31-glm55-1 [R55-1, driven fail-open — the head side of the
+ * contract was never enforced]: the tail rules judged only the
+ * bytes AFTER the run, so any live credential inside one segment
+ * became exempt filler by SUFFIXING the run — entropy bytes with
+ * an empty tail after the alphabet run answered filler whole
+ * (driven through the real CLI: a slack-shaped body with the run
+ * suffixed scanned clean where the control twin flags, twenty junk
+ * head bytes laundering identically), the exact mirror of the
+ * R48-3 example 'k0123456789z' the tail side already refuses. The
+ * HEAD before the run must be empty or the pure digit flank
+ * ('1230123456789' the mirrored flank) — never non-sequential
+ * bytes ('zk0123456789' counts, its tail-side twin always did).
+ *
  * @param string $folded The ascii-folded segment.
  * @return bool True when the segment is filler whole.
  */
@@ -342,6 +355,12 @@ function wp_connectors_segment_is_sequential_filler($folded)
     foreach (array('0123456789', 'abcdefgh') as $run) {
         $at = strpos($folded, $run);
         if (false === $at) {
+            continue;
+        }
+        // t31-glm55-1: the head side gates every tail rule below —
+        // entropy AROUND the run is entropy on either side.
+        $head = (string) substr($folded, 0, $at);
+        if ('' !== $head && 1 !== preg_match('/^[0-9]+$/', $head)) {
             continue;
         }
         $tail = (string) substr($folded, $at + strlen($run));

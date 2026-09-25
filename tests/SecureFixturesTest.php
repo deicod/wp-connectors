@@ -1531,6 +1531,20 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertTrue(wp_connectors_is_recognizably_fake_secret('sk-ant-' . 'YOUR_KEY_' . 'abcdefgh1234'), 'The digit-flanked sequential run stays filler — the pinned vendor-example spelling keeps its exemption.');
 
         /*
+         * R55-1 (driven through the real CLI): the tail rules judged
+         * only the bytes AFTER the run — any live credential inside
+         * one segment became exempt filler by SUFFIXING the run, the
+         * head side of the 'entropy AROUND the run' contract never
+         * enforced. The head gates every tail rule now: empty or the
+         * pure digit flank, never non-sequential bytes.
+         */
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'test-' . '7f3kq2mz4n' . 'abcdefgh'), 'Entropy BEFORE the run is entropy — the head side of the around-the-run contract (red at HEAD: exempted by the empty tail).');
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'test-' . 'qf3kq2mz4n5t7w9x2k4m' . 'abcdefgh'), 'Twenty junk head bytes launder nothing — the head gate is unbounded where the tail gate was.');
+        $this->assertFalse(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'test-' . 'z' . 'k0123456789'), 'The digit run\'s head-side mirror counts — the tail-side twin always did.');
+        $this->assertTrue(wp_connectors_is_recognizably_fake_secret('xoxb-' . 'test-' . '123' . '0123456789'), 'The pure DIGIT head stays filler — the pinned digit-flank rule mirrored to the head side.');
+        $this->assertNotEmpty(wp_connectors_scan_string('a = xoxb-' . 'test-' . '7f3kq2mz4n' . 'abcdefgh' . "\n", 'r55-head.txt'), 'The driven CLI shape flags — the live credential suffixed with the run launders no more (red at HEAD: clean).');
+
+        /*
          * t31-glm49-2 (R49-2, driven through the real CLI — the
          * chunked-entropy laundering, BOTH sides): the head loop
          * carried NO aggregate budget and the tail's aggregate
