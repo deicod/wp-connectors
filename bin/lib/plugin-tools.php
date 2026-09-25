@@ -6343,9 +6343,27 @@ function wp_connectors_development_entry_names()
  */
 function wp_connectors_segment_is_named($segment, array $names)
 {
+    /*
+     * t31-glm58-9 [R58-11, measured — the per-call-rebuild class at
+     * the ONE owner every per-segment consumer rides (ocr52-6's
+     * hoist covered the charlist side; the NAME side survived it)]:
+     * the loop re-folded the full vocabulary on every call, so a
+     * no-hit segment paid all 31 folds (the review's measure:
+     * 3.73µs/call vs 0.58µs pre-folded, 6.43x; the inspector judges
+     * a hostile archive's every entry's every part through this
+     * owner). The fold memoizes per name — every caller's list is a
+     * constant vocabulary (the dev-entry owner, the lint exclusion
+     * set, the scanner prune), so the map is bounded by their union;
+     * verdict-identical by construction (the fold is a pure
+     * function of the name, the R57-3 idiom).
+     */
+    static $folded_names = array();
     $segment = wp_connectors_ascii_lower(rtrim((string) $segment, wp_connectors_path_edge_junk()));
     foreach ($names as $name) {
-        if ($segment === wp_connectors_ascii_lower((string) $name)) {
+        if (! isset($folded_names[ $name ])) {
+            $folded_names[ $name ] = wp_connectors_ascii_lower((string) $name);
+        }
+        if ($segment === $folded_names[ $name ]) {
             return true;
         }
     }
