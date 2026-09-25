@@ -4018,12 +4018,25 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
  * @param string   $statement_text   The statement whose variable operands resolve.
  * @param int      $statement_offset The statement's byte offset in $code.
  * @param callable $visit            Receives each resolved assignment value; return false to stop.
- * @return void
+ * @return bool True when the walk scanned clean; false when a PCRE abort
+ *              stopped it — the CALLER owns the refusal (glm36-8: an abort
+ *              is never 'no variable operands', t31-glm55-10).
  */
 function wp_connectors_each_transitive_assignment_value($code, $masked, $statement_text, $statement_offset, $visit)
 {
+    /*
+     * t31-glm55-10 [R55-10, driven at the floor limit — both
+     * preg_match_all results were consumed UNCHECKED, a false read
+     * as 'no variable operands' and the dataflow resolution
+     * silently stopping]: the family's abort-as-reject doctrine
+     * (glm36-8) converts every false here to a refused proof — the
+     * seats mint their own loud refusals on the false return.
+     */
     $variable_names = array();
-    preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $statement_text, $variable_names);
+    $extracted = preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $statement_text, $variable_names);
+    if (false === $extracted) {
+        return false;
+    }
     $pending = array();
     foreach (array_reverse($variable_names[1]) as $variable_name) {
         $pending[] = array( '$' . $variable_name, $statement_offset );
@@ -4037,15 +4050,20 @@ function wp_connectors_each_transitive_assignment_value($code, $masked, $stateme
         $seen_variables[ $hop[0] ] = true;
         foreach (wp_connectors_same_file_assignments($code, $masked, $hop[0], $hop[1]) as $assignment_value) {
             if (false === $visit($assignment_value)) {
-                return;
+                return true;
             }
             $hop_names = array();
-            preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $assignment_value, $hop_names);
+            $hop_extracted = preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $assignment_value, $hop_names);
+            if (false === $hop_extracted) {
+                return false;
+            }
             foreach (array_reverse($hop_names[1]) as $hop_name) {
                 $pending[] = array( '$' . $hop_name, $hop[1] );
             }
         }
     }
+
+    return true;
 }
 
 /**
@@ -4965,11 +4983,18 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * whatever its spelling or how many same-file
                      * writes carry it to the channel.
                      */
-                    wp_connectors_each_transitive_assignment_value($code, $masked, $include[0], $include[1], static function ($assignment_value) use (&$include_statements) {
+                    if (! wp_connectors_each_transitive_assignment_value($code, $masked, $include[0], $include[1], static function ($assignment_value) use (&$include_statements) {
                         $include_statements .= "\n" . $assignment_value;
 
                         return true;
-                    });
+                    })) {
+                        $violations[] = sprintf(
+                            '%s: %s could not be scanned for variable operands — the self-containment scan aborted (PCRE: %s)',
+                            $slug,
+                            $relative,
+                            preg_last_error_msg()
+                        );
+                    }
                     $quoted_literals = wp_connectors_quoted_literals($include[0]);
                     if ($quoted_literals !== array()) {
                         /*
@@ -5119,11 +5144,18 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * the include seat's do — an operand path is
                      * never prose, whatever channel carries it.
                      */
-                    wp_connectors_each_transitive_assignment_value($code, $masked, $span_text, $channel_call[1], static function ($assignment_value) use (&$channel_operands) {
+                    if (! wp_connectors_each_transitive_assignment_value($code, $masked, $span_text, $channel_call[1], static function ($assignment_value) use (&$channel_operands) {
                         $channel_operands .= "\n" . $assignment_value;
 
                         return true;
-                    });
+                    })) {
+                        $violations[] = sprintf(
+                            '%s: %s could not be scanned for variable operands — the self-containment scan aborted (PCRE: %s)',
+                            $slug,
+                            $relative,
+                            preg_last_error_msg()
+                        );
+                    }
                 }
             }
             /*
@@ -5169,7 +5201,20 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * answered 0 violations at HEAD where master's raw scan
              * refused it. Both needles judge the same operand span.
              */
-            if ((stripos($include_statements . $channel_operands, 'composer') !== false || stripos($masked, 'composer') !== false) && preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $masked)) {
+            /*
+             * t31-glm55-11 [R55-11, the abort-as-reject spelling — no
+             * drivable wrong output today (the pattern is
+             * quantifier-free; every end-to-end abort floor drives the
+             * sibling channel-scan refusal first, verified across
+             * backtrack/recursion limits 1-4)]: the keyword conjunct
+             * consumed preg_match() TRUTHILY, a false reading 'no
+             * keyword' and silently dropping the violation — glm34-2's
+             * 'never a (bool) cast' doctrine at the file's own seat.
+             * The 0 !== spelling: an abort never reads as 'no
+             * keyword', the needle arm deciding over the fail-closed
+             * conjunct.
+             */
+            if ((stripos($include_statements . $channel_operands, 'composer') !== false || stripos($masked, 'composer') !== false) && 0 !== preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $masked)) {
                 $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
             }
             /*
@@ -5609,7 +5654,7 @@ function wp_connectors_autoloader_violations($pluginDir)
                      * former break-3 shape, one violation per file).
                      */
                     $resolved_hit = false;
-                    wp_connectors_each_transitive_assignment_value($code, $masked, $statement_text, $operand_start, static function ($assignment_value) use (&$resolved_hit) {
+                    $walk_aborted = ! wp_connectors_each_transitive_assignment_value($code, $masked, $statement_text, $operand_start, static function ($assignment_value) use (&$resolved_hit) {
                         if (wp_connectors_text_names_vendor_or_composer($assignment_value)) {
                             $resolved_hit = true;
 
@@ -5618,6 +5663,11 @@ function wp_connectors_autoloader_violations($pluginDir)
 
                         return true;
                     });
+                    if ($walk_aborted) {
+                        $violations[] = sprintf('%s: src/autoload.php could not be scanned for variable operands — the autoloader check aborted (PCRE: %s)', $slug, preg_last_error_msg());
+
+                        return $violations;
+                    }
                     if ($resolved_hit) {
                         $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
                         break;

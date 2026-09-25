@@ -725,4 +725,51 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertStringNotContainsString('could not be scanned for includes', $report, 'A megabyte terminator-free span is scanned, never refused — the respelling left no limit to exhaust at this size (red at HEAD: the seat aborted and every include went invisible).');
         $this->assertLessThan(3.0, $elapsed, sprintf('The megabyte pad scans in wall-clock the linear pipeline owns (%.2fs here) — the bound guards the quadratic class at pad scale, not millisecond discrimination.', $elapsed));
     }
+
+    public function testTheTransitiveWorklistRefusesItsOwnAbort(): void
+    {
+        /*
+         * R55-10 (driven at the floor limit): both preg_match_all
+         * results inside the ONE worklist owner were consumed
+         * UNCHECKED — a false read as 'no variable operands' and the
+         * dataflow resolution silently stopped (0 visits, no
+         * diagnostic), the glm36-8 abort-as-reject doctrine's gap in
+         * the proof family same_file_assignments itself rides (its
+         * own R32-5 driven record). The walk returns false on the
+         * abort — the seats mint their own loud refusals on it (the
+         * `if (! ...)` conversions at the three call sites, by
+         * construction); every end-to-end abort floor drives the
+         * louder sibling include/channel refusals first (the
+         * quantifier-free pattern is strictly less abort-prone than
+         * the include tail grammar), so the pin drives the owner at
+         * the floor directly — the pinned-limit idiom this file
+         * already rides.
+         */
+        $code = '<?php $p = __DIR__ . "/vendor/autoload.php"; require_once $p;';
+        $masked = wp_connectors_mask_string_contents($code);
+
+        $host_limit = (string) ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', '1');
+        try {
+            $visits = 0;
+            $walked = wp_connectors_each_transitive_assignment_value($code, $masked, 'require_once $p;', 45, static function ($assignment_value) use (&$visits) {
+                ++$visits;
+
+                return true;
+            });
+            $this->assertFalse($walked, 'The worklist answers false on its own abort — never a silent empty walk (red at HEAD: true with zero visits).');
+            $this->assertSame(0, $visits, 'The aborted walk visits nothing — the seats\' `if (! ...)` conversions own the refusal.');
+        } finally {
+            ini_set('pcre.backtrack_limit', $host_limit);
+        }
+
+        $visits = 0;
+        $walked = wp_connectors_each_transitive_assignment_value($code, $masked, 'require_once $p;', 45, static function ($assignment_value) use (&$visits) {
+            ++$visits;
+
+            return true;
+        });
+        $this->assertTrue($walked, 'The restored-limit walk scans clean.');
+        $this->assertSame(1, $visits, 'The control resolves the one assignment value — the abort was the abort, never the shape.');
+    }
 }
