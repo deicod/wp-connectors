@@ -885,6 +885,26 @@ function wp_connectors_sample_region_line_view($line, $line_start, array $region
 {
     $len = strlen($line);
     $prose = '';
+    /*
+     * t31-glm54-3 [R54-3, driven fail-open — the slice boundary
+     * honored the round-53 LINE anchor]: the compositor's prose view
+     * is a SLICE, and a slice beginning where a sample region ENDED
+     * starts the view at its own byte 0 — mid-line in the source —
+     * so the marker grammar's '^'-anchored arms read the slice head
+     * as line-initial ('<?php $x=1; ?> - * secrets:allow ghp_…'
+     * exempted the credential at HEAD, the R52-3 mid-line-multiplica-
+     * tion laundering reopened by the round-53 anchor's own marker-run
+     * arm; the '>' and ordered-list runs the same, and a '//' glued
+     * straight to '?>' rode the (?:^|\s) guard's ^ arm). The view
+     * carries a SENTINEL label byte before a head that does not
+     * begin at the line's own byte 0: no '^'-anchored arm can fire
+     * on a mid-line head, the whitespace-delimited arms judge the
+     * slice exactly as before, and a genuinely line-initial prose
+     * head (no region before it on the line) carries no sentinel —
+     * the marked bullet stays exempt. The sentinel is a plain 'x':
+     * inert to quote pairing (blank_quoted_strings at the consult)
+     * and outside every marker-run class.
+     */
     $code = '';
     $spans = array();
     $cursor = 0;
@@ -903,7 +923,7 @@ function wp_connectors_sample_region_line_view($line, $line_start, array $region
             continue;
         }
         if ($start > $cursor) {
-            $prose .= wp_connectors_line_without_string_literals((string) substr($line, $cursor, $start - $cursor));
+            $prose .= ('' === $prose && $cursor > 0 ? 'x' : '') . wp_connectors_line_without_string_literals((string) substr($line, $cursor, $start - $cursor));
         }
         $from = max($start, $cursor);
         $through = min($end, $len - 1);
@@ -921,7 +941,9 @@ function wp_connectors_sample_region_line_view($line, $line_start, array $region
     }
 
     return array(
-        'prose' => $prose . wp_connectors_line_without_string_literals((string) substr($line, $cursor)),
+        // t31-glm54-3: the tail append takes the same sentinel — a
+        // prose view whose head follows a consumed region is mid-line.
+        'prose' => $prose . ('' === $prose && $cursor > 0 ? 'x' : '') . wp_connectors_line_without_string_literals((string) substr($line, $cursor)),
         'code' => $code,
         'spans' => $spans,
     );

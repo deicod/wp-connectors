@@ -1665,6 +1665,22 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertNotEmpty(wp_connectors_scan_string("note 1 * secrets:allow {$key}\n", 'mid.txt'), 'The mid-line multiplication shape keeps its flag — the marker class admits markers only at the line start.');
 
         /*
+         * R54-3 (driven at HEAD): the region compositor's prose view
+         * is a SLICE — a head beginning where an embedded sample
+         * ENDED started the view at its own byte 0, mid-line in the
+         * source, and the marker-run arm read it as line-initial
+         * ('<?php $x=1; ?> - * secrets:allow ghp_…' exempted the
+         * credential, the R52-3 laundering reopened by the round-53
+         * anchor's own arm). The slice carries a SENTINEL before a
+         * mid-line head; the genuinely line-initial bullet keeps its
+         * exemption; the plain-label control still flags.
+         */
+        $this->assertNotEmpty(wp_connectors_scan_string("<?php \$x=1; ?> - * secrets:allow {$key}\n", 'slice-dash.md'), 'A marker run after an embedded sample is MID-LINE in the source — never line-initial (red at HEAD: exempt).');
+        $this->assertNotEmpty(wp_connectors_scan_string("<?php \$x=1; ?> > * secrets:allow {$key}\n", 'slice-quote.md'), 'The quote-marker run after a sample judges the same.');
+        $this->assertNotEmpty(wp_connectors_scan_string("<?php \$x=1; ?> 1. * secrets:allow {$key}\n", 'slice-ord.md'), 'The ordered-list run after a sample judges the same.');
+        $this->assertSame(array(), wp_connectors_scan_string("guide <?php \$x=1; ?> done\n- * secrets:allow {$key}\n", 'slice-clean.md'), 'A genuinely line-initial marked bullet on its own line keeps its exemption — the sentinel rides only the slice that FOLLOWS a region on the same line.');
+
+        /*
          * R53-8 (driven): the value-level final pass re-derived the
          * per-segment predicate without the derived hyphenated
          * windows — one value, two verdicts by separator spelling
