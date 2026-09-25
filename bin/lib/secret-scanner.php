@@ -68,6 +68,33 @@ function wp_connectors_fake_secret_dictionary_words()
 }
 
 /**
+ * The dictionary ALTERNATION, once per process (t31-glm57-3
+ * [R57-3, measured]): the '|' string of the one word list, memoized
+ * beside the owner it derives from. R52-15 imploded once per CALL;
+ * the spans walker answers up to three calls per candidate value
+ * (the head pass, the tail pass, the value-level all-fake pass)
+ * beside the value-level word consult's own implode — a dense
+ * hostile payload (the extracted-zip shape the artifact scan rides,
+ * inside the walk's own 2 MB cap) rebuilt the sixteen-word string
+ * per segment-battery pass (measured A/B: 2061ms vs 891ms over one
+ * dense 2 MB payload, findings md5-identical both sides — a 2.31x
+ * cut, ~1.17s per capped file). Pure function of the constant list:
+ * verdict-identical by construction, the twice-landed static idiom
+ * (t31-glm47-3's isset table, t31-ocr52-6's byte-class static).
+ *
+ * @return string The imploded alternation, longest-first per the word list.
+ */
+function wp_connectors_fake_secret_dictionary_alternation()
+{
+    static $alternation = null;
+    if ( null === $alternation ) {
+        $alternation = implode( '|', wp_connectors_fake_secret_dictionary_words() );
+    }
+
+    return $alternation;
+}
+
+/**
  * The fake-secret SEGMENT SPLIT — the ONE owner of the separator
  * vocabulary (t31-glm54-8, R54-15): the R53-9 fix delegated the
  * per-segment PREDICATE to the walker but left the SPLIT spelled at
@@ -442,7 +469,14 @@ function wp_connectors_fake_secret_placeholder_spans(array $segments)
      * sixteen words for every segment of every side of every
      * candidate value).
      */
-    $dictionary_alternation = implode( '|', wp_connectors_fake_secret_dictionary_words() );
+    /*
+     * t31-glm57-3 [R57-3, measured]: the alternation rides the
+     * once-per-process owner (both battery spellings below consult
+     * it) and the window table memoizes beside it — the prelude was
+     * ~9.8µs of every ~15.9µs spans call, paid up to three times
+     * per candidate value (the dense-payload cut above the helper).
+     */
+    $dictionary_alternation = wp_connectors_fake_secret_dictionary_alternation();
     /*
      * t31-glm55-14 [R55-14, verdict-identical hoist — the windows
      * spelled their own separator vocabulary one seat over from the
@@ -457,13 +491,16 @@ function wp_connectors_fake_secret_placeholder_spans(array $segments)
      * neighbor. The pieces derive through the owner; a word
      * contributes a window exactly when it carries a separator.
      */
-    $hyphenated_windows = array();
-    foreach (wp_connectors_fake_secret_dictionary_words() as $word) {
-        $pieces = array_values(array_filter(wp_connectors_fake_secret_segments($word), static function ($piece) {
-            return '' !== $piece;
-        }));
-        if (count($pieces) > 1) {
-            $hyphenated_windows[] = array_map('wp_connectors_ascii_lower', $pieces);
+    static $hyphenated_windows = null;
+    if ( null === $hyphenated_windows ) {
+        $hyphenated_windows = array();
+        foreach (wp_connectors_fake_secret_dictionary_words() as $word) {
+            $pieces = array_values(array_filter(wp_connectors_fake_secret_segments($word), static function ($piece) {
+                return '' !== $piece;
+            }));
+            if (count($pieces) > 1) {
+                $hyphenated_windows[] = array_map('wp_connectors_ascii_lower', $pieces);
+            }
         }
     }
     for ($i = 0; $i < $count; ++$i) {
@@ -561,7 +598,7 @@ function wp_connectors_is_recognizably_fake_secret($value)
      */
     $word_match = array();
     $head_is_placeholder = false;
-    if (preg_match('/(?:^|[-_\s])(' . implode( '|', wp_connectors_fake_secret_dictionary_words() ) . ')(?:[-_\s]|$)/i', $value, $word_match, PREG_OFFSET_CAPTURE)) {
+    if (preg_match('/(?:^|[-_\s])(' . wp_connectors_fake_secret_dictionary_alternation() . ')(?:[-_\s]|$)/i', $value, $word_match, PREG_OFFSET_CAPTURE)) {
         /*
          * t31-glm49-2 [R49-2, driven through the real CLI — the
          * chunked-entropy laundering, BOTH sides]: the head loop

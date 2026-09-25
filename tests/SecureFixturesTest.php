@@ -2853,4 +2853,38 @@ CHILD;
             $this->assertFalse(getenv($name) !== false, "{$name} must not be set during the offline suite.");
         }
     }
+
+    /**
+     * Round-57 pin (t31-glm57-3 [R57-3, measured] — the dictionary
+     * alternation once per process): R52-15 imploded the sixteen
+     * words once per spans CALL; the walker answers up to three
+     * calls per candidate value (the head pass, the tail pass, the
+     * value-level all-fake pass) beside the value-level word
+     * consult's own implode, so a dense hostile payload — the
+     * extracted-zip shape the artifact scan rides, inside the
+     * walk's own 2 MB cap — rebuilt the string per pass (measured
+     * A/B at landing: 1609ms -> 626ms over one dense 2 MB payload
+     * of 32,438 candidates, the scan outputs byte-identical both
+     * sides). The one helper owns the string; both battery seats
+     * consult it — pure function of the constant word list,
+     * verdict-identical by construction.
+     */
+    public function testTheDictionaryAlternationRidesTheOncePerProcessOwner(): void
+    {
+        $this->assertSame(
+            implode('|', wp_connectors_fake_secret_dictionary_words()),
+            wp_connectors_fake_secret_dictionary_alternation(),
+            'The helper derives from the one word list — never a pasted second spelling of the alternation.'
+        );
+
+        /*
+         * The source pin (the one-owner count): one declaration, two
+         * consults — the spans walker's battery and the value-level
+         * word probe. A regrown inline implode beside the owner
+         * drops its consult spelling here.
+         */
+        $source = (string) file_get_contents(__DIR__ . '/../bin/lib/secret-scanner.php');
+        $this->assertNotSame('', $source, 'The scanner source must be readable for the composition pin.');
+        $this->assertSame(3, substr_count($source, 'wp_connectors_fake_secret_dictionary_alternation'), 'One declaration, two consults — no inline implode regrows beside the owner.');
+    }
 }
