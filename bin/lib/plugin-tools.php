@@ -92,6 +92,16 @@ const WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR = '[^;?]*+(?:\?(?!>)[^;?]*+)*+' . WP_
 const WP_CONNECTORS_COMPOUND_ASSIGNMENT_OPERATORS = '(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))';
 
 /**
+ * t31-glm58-3 [R58-3]: the vendor's own LOADER class names — the
+ * full-name spellings that ARE Composer references however the
+ * word boundary reads them ('ComposerAutoloader::load()' names the
+ * loader; 'ComposerBridge' names anything else). ONE list composes
+ * the composer needle's disjunct arm AND its invocation conjunct —
+ * the conjunct's former inline alternation, byte-identical.
+ */
+const WP_CONNECTORS_COMPOSER_CLASS_REFERENCES = array( 'ComposerAutoloader', 'ComposerLoader' );
+
+/**
  * t31-glm57-2 [R57-2 — the channel-function family as ONE
  * vocabulary]: the file/exec call family was spelled twice with no
  * structural tie — the composer screen's keyword alternation inside
@@ -4621,6 +4631,33 @@ function wp_connectors_quoted_literals($expression)
 }
 
 /**
+ * The CONCATENATED literal spine of an expression (t31-glm58-4
+ * [R58-5, driven fail-open — the concatenated-literal class at the
+ * composer needle]): every quoted literal of the text decoded
+ * through the ONE quote-style owner
+ * (wp_connectors_unescape_php_string_literal) and joined in source
+ * order — '__DIR__ . '/vendor' . '/autoload.php'' contributes
+ * '/vendor/autoload.php', the contiguous runtime spelling its
+ * expression text never carries. Constants and variables ride their
+ * own text in the haystack beside the composition; the joined spine
+ * only ever ADDS contiguous spellings (monotone flag-more — the
+ * operand-probe standard: an operand path is never prose, whatever
+ * its quoting or how many literals carry it, R39-3).
+ *
+ * @param string $expression Code text (one statement or span).
+ * @return string The decoded literals joined in source order.
+ */
+function wp_connectors_joined_literal_pieces($expression)
+{
+    $joined = '';
+    foreach (wp_connectors_quoted_literals((string) $expression) as $literal) {
+        $joined .= $literal[1];
+    }
+
+    return $joined;
+}
+
+/**
  * Whether a quoted literal's runtime value is controlled by string
  * interpolation (glm29-3 — the round-29 security fix).
  *
@@ -5010,7 +5047,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * paths are never prose (R39-3) — beside the
                      * masked conjunct that owns non-string code bytes.
                      */
-                    $include_statements .= "\n" . $include[0];
+                    $include_statements .= "\n" . $include[0] . "\n" . wp_connectors_joined_literal_pieces($include[0]);
                     /*
                      * t31-glm53-1 [R53-1, driven fail-open — the
                      * variable-mediated operand at THIS seat]: master's
@@ -5031,7 +5068,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * writes carry it to the channel.
                      */
                     if (! wp_connectors_each_transitive_assignment_value($code, $masked, $include[0], $include[1], static function ($assignment_value) use (&$include_statements) {
-                        $include_statements .= "\n" . $assignment_value;
+                        $include_statements .= "\n" . $assignment_value . "\n" . wp_connectors_joined_literal_pieces($assignment_value);
 
                         return true;
                     })) {
@@ -5182,7 +5219,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                     $span_close = wp_connectors_matching_delimiter_end($masked, $span_open, '(', ')');
                     $span_end = false === $span_close ? strlen($masked) - 1 : $span_close;
                     $span_text = (string) substr($code, $channel_call[1], $span_end + 1 - $channel_call[1]);
-                    $channel_operands .= "\n" . $span_text;
+                    $channel_operands .= "\n" . $span_text . "\n" . wp_connectors_joined_literal_pieces($span_text);
                     /*
                      * t31-glm55-4 [R55-4, driven fail-open — the
                      * channel operands got NO variable resolution]:
@@ -5199,7 +5236,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * never prose, whatever channel carries it.
                      */
                     if (! wp_connectors_each_transitive_assignment_value($code, $masked, $span_text, $channel_call[1], static function ($assignment_value) use (&$channel_operands) {
-                        $channel_operands .= "\n" . $assignment_value;
+                        $channel_operands .= "\n" . $assignment_value . "\n" . wp_connectors_joined_literal_pieces($assignment_value);
 
                         return true;
                     })) {
@@ -5241,6 +5278,20 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * and the ComposerAutoloader/ComposerLoader class
              * names, prose blanks.
              */
+            /*
+             * t31-glm58-4 [R58-5, driven fail-open — the
+             * concatenated-literal class at this needle]: a Composer
+             * path composed across two literals
+             * ('__DIR__ . '/vendor' . '/autoload.php'') never spells
+             * 'vendor/autoload' contiguously in the operand or
+             * resolved-value text, although the runtime path IS
+             * vendor/autoload.php — the needle now judges each
+             * joined-text's CONCATENATED LITERAL SPINE beside its
+             * own text (the four join points above append
+             * wp_connectors_joined_literal_pieces, one line per
+             * statement — adjacent statements never compose across
+             * their separators).
+             */
             if (stripos($include_statements . $channel_operands, 'vendor/autoload') !== false || stripos($masked, 'vendor/autoload') !== false) {
                 $violations[] = sprintf('%s: %s references vendor/autoload (no Composer at runtime).', $slug, $relative);
             }
@@ -5268,7 +5319,56 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * keyword', the needle arm deciding over the fail-closed
              * conjunct.
              */
-            if ((stripos($include_statements . $channel_operands, 'composer') !== false || stripos($masked, 'composer') !== false) && 0 !== preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $masked)) {
+            /*
+             * t31-glm58-3 [R58-3, driven false refusal — the R55-7
+             * word-boundary owner never threaded to this screen's
+             * twin needles]: both disjuncts were bare stripos, so
+             * IDENTIFIER-INTERIOR 'composer' bytes in a connector's
+             * own slug-mandated PSR-4 prefix
+             * ('Deicod\WpConnectors\ComposerBridge\' riding code
+             * bytes and resolved operand text) minted 'references
+             * Composer at runtime' — a connector NAMED composer
+             * was un-buildable at conventions while the autoloader
+             * seat judged the identical prefix clean (driven at the
+             * real CLI). The owner consults composer-only (the
+             * parameterized vocabulary): the identifier interior is
+             * not a reference, a word-bounded path or operand
+             * spelling still is — one boundary, both seats.
+             *
+             * t31-glm58-5 [R58-6, driven — the channel-carried
+             * conjunct]: the keyword conjunct gated the CHANNEL
+             * operands on an unrelated require/include sitting in
+             * the same file, so a lone
+             * shell_exec('composer install --no-dev') answered 0
+             * violations while its byte-twin plus one innocent
+             * require_once flagged (the verdict turned on an
+             * unrelated statement's presence). An operand-span
+             * 'composer' IS the invocation's own operand — the
+             * span (an include statement or a channel call) proves
+             * the runtime context the conjunct exists to ask, and
+             * flags unconditionally; only the masked-view arm
+             * (code bytes outside any operand span) still asks the
+             * conjunct.
+             */
+            $operand_names_composer = wp_connectors_text_names_vendor_or_composer($include_statements . $channel_operands, 'composer');
+            /*
+             * The masked-view arm: the word 'composer' judged by the
+             * word boundary (the identifier interior is not a
+             * reference) BESIDE the vendor's own loader class names
+             * — a full-name class reference IS the reference however
+             * the boundary reads it (the round's pinned
+             * ComposerAutoloader leg).
+             */
+            $masked_names_composer = wp_connectors_text_names_vendor_or_composer($masked, 'composer');
+            if (! $masked_names_composer) {
+                foreach (WP_CONNECTORS_COMPOSER_CLASS_REFERENCES as $composer_class) {
+                    if (false !== stripos($masked, $composer_class)) {
+                        $masked_names_composer = true;
+                        break;
+                    }
+                }
+            }
+            if (($operand_names_composer || $masked_names_composer) && ($operand_names_composer || 0 !== preg_match('/(?:require|include|' . implode('|', WP_CONNECTORS_COMPOSER_CLASS_REFERENCES) . ')/i', $masked))) {
                 $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
             }
             /*
@@ -5367,12 +5467,28 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
  * @param string $text The masked code view, an operand statement, or a resolved assignment value.
  * @return bool True when the text carries a whole-word composer/vendor reference.
  */
-function wp_connectors_text_names_vendor_or_composer($text)
+function wp_connectors_text_names_vendor_or_composer($text, $vocabulary = 'composer|vendor')
 {
-    $hit = preg_match('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:composer|vendor)(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', (string) $text);
+    /*
+     * t31-glm58-3 [R58-3, the parameterized-divergence idiom]: the
+     * composer needle consults with 'composer' alone — the either-word
+     * default answers the autoloader gate's three seats (R55-7) where
+     * either name refuses; the per-file screen's COMPOSER needle must
+     * not fire on a word-bounded 'vendor' that never spells composer.
+     * The boundary class is the ONE owner's either way.
+     */
+    $hit = preg_match('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:' . $vocabulary . ')(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', (string) $text);
 
     return false === $hit || 1 === $hit;
 }
+
+/**
+ * Checks that src/autoload.php registers exactly one Composer-free PSR-4
+ * autoloader bound to the plugin's own Deicod\WpConnectors\<Ns>\ prefix.
+ *
+ * @param string $pluginDir Absolute plugin directory.
+ * @return list<string> Violation messages.
+ */
 
 function wp_connectors_autoloader_violations($pluginDir)
 {

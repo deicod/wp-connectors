@@ -433,4 +433,59 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         $this->assertSame(3, substr_count($source, 'WP_CONNECTORS_CHANNEL_FUNCTIONS'), 'One declaration, two consults — no third spelling of the family grows beside the owner.');
     }
 
+    /**
+     * Round-58 pin (t31-glm58-3/4/5 [R58-3+R58-5+R58-6] — the
+     * per-file composer screen's three gaps, driven at the real CLI
+     * by both the review and the driver): the needles were bare
+     * stripos (identifier-interior 'composer' bytes in a connector's
+     * own slug-mandated PSR-4 prefix — 'ComposerBridge' riding code
+     * bytes and resolved operand text — minting the violation and
+     * making a composer-named connector un-buildable while the
+     * autoloader seat judged the identical prefix clean); the
+     * 'vendor/autoload' needle judged contiguous text only (a path
+     * composed across two literals — '__DIR__ . '/vendor' .
+     * '/autoload.php'' — laundering at 0 violations although the
+     * runtime path IS vendor/autoload.php); and the keyword conjunct
+     * gated the channel operands on an unrelated include (a lone
+     * shell_exec('composer install') clean while its byte-twin plus
+     * one innocent require_once flagged).
+     */
+    public function testTheComposerScreenJudgesWordBoundariesConcatenatedLiteralsAndChannelOperands(): void
+    {
+        $dir = $this->base . '/plug/src';
+        @mkdir($dir, 0755, true);
+        /*
+         * The staging asserts its own landing (the t31-ocr53-9
+         * doctrine).
+         */
+        $files = array(
+            'autoload.php' => "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\ComposerBridge\\\\';\nspl_autoload_register(function (\$class) use (\$prefix) {\n    \$file = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php';\n    if (is_file(\$file)) { require \$file; }\n});\n",
+            'split.php' => "<?php\n\$p = __DIR__ . '/vendor' . '/autoload.php';\nrequire \$p;\n",
+            'channelonly.php' => "<?php\n\$out = shell_exec( 'composer install --no-dev' );\n",
+            'contiguous.php' => "<?php\n\$p = __DIR__ . '/vendor/autoload.php';\nrequire \$p;\n",
+            'prose.php' => "<?php\n\$note = 'self-contained: must not require composer or vendor at runtime';\necho \$note;\n",
+        );
+        foreach ($files as $name => $body) {
+            $this->assertNotFalse(file_put_contents($dir . '/' . $name, $body), "staging: {$name} must write — a staging failure fails as staging, never as the verdict.");
+        }
+
+        $violations = wp_connectors_self_containment_violations($this->base . '/plug');
+        $joined = implode("\n", $violations);
+
+        // R58-5: the SPLIT literal flags through its concatenated
+        // literal spine (red at HEAD: 0 violations — clean).
+        $this->assertStringContainsString('plug: src/split.php references vendor/autoload (no Composer at runtime).', $joined, 'A Composer path composed across two literals still references vendor/autoload — the runtime path is one spelling.');
+        // R58-6: the channel-carried reference flags without any
+        // unrelated include in the file (red at HEAD: clean).
+        $this->assertStringContainsString('plug: src/channelonly.php references Composer at runtime.', $joined, 'A lone channel invocation carrying composer flags — the channel span IS the runtime context the conjunct asks for.');
+        // The standing contiguous control keeps its flag.
+        $this->assertStringContainsString('plug: src/contiguous.php references vendor/autoload (no Composer at runtime).', $joined, 'The contiguous spelling keeps its flag — the fix widens, never narrows.');
+        // R58-3: the identifier-interior prefix bytes are NOT a
+        // reference (red at HEAD: src/autoload.php flagged twice).
+        $this->assertStringNotContainsString('src/autoload.php', $joined, 'Identifier-interior composer bytes in the slug-mandated PSR-4 prefix are not a Composer reference — one boundary, both seats.');
+        // The R51-8 prose-immunity control keeps its cleanliness.
+        $this->assertStringNotContainsString('src/prose.php', $joined, 'The words inside a benign prose literal still mint nothing — the prose immunity stands.');
+        $this->assertCount(3, $violations, 'Exactly the three deliberate probes flag — nothing else in the staged tree.');
+    }
+
 }
