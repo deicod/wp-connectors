@@ -99,6 +99,13 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
          * bytes so the shared/-reference sibling (t31-glm31-1, its
          * own floor pin in its own file) never starts a match
          * attempt under this pin's floor — exactly one refusal here.
+         *
+         * SUPERSEDED at t31-glm54-2 (the GLM10 #4 lesson): the
+         * channel-call scan the round added at the same seat rides
+         * the same loud-refusal doctrine, and at the pinned floor it
+         * aborts with the include scan — TWO refusals now, each in
+         * its own seat's vocabulary, never a clean pass over a file
+         * either scan went unscanned. The count pins BOTH seats.
          */
         file_put_contents(
             $this->root . '/fixture.php',
@@ -110,9 +117,10 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         try {
             $violations = wp_connectors_self_containment_violations($this->root);
 
-            $this->assertCount(1, $violations, 'The aborting include scan answers exactly the one refusal line — never a clean pass over a file whose includes went unscanned.');
-            $this->assertStringContainsString('fixture.php could not be scanned for includes', $violations[0], 'The refusal names the file whose scan aborted.');
+            $this->assertCount(2, $violations, 'The aborting scans answer exactly the two refusal lines — never a clean pass over a file whose includes or channel calls went unscanned.');
+            $this->assertStringContainsString('fixture.php could not be scanned for includes', $violations[0], 'The refusal names the file whose include scan aborted.');
             $this->assertStringContainsString('the self-containment scan aborted (PCRE:', $violations[0], 'The refusal rides the seat\'s own loud vocabulary with the engine\'s diagnostic.');
+            $this->assertStringContainsString('fixture.php could not be scanned for channel calls', $violations[1], 'The channel-call scan refuses loudly on its own abort too.');
         } finally {
             ini_set('pcre.backtrack_limit', $host_limit);
         }

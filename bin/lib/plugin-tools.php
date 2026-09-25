@@ -4805,6 +4805,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              */
             $scanned = preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:require|include)(?i:_once)?(?![' . WP_CONNECTORS_LABEL_BYTES . '])' . WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR . '/', $masked, $includes, PREG_OFFSET_CAPTURE);
             $include_statements = '';
+            $channel_operands = '';
             if (false === $scanned) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for includes — the self-containment scan aborted (PCRE: %s)',
@@ -4949,6 +4950,70 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                 }
             }
             /*
+             * t31-glm54-2 [R54-2, driven fail-open — the NON-include
+             * channel at the per-file screen]: the round-51/52 revival
+             * narrowed this screen's needles to the include OPERAND
+             * (raw) and the masked view's code bytes, so a vendor/
+             * autoload reference reaching the runtime through ANY
+             * OTHER loading channel rode only string bytes — invisible
+             * to both arms (driven A/B: '$body = file_get_contents(
+             * __DIR__ . "/vendor/autoload.php");' answered 0
+             * violations here where master's raw scan refused, the
+             * shell_exec and eval(file_get_contents(...)) twins the
+             * same — a Composer-dependent plugin shipping green
+             * through build and inspect-artifact). The channel
+             * candidates ride the autoloader seat's own family
+             * (glm40-3/glm41-2/glm45-3's file/exec vocabulary plus
+             * eval) judged by the same two-view doctrine: the keyword
+             * matches the MASKED view (prose blanks — a note string
+             * carrying the family name never mints a candidate, the
+             * R40-3/R51-8 immunity) with the label-lookbehind class
+             * both edges ('äfile_get_contents(' and
+             * '$file_get_contents(' refuse) beside the ':' '>'
+             * separator glue (a member/static/nullsafe call named
+             * like a channel is a METHOD, the R45-3 refusal), and the
+             * DEPTH-MATCHED argument span (parens on the masked view
+             * — in-string '(' ')' are blank, never counted) slices
+             * the RAW code at the same length-preserved offsets: an
+             * operand path is never prose, whatever its quoting or
+             * its channel (R39-3's own doctrine at this seat). An
+             * unterminated span judges through EOF — the over-refuse
+             * direction, never a launder. RECORDED RESIDUAL: the
+             * variable-callee spelling ('$fn = "file_get_contents";
+             * $fn( ...vendor... );') stays outside this seat — the
+             * R45-3 token machinery is the autoloader seat's own; the
+             * needle's raw bytes still answer nowhere here until a
+             * driven producer ships one (the R39-3 boundary before
+             * R40-3 widened it).
+             */
+            $channel_scanned = preg_match_all('/(?<![\\$:>' . WP_CONNECTORS_LABEL_BYTES . '])(?i:file_get_contents|readfile|shell_exec|exec|system|passthru|popen|proc_open|fopen|file_put_contents|eval)\s*\(/', $masked, $channel_calls, PREG_OFFSET_CAPTURE);
+            if (false === $channel_scanned) {
+                $violations[] = sprintf(
+                    '%s: %s could not be scanned for channel calls — the self-containment scan aborted (PCRE: %s)',
+                    $slug,
+                    $relative,
+                    preg_last_error_msg()
+                );
+            } else {
+                foreach ($channel_calls[0] as $channel_call) {
+                    $span_open = (int) strpos($channel_call[0], '(') + $channel_call[1];
+                    $span_depth = 0;
+                    $span_end = strlen($masked) - 1;
+                    for ($span_at = $span_open, $span_max = strlen($masked); $span_at < $span_max; ++$span_at) {
+                        if ('(' === $masked[ $span_at ]) {
+                            ++$span_depth;
+                        } elseif (')' === $masked[ $span_at ]) {
+                            --$span_depth;
+                            if (0 === $span_depth) {
+                                $span_end = $span_at;
+                                break;
+                            }
+                        }
+                    }
+                    $channel_operands .= "\n" . substr($code, $channel_call[1], $span_end + 1 - $channel_call[1]);
+                }
+            }
+            /*
              * t31-glm51-4 [R51-8, driven false refusal — the R40-5
              * prose-immunity class never swept to this seat]: both
              * scans judged the comment-stripped but STRING-BEARING
@@ -4977,7 +5042,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * and the ComposerAutoloader/ComposerLoader class
              * names, prose blanks.
              */
-            if (stripos($include_statements, 'vendor/autoload') !== false || stripos($masked, 'vendor/autoload') !== false) {
+            if (stripos($include_statements . $channel_operands, 'vendor/autoload') !== false || stripos($masked, 'vendor/autoload') !== false) {
                 $violations[] = sprintf('%s: %s references vendor/autoload (no Composer at runtime).', $slug, $relative);
             }
             if ((stripos($include_statements, 'composer') !== false || stripos($masked, 'composer') !== false) && preg_match('/(?:require|include|ComposerAutoloader|ComposerLoader)/i', $masked)) {

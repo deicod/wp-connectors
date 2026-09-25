@@ -2643,6 +2643,18 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
                 'two-hop-vendor.php' => "<?php\n\$a = __DIR__ . '/vendor/autoload.php';\n\$p = \$a;\nrequire_once \$p;\n",
                 // The cycle control: a variable cycle over an anchored value resolves safe.
                 'cycle-safe.php' => "<?php\n\$a = \$b;\n\$b = \$a;\n\$p = __DIR__ . '/safe.php';\nrequire_once \$p;\n",
+                /*
+                 * R54-2 (driven A/B vs master): the NON-include channel —
+                 * the needle riding a file/exec call's string operand was
+                 * invisible to both screen arms (masked blanks it, no
+                 * include statement names it) where master's raw scan
+                 * refused. The channel family rides this seat now.
+                 */
+                'channel-fgc.php' => "<?php\n\$body = file_get_contents( __DIR__ . '/vendor/autoload.php' );\n",
+                'channel-shell.php' => "<?php\nshell_exec( 'php ' . __DIR__ . '/vendor/autoload.php' );\n",
+                'channel-eval.php' => "<?php\neval( file_get_contents( __DIR__ . '/vendor/autoload.php' ) );\n",
+                // The channel-seat prose immunity: the note's string rides NO operand.
+                'channel-prose.php' => "<?php\n\$note = 'see the vendor/autoload docs elsewhere';\nfile_get_contents( __DIR__ . '/data/local.json' );\n",
             );
             foreach ($legs as $relative => $body) {
                 $this->assertNotFalse(file_put_contents($tempPlugin . '/' . $relative, $body), "staging: {$tempPlugin}/{$relative} must write — a staging failure fails as staging, never as the gate verdict.");
@@ -2663,6 +2675,10 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('var-composer.php references Composer at runtime', $report, 'The variable-mediated composer include refuses on its own message.');
         $this->assertStringContainsString('two-hop-vendor.php references vendor/autoload', $report, 'The two-hop chain refuses — the resolution is transitive (R44-1\'s shape at this seat).');
         $this->assertStringNotContainsString('cycle-safe.php references', $report, 'A variable cycle over an anchored value stays clean — the seen-set closes the loop.');
+        $this->assertStringContainsString('channel-fgc.php references vendor/autoload', $report, 'The file_get_contents channel refuses (red at HEAD: 0 violations where master flags — the operand invisible to both arms).');
+        $this->assertStringContainsString('channel-shell.php references vendor/autoload', $report, 'The shell_exec channel refuses — the two-view doctrine at the channel seat.');
+        $this->assertStringContainsString('channel-eval.php references vendor/autoload', $report, 'The eval(file_get_contents(...)) chain refuses — the depth-matched span judges the nested call\'s operand.');
+        $this->assertStringNotContainsString('channel-prose.php references', $report, 'A prose literal carrying the needle beside a clean channel call stays clean — the operand, never the file, is judged.');
     }
 
     /*
