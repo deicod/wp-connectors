@@ -6740,7 +6740,19 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
          */
         $import_shadows = array();
         $imports = array();
-        if (false !== preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+([^;]+)/', $flat, $imports, PREG_OFFSET_CAPTURE)) {
+        /*
+         * t31-glm53-2 [R53-2, driven fail-open — the tail swallowed a
+         * CLOSE TAG]: '([^;]+)' treats '?>' as ordinary tail bytes, so
+         * a close-tag-terminated 'use function Foo\define ?>' glued
+         * across the tag into the next code block, the computed leaf
+         * was never 'define', no shadow was minted, and the gate
+         * green-lit a plugin whose define() fatals at runtime (driven:
+         * php -l clean, executing 'Call to undefined function
+         * Foo\define()'). The tail composes the tail grammar's own
+         * body spelling with the ONE terminator constant — the R29-2
+         * close-tag class at the one regex arm the sweep left.
+         */
+        if (false !== preg_match_all('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:use)\s+([^;?]*+(?:\?(?!>)[^;?]*+)*+)' . WP_CONNECTORS_STATEMENT_TERMINATOR . '/', $flat, $imports, PREG_OFFSET_CAPTURE)) {
             foreach ($imports[1] as $import_statement) {
                 $statement_offset = $import_statement[1];
                 $statement_text = trim($import_statement[0]);
@@ -6837,13 +6849,37 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
                          * END on the flat view: the '}' closing the
                          * import's enclosing braced block (a '}' met
                          * at depth zero — the use statement's own
-                         * group braces balance inside it), or a
-                         * 'namespace' DECLARATION keyword at
-                         * statement position starting a later region
-                         * (anonymous blocks included — any new region
-                         * owns its own import table). Null end = the
-                         * unbraced region, open to the file's
+                         * group braces balance inside it). Null end =
+                         * the unbraced region, open to the file's
                          * remainder exactly as before.
+                         *
+                         * t31-glm53-3 [R53-7 — the round-52
+                         * 'namespace DECLARATION keyword' arm, DEAD AS
+                         * SPELLED and deleted]: the arm's guard read
+                         * '0 === stripos($flat, "namespace", $scan)'
+                         * — stripos() with a nonzero offset answers
+                         * the ABSOLUTE match position, so for every
+                         * $scan past the file head the guard was
+                         * false and the ~30 lines of lookbehind/
+                         * follower grammar never executed; the
+                         * constructible shapes the arm addressed are
+                         * engine fatals anyway (PHP refuses MIXING
+                         * braced and unbraced namespace declarations
+                         * — driven: 'namespace E; use function Foo
+                         * \define; namespace { define(…); }' fatals
+                         * 'Cannot mix bracketed namespace
+                         * declarations with unbracketed namespace
+                         * declarations'), so the keyword boundary is
+                         * unreachable by grammar: all-braced files
+                         * take the '}' arm, all-unbraced files carry
+                         * no anonymous blocks and the ledger's
+                         * offset-identity match already separates
+                         * their regions. The dead parallel grammar
+                         * (its own ';}{>' terminator class,
+                         * disagreeing with the token-based
+                         * classification the ledger's walks ride) is
+                         * deleted rather than repaired into untested
+                         * live code.
                          */
                         $region_end = null;
                         $scan = $statement_offset;
@@ -6859,35 +6895,6 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
                                     break;
                                 }
                                 --$scan_depth;
-                            } elseif (('n' === $byte || 'N' === $byte) && 0 === stripos($flat, 'namespace', $scan)) {
-                                $back = $scan;
-                                while ($back > 0 && ctype_space($flat[ $back - 1 ])) {
-                                    --$back;
-                                }
-                                $after_keyword = $flat[ $scan + 9 ] ?? '';
-                                $ahead = $scan + 9;
-                                while ($ahead < $flat_len && ctype_space($flat[ $ahead ])) {
-                                    ++$ahead;
-                                }
-                                $follower = $ahead < $flat_len ? $flat[ $ahead ] : ';';
-                                /*
-                                 * The keyword must stand at STATEMENT
-                                 * position (the preceding significant
-                                 * byte a terminator) and open a
-                                 * declaration shape — a glued label
-                                 * byte after the nine keyword chars is
-                                 * a longer name ('namespacex'), a '\\'
-                                 * follower is the RELATIVE spelling
-                                 * ('namespace\Foo' as a type or call),
-                                 * neither a region boundary.
-                                 */
-                                if (($back < 1 || false !== strpos(';}{>', $flat[ $back - 1 ]))
-                                    && (ctype_space($after_keyword) || ';' === $after_keyword || '{' === $after_keyword)
-                                    && (';' === $follower || '{' === $follower || 1 === preg_match('/^[' . WP_CONNECTORS_LABEL_BYTES . ']/', $follower))) {
-                                    $region_end = $scan;
-                                    break;
-                                }
-                                $scan += 8; // Past the matched keyword — the follower bytes are not a boundary.
                             }
                             ++$scan;
                         }
@@ -6929,6 +6936,30 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
          * whole braced region fenced, the depth honest past it.
          */
         $use_braces = 0;
+        /*
+         * t31-glm53-4 [R53-3, driven BOTH directions — the walk
+         * counted NON-CODE braces]: (a) the plain '}' closing a
+         * string INTERPOLATION ('"${x}"' — the T_CURLY_OPEN and
+         * T_DOLLAR_OPEN_CURLY_BRACES openers spell '{' and '${',
+         * never the '{' === $text the walk counts) decremented
+         * $brace_depth with no matching opener: the class frame
+         * filtered out mid-body and a method named 'define' after
+         * the interpolation was recorded as a namespace-scope
+         * declaration, falsely REFUSING the working bare define
+         * (driven; the '{$x}' spelling controls clean); (b) an
+         * inline-HTML '}' glued between tags ('?>}<?php', the
+         * bytes exactly '}' — the byte checks are single-token
+         * equality) decremented the same way and re-opened the
+         * R50-6 laundering direction, a nested decoy 'function
+         * define' misjudged as a method and skipped (driven: the
+         * HTML-brace shape PASSING where the no-HTML twin refuses).
+         * The glm16-10 interpolation-frame discipline and the
+         * ocr63-2 inline-HTML rule sweep to THIS walk: the
+         * interpolation openers push their own frame their plain
+         * '}' closer pops (never touching $brace_depth), and
+         * T_INLINE_HTML braces never touch the frame stack at all.
+         */
+        $interpolation_depth = 0;
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[ $i ];
             $id = is_array($token) ? $token[0] : null;
@@ -6955,7 +6986,17 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
 
                 continue;
             }
-            if (T_WHITESPACE === $id || T_COMMENT === $id || T_DOC_COMMENT === $id) {
+            if (T_WHITESPACE === $id || T_COMMENT === $id || T_DOC_COMMENT === $id || T_INLINE_HTML === $id) {
+                continue;
+            }
+            if (T_CURLY_OPEN === $id || T_DOLLAR_OPEN_CURLY_BRACES === $id) {
+                ++$interpolation_depth;
+
+                continue;
+            }
+            if ('}' === $text && $interpolation_depth > 0) {
+                --$interpolation_depth;
+
                 continue;
             }
             if ('{' === $text) {
@@ -7090,6 +7131,23 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
      * name bytes before the keyword is a qualified callee: the
      * leading-backslash spellings ride the branch above, a relative
      * multi-segment name is foreign the same way.
+     *
+     * t31-glm53-5 [R53-9 — the WHITESPACE-INTERRUPTED qualified
+     * callee, REFUTED AS FIXABLE and recorded]: 'Foo \define('
+     * consumed only '\define' and answered the GLOBAL escape —
+     * but BOTH trivia spellings are parse errors the engine
+     * rejects (driven: 'Foo \define(' and 'Foo\ define(' both
+     * fail php -l), and the two meet their whitespace at the
+     * walk's FIRST backward step, the exact byte shape of the
+     * LEGAL keyword-operand spelling 'return \define(' (the
+     * global escape as an operand — php -l clean): a walk-start
+     * trivia bridge cannot distinguish them without an expression
+     * keyword list the lexer's own job would duplicate, and
+     * bridging refuses the working plugin to catch bytes the
+     * lint gate — the very next stage of every consumer this
+     * seat rides — rejects wholesale. The totality gap is
+     * @lint-owned (the glm17 unbalanced-string doctrine): the
+     * walk stays byte-exact over engine-accepted spellings.
      */
     $walk = $call_offset;
     while ($walk > 0 && 1 === preg_match('/[' . WP_CONNECTORS_LABEL_BYTES . '\\\\]/', $flat[ $walk - 1 ])) {
@@ -7097,10 +7155,8 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
     }
     if ($walk < $call_offset) {
         $qualified = wp_connectors_ascii_lower((string) substr($flat, $walk, $call_offset - $walk + 6));
-        if ('\\define' === $qualified || 'define' === $qualified) {
-            // 'define' alone cannot occur here (the collector's lookbehind
-            // refuses a name-continuation start); '\define' alone is the
-            // GLOBAL escape — never a decoy, the mirror's false refusal dead.
+        if ('\\define' === $qualified) {
+            // '\define' alone is the GLOBAL escape — never a decoy, the mirror's false refusal dead.
             return false;
         }
 

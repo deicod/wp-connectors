@@ -668,6 +668,65 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         WpHarness::releaseScratch($base);
     }
 
+    public function testTheDecoyConsultsRound53Gaps(): void
+    {
+        /*
+         * R53-2+R53-3+R53-7+R53-9 (all driven at HEAD, php -l clean
+         * unless noted): the import-shadow regex tail swallowed a
+         * CLOSE TAG ('use function Foo\define ?>' gluing into the
+         * next block, no shadow minted, the broken plugin
+         * green-lit); the declaration walk counted NON-CODE braces
+         * (the '${x}' interpolation's plain '}' closer with no
+         * counted opener — a method named define after it recorded
+         * as a namespace declaration, falsely refusing; the
+         * '?>}<?php' inline-HTML brace re-opening the R50-6
+         * laundering direction, a nested decoy skipped as a
+         * method); the round-52 region-end 'namespace keyword' arm
+         * was DEAD AS SPELLED (stripos with a nonzero offset
+         * answers the ABSOLUTE position — '0 ===' never held) and
+         * its constructible shapes are engine fatals anyway (PHP
+         * refuses mixing braced and unbraced declarations), deleted
+         * rather than repaired into untested live code; and the
+         * backward qualification walk stopped at the first
+         * non-label byte, so the whitespace-interrupted qualified
+         * callee 'Foo \define(' answered the GLOBAL escape for a
+         * foreign name (both trivia spellings parse errors — the
+         * pre-lint totality window, the walk bridging the
+         * separator-adjacent trivia now).
+         */
+        $b = chr(92);
+        $base = sys_get_temp_dir() . '/wp-connectors-version-r53-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        foreach (array(
+            'close-tag-import' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse function Foo{$b}define ?>\n<?php\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'html-brace-launder' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\nclass Boot {\n    public function boot() {\n?>}<?php\n        function define( \$n, \$v ) { return true; }\n    }\n}\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+        ) as $name => $source) {
+            file_put_contents($base . '/myplug/myplug.php', $source);
+            $v = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+            $this->assertStringContainsString('must define constant', implode("\n", $v), "The {$name} shape launders no more (red at HEAD: binds clean).");
+        }
+        foreach (array(
+            /*
+             * The interpolation FALSE-REFUSAL leg (R53-3's (a) half):
+             * a method named 'define' after an interpolation-bearing
+             * sibling method stays a METHOD — the '{$x}' closer never
+             * corrupts the depth — and the working bare define binds
+             * (red at HEAD: the corrupted walk recorded the method as
+             * a namespace-scope declaration and refused).
+             */
+            'interpolation-then-method' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\nclass C {\n    function helper( \$x ) { \$s = \"a{\$x}b\"; }\n    function define( \$k, \$v ) { return true; }\n}\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+        ) as $name => $source) {
+            file_put_contents($base . '/myplug/myplug.php', $source);
+            $this->assertSame(array(), wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php')), "The {$name} shape binds — the false refusal dead (red at HEAD: must-define).");
+        }
+        // The consult-level leg: the LEGAL keyword-operand global escape keeps binding — the safety
+        // shape that refuted R53-9's walk-start trivia bridge (both interrupted-qualified spellings
+        // are parse errors the lint gate owns; a bridge here refuses this working spelling).
+        $keyword_operand = "<?php\nreturn {$b}define( 'X', '1' );\n";
+        $this->assertFalse(wp_connectors_define_call_resolves_to_decoy($keyword_operand, strpos($keyword_operand, 'define(')), 'The keyword-operand global escape keeps its unqualified reading — the walk-start trivia bridge refuted on exactly this legal shape.');
+        WpHarness::releaseScratch($base);
+    }
+
     public function testTightGlueAndCommentGlueDefineShapes(): void
     {
         /*
