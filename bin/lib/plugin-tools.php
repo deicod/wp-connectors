@@ -4674,9 +4674,29 @@ function wp_connectors_joined_literal_pieces($expression)
     foreach ($matches[0] as $match) {
         $literal_text = $match[0];
         $decoded = wp_connectors_unescape_php_string_literal($literal_text[0], (string) substr($literal_text, 1, -1));
-        if (null !== $previous_end && 1 !== preg_match('/\G\s*\.\s*/', $expression, $glue, 0, $previous_end)) {
-            $spines[] = $joined;
-            $joined = '';
+        if (null !== $previous_end) {
+            /*
+             * t31-glm60-1 [R60-5, driven — the round-59 glue check
+             * verified only the glue PREFIX ('\G\s*\.\s*'
+             * succeeding wherever the bytes after a literal merely
+             * START ws-dot-ws), so the outer loop took the next
+             * literal ANYWHERE in the statement — a non-literal
+             * operand between two literals ('$parts[0] .'
+             * '/autoload.php'') skipped wholesale and the literals
+             * composed a fabricated contiguous spelling the runtime
+             * never spells (a working plugin falsely refused as
+             * Composer-dependent where master was clean). The glue
+             * must span EXACTLY the bytes between the literals:
+             * every byte between the previous literal's end and this
+             * one's start is ws-dot-ws, nothing else — 'every other
+             * glue breaking the spine', the contract this loop's
+             * own census states.
+             */
+            $between = substr($expression, $previous_end, $match[1] - $previous_end);
+            if (1 !== preg_match('/\A\s*\.\s*\z/', $between)) {
+                $spines[] = $joined;
+                $joined = '';
+            }
         }
         $joined .= $decoded;
         $previous_end = $match[1] + strlen($literal_text);

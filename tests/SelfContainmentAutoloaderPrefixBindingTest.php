@@ -486,6 +486,20 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         // The R51-8 prose-immunity control keeps its cleanliness.
         $this->assertStringNotContainsString('src/prose.php', $joined, 'The words inside a benign prose literal still mint nothing — the prose immunity stands.');
         $this->assertCount(3, $violations, 'Exactly the three deliberate probes flag — nothing else in the staged tree.');
+
+        /*
+         * t31-glm60-1 (R60-5, driven at HEAD by both the review and
+         * the driver — the round-59 glue check verified only the
+         * PREFIX): a non-literal operand between two literals
+         * ('$parts[0] .' '/autoload.php') was skipped wholesale and
+         * the literals composed a fabricated contiguous spelling
+         * the runtime never spells — a working plugin falsely
+         * refused as Composer-dependent where master was clean.
+         * The glue must span EXACTLY the bytes between the literals.
+         */
+        $interleaved = wp_connectors_joined_literal_pieces("\$parts = array('/notes'); file_get_contents( __DIR__ . '/vendor' . \$parts[0] . '/autoload.php' );");
+        $this->assertSame("/notes\n/vendor\n/autoload.php", $interleaved, 'An operand between literals BREAKS the spine — the pieces never compose across it (red at HEAD: the fabricated /vendor/autoload.php).');
+        $this->assertSame('/vendor/autoload.php', wp_connectors_joined_literal_pieces("\$p = __DIR__ . '/ven' . 'dor/autoload.php';"), 'The all-literal chain still composes the runtime spelling.');
     }
 
     /**
