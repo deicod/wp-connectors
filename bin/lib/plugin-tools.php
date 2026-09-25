@@ -3298,28 +3298,38 @@ function wp_connectors_write_visibility_spans($masked, $offset, $reference_captu
             $j = $loop[1] + strlen($construct);
             $body_open = false;
             $hit_eof = false;
-            while ($j < $length) {
-                if (';' === $masked[ $j ]) {
-                    /*
-                     * Bodyless declaration — UNLESS the include sits inside
-                     * the header segment ahead of this ';': that shape is an
-                     * unclosed header (a real bodyless declaration carries no
-                     * include between keyword and ';'), everything after it
-                     * MAY be the body, the R37-4 over-approximation.
-                     */
-                    if ($offset >= $loop[1] && $offset <= $j) {
-                        $hit_eof = true;
-                    }
-                    break;
-                }
-                if ('{' === $masked[ $j ]) {
-                    $body_open = $j;
-                    break;
-                }
-                ++$j;
-            }
-            if ($j >= $length) {
+            /*
+             * t31-glm56-2 [R56-3, the measured-efficiency clause —
+             * the R41-7/R46-5 axis inside ONE walk]: the scan for
+             * the body opener once walked every byte in a PHP while
+             * loop, so a construct match with neither ';' nor '{'
+             * ahead (hostile pre-lint-parse input — 'function x '
+             * repeated) each scanned to EOF, ~4x per size doubling
+             * (0.81s at 20 KB -> 12.9s at 80 KB measured at HEAD,
+             * no PCRE abort so the R32-5 guard never fires). ONE
+             * native strcspn per match — the wp_connectors_line_
+             * split() house idiom for terminator-class scans —
+             * byte-identical by construction: the span ends at the
+             * FIRST ';'-or-'{' byte, exactly the loop's own break
+             * condition (16,324-row verdict differential over the
+             * seeded hostile corpus: identical).
+             */
+            $term = $j + strcspn($masked, ';{', $j);
+            if ($term >= $length) {
                 $hit_eof = true; // No body opener anywhere ahead: everything may be the body.
+            } elseif (';' === $masked[ $term ]) {
+                /*
+                 * Bodyless declaration — UNLESS the include sits inside
+                 * the header segment ahead of this ';': that shape is an
+                 * unclosed header (a real bodyless declaration carries no
+                 * include between keyword and ';'), everything after it
+                 * MAY be the body, the R37-4 over-approximation.
+                 */
+                if ($offset >= $loop[1] && $offset <= $term) {
+                    $hit_eof = true;
+                }
+            } else {
+                $body_open = $term;
             }
             if (false === $body_open && ! $hit_eof) {
                 continue;
