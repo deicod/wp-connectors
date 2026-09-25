@@ -7409,7 +7409,19 @@ function wp_connectors_version_constant_violations($pluginDir, array $headers, a
      * decode share this ONE spelling with no numbered-backreference
      * drift (R49-15's duplicated-grammar doctrine).
      */
-    $wp_connectors_define_heredoc_value_arm = '(?s:<<<[ \t]*([\'"]?)([A-Za-z_' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)(?:[\'"]?)(?:\r\n|\n|\r).*?(?:\r\n|\n|\r)([ \t]*)\g{-2}(?![\$' . WP_CONNECTORS_LABEL_BYTES . ']))';
+    /*
+     * t31-glm53-7 [R53-5, driven false refusal — the R48-6 prefix
+     * class one arm short]: the b/B binary-string prefix rode the
+     * two quoted arms of the literal expression but not the
+     * heredoc/nowdoc arm, so 'define( "X", b<<<\x27V\x27 … V )'
+     * — php -l clean, binding at runtime — never matched the
+     * dvalue alternation and minted the false 'must define
+     * constant' refusal at every gate. The prefix rides the ONE
+     * shared arm (the decode's opener-end walk is prefix-blind by
+     * construction: strcspn finds the first line terminator
+     * wherever the 'b' sits).
+     */
+    $wp_connectors_define_heredoc_value_arm = '(?s:[bB]?<<<[ \t]*([\'"]?)([A-Za-z_' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)(?:[\'"]?)(?:\r\n|\n|\r).*?(?:\r\n|\n|\r)([ \t]*)\g{-2}(?![\$' . WP_CONNECTORS_LABEL_BYTES . ']))';
     /*
      * t31-glm48-6 [R48-6, driven false refusals — the value's legal
      * spellings one grammar over]: the capture admitted only bare

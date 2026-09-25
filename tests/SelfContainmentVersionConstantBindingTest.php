@@ -407,6 +407,13 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
             'double-quoted heredoc escapes' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', <<<\"V\"\n\\x31.2.3\nV\n );\n",
             'parenthesized name' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( ( 'MYPLUG_VERSION' ), '1.2.3' );\n",
             'concatenated name' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG' . '_VERSION', '1.2.3' );\n",
+            /*
+             * R53-5 (driven): the b/B prefix rode the quoted arms but
+             * not the heredoc arm — the R48-6 class one spelling over
+             * (red at HEAD: the false must-define refusal on both).
+             */
+            'b-prefixed nowdoc' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', b<<<'V'\n1.2.3\nV\n );\n",
+            'B-prefixed heredoc' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\ndefine( 'MYPLUG_VERSION', B<<<\"V\"\n1.2.3\nV\n );\n",
         ) as $name => $source) {
             @mkdir($base . '/myplug', 0755, true);
             file_put_contents($base . '/myplug/myplug.php', $source);
