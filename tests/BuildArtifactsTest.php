@@ -2630,6 +2630,19 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
                 // The round-51 prose-immunity legs stay clean beside the revival.
                 'prose-note.php' => "<?php\n\$note = 'self-contained: must not require composer or any vendor tree';\n",
                 'prose-vendor.php' => "<?php\n\$note = 'see the vendor/autoload docs elsewhere';\n",
+                /*
+                 * R53-1 (driven at HEAD): the variable-mediated operand —
+                 * master's raw stripos found the needle in the
+                 * assignment's string bytes; the round-52 revival judged
+                 * only the include's own span and the masked view, both
+                 * blind to it. The R43-1/R44-1 transitive worklist rides
+                 * this seat now.
+                 */
+                'var-vendor.php' => "<?php\n\$p = __DIR__ . '/vendor/autoload.php';\nrequire_once \$p;\n",
+                'var-composer.php' => "<?php\n\$p = __DIR__ . '/composer/autoload_real.php';\nrequire_once \$p;\n",
+                'two-hop-vendor.php' => "<?php\n\$a = __DIR__ . '/vendor/autoload.php';\n\$p = \$a;\nrequire_once \$p;\n",
+                // The cycle control: a variable cycle over an anchored value resolves safe.
+                'cycle-safe.php' => "<?php\n\$a = \$b;\n\$b = \$a;\n\$p = __DIR__ . '/safe.php';\nrequire_once \$p;\n",
             );
             foreach ($legs as $relative => $body) {
                 $this->assertNotFalse(file_put_contents($tempPlugin . '/' . $relative, $body), "staging: {$tempPlugin}/{$relative} must write — a staging failure fails as staging, never as the gate verdict.");
@@ -2646,6 +2659,10 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('composer-class.php references Composer at runtime', $report, 'A ComposerAutoloader class reference rides the masked view\'s code bytes — real code, never prose.');
         $this->assertStringNotContainsString('prose-note.php references', $report, 'The prose words stay clean — the round-51 immunity intact beside the revival.');
         $this->assertStringNotContainsString('prose-vendor.php references', $report, 'A prose literal naming vendor/autoload exempts nothing and flags nothing — string data is never an operand.');
+        $this->assertStringContainsString('var-vendor.php references vendor/autoload', $report, 'The variable-mediated operand refuses (red at HEAD: silent — the assignment\'s literal invisible to both conjuncts).');
+        $this->assertStringContainsString('var-composer.php references Composer at runtime', $report, 'The variable-mediated composer include refuses on its own message.');
+        $this->assertStringContainsString('two-hop-vendor.php references vendor/autoload', $report, 'The two-hop chain refuses — the resolution is transitive (R44-1\'s shape at this seat).');
+        $this->assertStringNotContainsString('cycle-safe.php references', $report, 'A variable cycle over an anchored value stays clean — the seen-set closes the loop.');
     }
 
     /*

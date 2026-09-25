@@ -4770,6 +4770,46 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * masked conjunct that owns non-string code bytes.
                      */
                     $include_statements .= "\n" . $include[0];
+                    /*
+                     * t31-glm53-1 [R53-1, driven fail-open — the
+                     * variable-mediated operand at THIS seat]: master's
+                     * raw stripos found the needle in the ASSIGNMENT's
+                     * string bytes ('$p = __DIR__ .
+                     * "/vendor/autoload.php"; require_once $p;' —
+                     * php -l clean, refused at master, SILENT at the
+                     * round-52 revival: the include's own span names
+                     * no needle and the masker blanks the assignment's
+                     * literal). The R43-1/R44-1 transitive worklist —
+                     * the autoloader seat's own shape — resolves the
+                     * statement's variable operands through the
+                     * SAME-FILE assignment machinery, every resolved
+                     * assignment VALUE's raw text joining the operand
+                     * span the screens judge: an operand path is
+                     * never prose, whatever its spelling or how many
+                     * same-file writes carry it to the channel.
+                     */
+                    $include_variables = array();
+                    preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $include[0], $include_variables);
+                    $pending_variables = array();
+                    foreach (array_reverse($include_variables[1]) as $include_variable_name) {
+                        $pending_variables[] = array( '$' . $include_variable_name, $include[1] );
+                    }
+                    $seen_variables = array();
+                    while ($pending_variables !== array()) {
+                        $variable_hop = array_pop($pending_variables);
+                        if (isset($seen_variables[ $variable_hop[0] ])) {
+                            continue;
+                        }
+                        $seen_variables[ $variable_hop[0] ] = true;
+                        foreach (wp_connectors_same_file_assignments($code, $masked, $variable_hop[0], $variable_hop[1]) as $assignment_value) {
+                            $include_statements .= "\n" . $assignment_value;
+                            $hop_variable_names = array();
+                            preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $assignment_value, $hop_variable_names);
+                            foreach (array_reverse($hop_variable_names[1]) as $hop_variable_name) {
+                                $pending_variables[] = array( '$' . $hop_variable_name, $variable_hop[1] );
+                            }
+                        }
+                    }
                     $quoted_literals = wp_connectors_quoted_literals($include[0]);
                     if ($quoted_literals !== array()) {
                         /*
