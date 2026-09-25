@@ -2887,4 +2887,72 @@ CHILD;
         $this->assertNotSame('', $source, 'The scanner source must be readable for the composition pin.');
         $this->assertSame(3, substr_count($source, 'wp_connectors_fake_secret_dictionary_alternation'), 'One declaration, two consults — no inline implode regrows beside the owner.');
     }
+
+    /**
+     * Round-58 pin (t31-glm58-6 [R58-7, driven at HEAD by both the
+     * review and the driver]): the bare ''=== arm sent EVERY
+     * extension-less payload the walk admits onto the whole-file
+     * masked view, so a legitimately-marked example in an
+     * extension-less README could never exempt — the byte-identical
+     * .md twin exempted through the region-bounded routing. The
+     * extension-less payload rides the CODE arm only when its HEAD
+     * opens PHP (the glm18-2 content-shape owner); prose-headed
+     * payloads keep the text-family routing with the markers
+     * honored.
+     */
+    public function testAnExtensionLessProseHeadedPayloadHonorsItsMarkers(): void
+    {
+        $token = 'ghp_' . str_repeat('abcd', 9);
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-extless');
+        try {
+            $this->assertTrue(@mkdir($tempDir, 0755, true), "staging: {$tempDir} must create.");
+            $this->assertNotFalse(file_put_contents($tempDir . '/README', "prose with a marked example:\n\n{$token} // secrets:allow\n\n<?php \$x = 1; ?>\ntrailing prose\n"), 'staging: README must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/README.md', "prose with a marked example:\n\n{$token} // secrets:allow\n\n<?php \$x = 1; ?>\ntrailing prose\n"), 'staging: README.md must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/cli-script', "<?php\n\$tok = '{$token}';\n"), 'staging: cli-script must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/UNMARKED', "some prose\n{$token}\n"), 'staging: UNMARKED must write.');
+
+            $findings = wp_connectors_scan_paths(array( $tempDir ));
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+
+        $report = implode("\n", $findings);
+        $this->assertStringNotContainsString('/README:', $report, 'A marked example in an extension-less PROSE-HEADED payload exempts exactly like its .md twin (red at HEAD: FAIL README:2 github-token).');
+        $this->assertStringNotContainsString('/README.md:', $report, 'The .md twin keeps its exemption.');
+        $this->assertStringContainsString('/cli-script:', $report, 'A PHP-HEADED extension-less payload keeps the code arm — the \'-arm\' spelling the \'\'=== arm was built for.');
+        $this->assertStringContainsString('/UNMARKED:', $report, 'The unmarked control still flags — no vacuous exemption class opened.');
+    }
+
+    /**
+     * Round-58 pin (t31-glm58-7 [R58-8, driven at the real CLI]):
+     * the marker grammar's enclosure vocabulary had no ';' member —
+     * the INI family's own comment character (php.ini, git config)
+     * — so a marked fixture line in a .ini payload false-flagged
+     * where the byte-identical '#' spelling exempted. ';' joins the
+     * openers for the INI-grammar family alone (glm23-6: the
+     * enclosure vocabulary is a property of the payload's comment
+     * grammar — .env keeps '#' only, ';' a value byte there).
+     */
+    public function testTheSemicolonCommentEnclosureServesTheIniFamily(): void
+    {
+        $token = 'ghp_' . str_repeat('abcd', 9);
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-inisemi');
+        try {
+            $this->assertTrue(@mkdir($tempDir, 0755, true), "staging: {$tempDir} must create.");
+            $this->assertNotFalse(file_put_contents($tempDir . '/app.ini', "github_token = \"{$token}\" ; secrets:allow\n"), 'staging: app.ini must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/hash.ini', "github_token = \"{$token}\" # secrets:allow\n"), 'staging: hash.ini must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/bare.ini', "github_token = \"{$token}\"\n"), 'staging: bare.ini must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/app.env', "github_token = \"{$token}\" ; secrets:allow\n"), 'staging: app.env must write.');
+
+            $findings = wp_connectors_scan_paths(array( $tempDir ));
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+
+        $report = implode("\n", $findings);
+        $this->assertStringNotContainsString('/app.ini:', $report, 'The INI family\'s own comment character exempts a marked line (red at HEAD: FAIL app.ini:1 github-token).');
+        $this->assertStringNotContainsString('/hash.ini:', $report, 'The \'#\' spelling keeps its exemption.');
+        $this->assertStringContainsString('/bare.ini:', $report, 'The unmarked control still flags.');
+        $this->assertStringContainsString('/app.env:', $report, 'The family boundary holds — \';\' is a value byte in a dotenv value, not a comment there.');
+    }
 }

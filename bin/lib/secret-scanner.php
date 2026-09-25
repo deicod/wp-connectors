@@ -271,6 +271,21 @@ function wp_connectors_allow_marker_pattern($extension = '', $with_markup_arm = 
      * dot and 'note' is no marker).
      */
     $line_comment_openers = '\/\/|#|\/\*|^(?:[-*+> \t]|\d+\.)*\*';
+    /*
+     * t31-glm58-7 [R58-8, driven at the real CLI by both the review
+     * and the driver — the INI family's own comment character one
+     * enclosure short, the glm21-4 completion class]: php.ini and
+     * git-config spell comments with ';' — a marked fixture line in
+     * a .ini/.conf/.config payload false-flagged where the
+     * byte-identical '#' spelling exempted. ';' joins the openers
+     * for the INI-grammar family ALONE — the enclosure vocabulary
+     * is a property of the payload's comment grammar (glm23-6):
+     * toml/properties/env keep '#' (their own grammars — ';' is a
+     * value byte in a dotenv value, not a comment there).
+     */
+    if (in_array($extension, array( 'ini', 'conf', 'config' ), true)) {
+        $line_comment_openers .= '|;';
+    }
     if (! $with_markup_arm) {
         return '/(?:^|\s)(?:' . $line_comment_openers . ')\s*secrets:allow\b/';
     }
