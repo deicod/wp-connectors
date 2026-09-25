@@ -488,4 +488,35 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         $this->assertCount(3, $violations, 'Exactly the three deliberate probes flag — nothing else in the staged tree.');
     }
 
+    /**
+     * Round-59 pin (t31-glm59-4 [R59-3+R59-4, driven at HEAD by both
+     * the review and the driver — two fail-opens in the round-58
+     * commit's own rework): the composer needle's OPERAND consult
+     * lost the loader class names (WP_CONNECTORS_COMPOSER_CLASS_
+     * REFERENCES armed the masked seat only, so a
+     * 'ComposerAutoloader.php' include operand certified clean where
+     * master flagged), and the R58-5 literal spine landed at the
+     * self-containment screen's join points only — the autoloader
+     * gate's own consults still judged contiguous text, so a
+     * vendor/autoload path composed across two literals certified
+     * there while the sibling screen flagged the same bytes.
+     */
+    public function testTheLoaderClassOperandAndTheGateSpineBothFlag(): void
+    {
+        $base = $this->base . '-r59';
+        @mkdir($base . '/plug/src', 0755, true);
+
+        // R59-3: the loader-class operand flags through the screen.
+        $this->assertNotFalse(file_put_contents($base . '/plug/src/loader.php', "<?php\nrequire_once __DIR__ . \"/inc/ComposerAutoloader.php\";\n"), 'staging: loader.php must write.');
+        $screen = wp_connectors_self_containment_violations($base . '/plug');
+        $this->assertStringContainsString('plug: src/loader.php references Composer at runtime.', implode("\n", $screen), 'A loader-class-named operand IS a Composer reference — the class-name arm serves the operand seat too (red at HEAD: clean).');
+
+        // R59-4: the split literal flags through the AUTOLOADER gate.
+        $gate_dir = $base . '/zai';
+        @mkdir($gate_dir . '/src', 0755, true);
+        $this->assertNotFalse(file_put_contents($gate_dir . '/src/autoload.php', "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(static function (\$class) use (\$prefix) {\n    \$file = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php';\n    if (is_file(\$file)) { require \$file; }\n});\n\$fallback = __DIR__ . '/ven' . 'dor/autoload.php';\nrequire \$fallback;\n"), 'staging: the split-fallback autoload must write.');
+        $gate = wp_connectors_autoloader_violations($gate_dir);
+        $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $gate), 'A vendor/autoload path composed across two literals flags through the autoloader gate — the spine serves both gates (red at HEAD: clean).');
+    }
+
 }

@@ -4650,12 +4650,90 @@ function wp_connectors_quoted_literals($expression)
  */
 function wp_connectors_joined_literal_pieces($expression)
 {
+    /*
+     * t31-glm59-4 [R59-8, driven — the round-58 spine composed
+     * NON-concatenating literals of one statement]: an array
+     * literal's elements ('array( "/a.txt", "/vendor",
+     * "/autoload.php" )') composed into '/a.txt/vendor/autoload.php'
+     * and refused a clean working plugin as Composer-dependent —
+     * the composition boundary is the CONCATENATION CHAIN, never
+     * the statement: adjacent literals compose exactly when the
+     * bytes between them are the '.' operator and whitespace
+     * (offset-walked over the ONE grammar owner,
+     * wp_connectors_quoted_literal_grammar()), every other glue
+     * (comma, semicolon, anything) breaking the spine — the pieces
+     * of separate chains never compose.
+     */
+    $expression = (string) $expression;
+    if (! preg_match_all(wp_connectors_quoted_literal_grammar(), $expression, $matches, PREG_OFFSET_CAPTURE)) {
+        return '';
+    }
+    $spines = array();
     $joined = '';
-    foreach (wp_connectors_quoted_literals((string) $expression) as $literal) {
-        $joined .= $literal[1];
+    $previous_end = null;
+    foreach ($matches[0] as $match) {
+        $literal_text = $match[0];
+        $decoded = wp_connectors_unescape_php_string_literal($literal_text[0], (string) substr($literal_text, 1, -1));
+        if (null !== $previous_end && 1 !== preg_match('/\G\s*\.\s*/', $expression, $glue, 0, $previous_end)) {
+            $spines[] = $joined;
+            $joined = '';
+        }
+        $joined .= $decoded;
+        $previous_end = $match[1] + strlen($literal_text);
+    }
+    if ('' !== $joined) {
+        $spines[] = $joined;
     }
 
-    return $joined;
+    return implode("\n", $spines);
+}
+
+/**
+ * The OPERAND HAYSTACK contribution of one statement or resolved
+ * value (t31-glm59-4 [R59-12, the R56-F9 drift class in the
+ * round-58 commit's own body]): the text and its concatenated
+ * literal spine, one line each — ONE spelling composing the
+ * contribution the four self-containment join points AND the
+ * autoloader gate's two operand consults judge, so a future spine
+ * widening lands everywhere or nowhere (the join points had
+ * hand-copied the composition four times). The newline separators
+ * keep adjacent statements' pieces from composing across the
+ * contribution boundary.
+ *
+ * @param string $text One statement's or value's code text.
+ * @return string The haystack contribution (never empty: the text itself).
+ */
+function wp_connectors_operand_haystack_contribution($text)
+{
+    return "\n" . $text . "\n" . wp_connectors_joined_literal_pieces($text);
+}
+
+/**
+ * Whether a text names Composer as the per-file screen judges it
+ * (t31-glm59-4 [R59-3, driven — the round-58 repair armed the
+ * loader-class names at the MASKED seat only]): the word boundary
+ * governs the word alone (the identifier interior is not a
+ * reference, R55-7) BESIDE the vendor's own loader class names — a
+ * full-name class reference IS the reference however the boundary
+ * reads it, at BOTH of the screen's seats (the operand consult had
+ * lost the class arm and let a 'ComposerAutoloader.php' include
+ * operand certify clean where master flagged).
+ *
+ * @param string $text The operand text or masked view.
+ * @return bool True when the text names Composer.
+ */
+function wp_connectors_text_names_composer($text)
+{
+    if (wp_connectors_text_names_vendor_or_composer($text, 'composer')) {
+        return true;
+    }
+    foreach (WP_CONNECTORS_COMPOSER_CLASS_REFERENCES as $composer_class) {
+        if (false !== stripos($text, $composer_class)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -5048,7 +5126,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * paths are never prose (R39-3) — beside the
                      * masked conjunct that owns non-string code bytes.
                      */
-                    $include_statements .= "\n" . $include[0] . "\n" . wp_connectors_joined_literal_pieces($include[0]);
+                    $include_statements .= wp_connectors_operand_haystack_contribution($include[0]);
                     /*
                      * t31-glm53-1 [R53-1, driven fail-open — the
                      * variable-mediated operand at THIS seat]: master's
@@ -5069,7 +5147,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * writes carry it to the channel.
                      */
                     if (! wp_connectors_each_transitive_assignment_value($code, $masked, $include[0], $include[1], static function ($assignment_value) use (&$include_statements) {
-                        $include_statements .= "\n" . $assignment_value . "\n" . wp_connectors_joined_literal_pieces($assignment_value);
+                        $include_statements .= wp_connectors_operand_haystack_contribution($assignment_value);
 
                         return true;
                     })) {
@@ -5220,7 +5298,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                     $span_close = wp_connectors_matching_delimiter_end($masked, $span_open, '(', ')');
                     $span_end = false === $span_close ? strlen($masked) - 1 : $span_close;
                     $span_text = (string) substr($code, $channel_call[1], $span_end + 1 - $channel_call[1]);
-                    $channel_operands .= "\n" . $span_text . "\n" . wp_connectors_joined_literal_pieces($span_text);
+                    $channel_operands .= wp_connectors_operand_haystack_contribution($span_text);
                     /*
                      * t31-glm55-4 [R55-4, driven fail-open — the
                      * channel operands got NO variable resolution]:
@@ -5237,7 +5315,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * never prose, whatever channel carries it.
                      */
                     if (! wp_connectors_each_transitive_assignment_value($code, $masked, $span_text, $channel_call[1], static function ($assignment_value) use (&$channel_operands) {
-                        $channel_operands .= "\n" . $assignment_value . "\n" . wp_connectors_joined_literal_pieces($assignment_value);
+                        $channel_operands .= wp_connectors_operand_haystack_contribution($assignment_value);
 
                         return true;
                     })) {
@@ -5351,24 +5429,15 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * (code bytes outside any operand span) still asks the
              * conjunct.
              */
-            $operand_names_composer = wp_connectors_text_names_vendor_or_composer($include_statements . $channel_operands, 'composer');
             /*
-             * The masked-view arm: the word 'composer' judged by the
-             * word boundary (the identifier interior is not a
-             * reference) BESIDE the vendor's own loader class names
-             * — a full-name class reference IS the reference however
-             * the boundary reads it (the round's pinned
-             * ComposerAutoloader leg).
+             * t31-glm59-4 [R59-3]: BOTH seats ride the composer
+             * helper — the round-58 repair armed the loader class
+             * names at the masked seat only, so a loader-class-named
+             * operand ('ComposerAutoloader.php' riding an include
+             * or channel span) certified clean where master flagged.
              */
-            $masked_names_composer = wp_connectors_text_names_vendor_or_composer($masked, 'composer');
-            if (! $masked_names_composer) {
-                foreach (WP_CONNECTORS_COMPOSER_CLASS_REFERENCES as $composer_class) {
-                    if (false !== stripos($masked, $composer_class)) {
-                        $masked_names_composer = true;
-                        break;
-                    }
-                }
-            }
+            $operand_names_composer = wp_connectors_text_names_composer($include_statements . $channel_operands);
+            $masked_names_composer = wp_connectors_text_names_composer($masked);
             if (($operand_names_composer || $masked_names_composer) && ($operand_names_composer || 0 !== preg_match('/(?:require|include|' . implode('|', WP_CONNECTORS_COMPOSER_CLASS_REFERENCES) . ')/i', $masked))) {
                 $violations[] = sprintf('%s: %s references Composer at runtime.', $slug, $relative);
             }
@@ -5776,7 +5845,17 @@ function wp_connectors_autoloader_violations($pluginDir)
                 continue;
             }
             $statement_text = (string) substr($code, $operand_start, strlen($extent[0]));
-                if (! wp_connectors_text_names_vendor_or_composer($statement_text)) {
+                /*
+                 * t31-glm59-4 [R59-4, driven — the R58-5 spine
+                 * landed at the self-containment screen's join
+                 * points only]: the autoloader gate's own consults
+                 * judged contiguous text, so a vendor/autoload path
+                 * composed across two literals certified here while
+                 * the sibling screen flagged the same bytes — the
+                 * contribution helper (text + spine) serves both
+                 * gates now.
+                 */
+                if (! wp_connectors_text_names_vendor_or_composer(wp_connectors_operand_haystack_contribution($statement_text))) {
                     /*
                      * t31-glm43-1 [R43-1, security:medium, driven
                      * fail-open — the variable-mediated spelling of
@@ -5823,7 +5902,7 @@ function wp_connectors_autoloader_violations($pluginDir)
                      */
                     $resolved_hit = false;
                     $walk_aborted = ! wp_connectors_each_transitive_assignment_value($code, $masked, $statement_text, $operand_start, static function ($assignment_value) use (&$resolved_hit) {
-                        if (wp_connectors_text_names_vendor_or_composer($assignment_value)) {
+                        if (wp_connectors_text_names_vendor_or_composer(wp_connectors_operand_haystack_contribution($assignment_value))) {
                             $resolved_hit = true;
 
                             return false;
