@@ -3031,6 +3031,23 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         foreach (array('x-signature-count', 'x-signature-timestamp') as $spelling) {
             $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — a name-final non-credential token PRECEDES the member, never rides it, and the suffix bytes never span the segment the class judges.");
         }
+
+        /*
+         * t31-glm59-3 (R59-6, driven at HEAD): 'hmac-sha256' and its
+         * -Sha512 sibling join as their own two-token entries —
+         * Shopify's documented webhook verification headers carry the
+         * base64 HMAC of the body under the app's API secret key,
+         * credential-derived material under the vendor's own
+         * spelling, the ocr61-2 curation bar (the fold's judged
+         * final segment 'sha256' names no credential alone, so the
+         * tail with the algorithm is judged whole).
+         */
+        foreach (array('X-Shopify-Hmac-Sha256', 'X-Shopify-Hmac-Sha512', 'x-hub-hmac-sha256', 'x.hmac.sha256', 'X-Shopify-Webhook-Hmac-Sha256') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — the webhooks' own documented HMAC-material headers (red at HEAD: verbatim).");
+        }
+        foreach (array('X-Hmac-Count', 'x-hmac-algorithm', 'x-shopify-hmac-sha256-nonce', 'x-request-id') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — the suffix bytes never span the segment the class judges.");
+        }
     }
 
     /* ---------------------------------------------------------------

@@ -393,7 +393,20 @@ final class SecretMask {
 	 *
 	 * @var list<string>
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256', 'session-id', 'sessionid', 'jsessionid' );
+
+	/*
+	 * t31-glm59-3 [R59-6, driven]: 'hmac-sha256'/'hmac-sha512' join
+	 * as their own two-token entries (the 'signature-256' shape) —
+	 * Shopify's documented webhook verification headers
+	 * ('X-Shopify-Hmac-Sha256' and the -Sha512 sibling) carry the
+	 * base64 HMAC of the body under the app's API secret key,
+	 * credential-derived material meeting the r24-4/ocr61-2
+	 * vendor-documented curation bar; the fold leaves the judged
+	 * final segment 'sha256', a token no credential name spells, so
+	 * the tail WITH the algorithm name is judged whole — the same
+	 * final-segment boundary one entry longer.
+	 */
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256', 'hmac-sha256', 'hmac-sha512', 'session-id', 'sessionid', 'jsessionid' );
 
 	/**
 	 * The percent-encoded delimiter triples (judged case-insensitively
