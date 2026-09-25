@@ -1225,7 +1225,20 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * matched pairs AND the unclosed tail — ride the masked view, the
      * bytes outside them keep the line-local arm.
      */
-    $label_ext = strtolower((string) pathinfo($label, PATHINFO_EXTENSION));
+    /*
+     * t31-glm56-4 [R56-F8 — the fourth fold straggler, the census
+     * of record falsified]: this seat (branch-introduced with the
+     * glm17-3 extension-aware marker grammar) spelled the engine
+     * strtolower while the whole file folds through the ONE owner
+     * (wp_connectors_ascii_lower, the ocr13-1 tree) — an
+     * unrecorded fourth member beside the ocr15-3 census's three,
+     * each its own recorded future finding (the extension gate,
+     * the two plugin-header name-key twins). Byte-identical on the
+     * 8.2 floor (the marker family's extensions are pure ASCII —
+     * no capital-I hazard, no locale divergence); the census's
+     * 'everything else is prose' claim is true again.
+     */
+    $label_ext = wp_connectors_ascii_lower((string) pathinfo($label, PATHINFO_EXTENSION));
     // glm23-6: the marker grammar is extension-aware — the '<!--'
     // enclosure's glue-broadened boundary is the markup family's alone
     // (the owner's own split, stated in its docblock).
