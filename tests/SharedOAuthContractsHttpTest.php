@@ -3048,6 +3048,21 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         foreach (array('X-Hmac-Count', 'x-hmac-algorithm', 'x-shopify-hmac-sha256-nonce', 'x-request-id') as $spelling) {
             $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim — the suffix bytes never span the segment the class judges.");
         }
+
+        /*
+         * t31-glm60-3 (R60-4, driven + vendor-doc): GitHub's
+         * documented 'X-GitHub-OTP' 2FA request header — the
+         * one-time password sent in the header (docs.github.com,
+         * octokit/go-github implementing it) — folds to a final
+         * segment 'otp' matching neither catalog nor suffix, the
+         * one-time password rendering IN FULL.
+         */
+        foreach (array('X-GitHub-OTP', 'X-OTP', 'x_otp', 'x.otp') as $spelling) {
+            $this->assertTrue(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' spelling rides the class — the vendor-documented one-time-password headers (red at HEAD: verbatim).");
+        }
+        foreach (array('X-OTP-Count', 'x-otp-policy', 'x-totp-url') as $spelling) {
+            $this->assertFalse(SecretMask::is_sensitive_header_name($spelling), "The '{$spelling}' neighbor stays verbatim.");
+        }
     }
 
     /* ---------------------------------------------------------------

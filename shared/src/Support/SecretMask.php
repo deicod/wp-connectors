@@ -395,6 +395,16 @@ final class SecretMask {
 	 */
 
 	/*
+	 * t31-glm60-3 [R60-4, driven + vendor-doc]: GitHub's documented
+	 * 'X-GitHub-OTP' 2FA request header (docs.github.com/en/rest —
+	 * the one-time password sent in the header, octokit/go-github
+	 * implementing it) folds to a final segment 'otp' matching
+	 * neither catalog nor suffix — the one-time password rendered IN
+	 * FULL through every safe debug form. One 'otp' member speaks
+	 * every delimiter spelling (r50-1); the over-mask blessing rides
+	 * the tier as ever (a non-credential '-otp' tail masked in
+	 * DEBUG errs safe).
+	 *
 	 * t31-glm59-3 [R59-6, driven]: 'hmac-sha256'/'hmac-sha512' join
 	 * as their own two-token entries (the 'signature-256' shape) —
 	 * Shopify's documented webhook verification headers
@@ -406,7 +416,7 @@ final class SecretMask {
 	 * the tail WITH the algorithm name is judged whole — the same
 	 * final-segment boundary one entry longer.
 	 */
-	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256', 'hmac-sha256', 'hmac-sha512', 'session-id', 'sessionid', 'jsessionid' );
+	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256', 'hmac-sha256', 'hmac-sha512', 'otp', 'session-id', 'sessionid', 'jsessionid' );
 
 	/**
 	 * The percent-encoded delimiter triples (judged case-insensitively
