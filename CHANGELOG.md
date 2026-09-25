@@ -6,6 +6,32 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 61)
+
+Forty-seventh claude-glm pass (/code-review max over the full branch
+diff, ledger-read first — the convergence round ordered and answered
+still not zero, both fail-open correctness findings in the round-60
+commits' own machinery): the star-arm verdict's span and its cache
+key, the census owner's IO, and the container block's residue. Three
+fix commits t31-glm61-1..3 plus the docs close, the full offline
+check green. One finding recorded as Task 3.3 inheritance (the
+exact-glue spine's parse-broken edge). Suite 2000 → 2001 tests,
+49147 → 49165 assertions, 3 skipped unchanged.
+
+- `t31-glm61-1` — the star-arm token verdict judges the MARKER'S own
+  span (an unrelated trailing comment after the credential exempts
+  nothing; a marker inside a real docblock still exempts), and the
+  comment-map cache keys by md5 — a crafted crc32 collision can no
+  longer make one payload's cached map answer another's consult.
+- `t31-glm61-2` — the census owner owns its IO: an unreadable
+  connectors/ directory refuses loudly at all three census seats
+  (never 'no plugins to build' at exit 0 over a tree it never
+  judged), a missing directory stays legitimately empty.
+- `t31-glm61-3` — the round-60 container block's residue: the
+  provably-dead post-walk arming belt deleted, the raw
+  pair-separator family in ONE const beside the encoded one, the
+  encoded assignment riding the indexed delimiter-triple idiom.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 60)
 
 Forty-sixth claude-glm pass (/code-review max over the full branch
