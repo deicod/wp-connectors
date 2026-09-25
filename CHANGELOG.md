@@ -6,6 +6,40 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 62)
+
+Forty-eighth claude-glm pass (/code-review max over the full branch
+diff, ledger-read first — the convergence round ordered and answered
+still not zero, six of the ten correctness findings one member over
+prior landings and two fresh seats): the connector-root link fence,
+the scanner walk's extension fold and 16-run anchor, the mask gate's
+opener compositions, the channel byte-pair, the spine's paren
+tolerance, the composer head boundary, and the conjunct's
+distributive form. One class commit t31-glm62-1 plus the docs close,
+the full offline check green. Two findings re-derived to records
+during the driver's implementation. Suite 2001 tests,
+49165 → 49169 assertions, 3 skipped unchanged.
+
+- `t31-glm62-1` — the connector ROOT refuses symlinks (dangling and
+  resolving alike): an out-of-tree plugin built through a connectors/
+  link shipped unscanned bytes through every green gate; a dangling
+  link no longer silently vanishes from build-all.
+- `t31-glm62-1` — the scan walk's read gate folds trailing edge junk
+  (a shipped 'notes.md ' carrying a live token no longer invisible
+  to the walk and artifact inspection alike), and the 16-char hex
+  run exempts only as the segment WHOLE (never a mid-segment
+  embedder).
+- `t31-glm62-1` — the embedded-credential gate composes an encoded
+  OPENER with an encoded assignment or separator (the single-
+  parameter query and the equals-less shape in their encoded
+  spellings mask now).
+- `t31-glm62-1` — the channel regex refuses the member glue by BYTE
+  PAIR ('=>file_get_contents(' and 'case 1:readfile(' collected
+  now); the spine's glue tolerates parenthesized operands (a legal
+  chain composing vendor/autoload no longer launders); the composer
+  class arm refuses prefix-glued user names while keeping the
+  vendor's own ComposerAutoloaderInit spelling flagged.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 61)
 
 Forty-seventh claude-glm pass (/code-review max over the full branch
