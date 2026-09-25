@@ -7403,6 +7403,25 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
             // '\define' alone is the GLOBAL escape — never a decoy, the mirror's false refusal dead.
             return false;
         }
+        /*
+         * t31-glm55-6 [R55-6, driven false refusal — the relative
+         * spelling of the global escape]: 'namespace\define(…)' at
+         * GLOBAL scope (php -l clean, executing binds the constant —
+         * the relative operator resolves against no declaration,
+         * i.e. the global namespace) consumed the 'namespace\'
+         * prefix and fell to the foreign-callee return, minting the
+         * false must-define refusal on a working plugin. Inside a
+         * declared namespace the same spelling resolves to THAT
+         * namespace's define — a foreign or decoy function, the
+         * return-true verdict standing — so the escape fires only
+         * where the scope IS global (the ledger's null). Distinct
+         * from the R53-9 refutation (parse-error trivia shapes) and
+         * R50-4's drive ('Foo\define' inside namespace E — the
+         * prefix a real name segment, not the operator).
+         */
+        if ('namespace\\define' === $qualified && null === $in_effect($call_offset)) {
+            return false;
+        }
 
         return true; // A qualified name beyond the bare keyword — the global define is not what this call resolves to.
     }

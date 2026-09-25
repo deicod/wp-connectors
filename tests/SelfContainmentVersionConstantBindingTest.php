@@ -731,6 +731,21 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         // are parse errors the lint gate owns; a bridge here refuses this working spelling).
         $keyword_operand = "<?php\nreturn {$b}define( 'X', '1' );\n";
         $this->assertFalse(wp_connectors_define_call_resolves_to_decoy($keyword_operand, strpos($keyword_operand, 'define(')), 'The keyword-operand global escape keeps its unqualified reading — the walk-start trivia bridge refuted on exactly this legal shape.');
+        /*
+         * R55-6 (driven): the RELATIVE spelling of the global escape
+         * — 'namespace\define(…)' at global scope is php -l clean,
+         * executing binds the constant, and the walk consumed the
+         * operator prefix as a foreign qualifier, minting the false
+         * must-define refusal on a working plugin. Inside a declared
+         * namespace the same spelling resolves to THAT namespace's
+         * define — foreign, the refusal standing.
+         */
+        $relative_global = "<?php\nnamespace{$b}define( 'MYPLUG_VERSION', '1.2.3' );\n";
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\n" . $relative_global);
+        $this->assertSame(array(), wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php')), 'The relative global escape binds — the operator prefix is not a foreign qualifier at global scope (red at HEAD: must-define).');
+        $relative_namespaced = "<?php\nnamespace E;\nnamespace{$b}define( 'MYPLUG_VERSION', '1.2.3' );\n";
+        file_put_contents($base . '/myplug/myplug.php', "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\n" . $relative_namespaced);
+        $this->assertStringContainsString('must define constant', implode("\n", wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'))), 'Inside a declared namespace the relative spelling resolves to THAT namespace — foreign, the refusal standing.');
         WpHarness::releaseScratch($base);
     }
 
