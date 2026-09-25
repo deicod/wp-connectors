@@ -6,6 +6,51 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 60)
+
+Forty-sixth claude-glm pass (/code-review max over the full branch
+diff, ledger-read first — the convergence round ordered and answered
+still not zero, five of the seven correctness findings in the
+round-58/59 commits' own machinery): the marker consult seats'
+three gaps, the spine's glue boundary, the container's cross-layer
+composition and the one per-layer walker, the GitHub OTP header,
+the census owner, the slug-screen owner, and the round-59
+docblocks. Seven fix commits t31-glm60-1..7 plus the docs close,
+the full offline check green. One cleanup finding re-derived to a
+record during implementation. Suite 2000 → 2001 tests,
+49118 → 49147 assertions, 3 skipped unchanged.
+
+- `t31-glm60-1` — the concatenation spine's glue spans EXACTLY the
+  bytes between literals: a non-literal operand between two
+  literals ('$parts[0] .') no longer lets them compose a fabricated
+  contiguous spelling (a working plugin falsely refused as
+  Composer-dependent where master was clean).
+- `t31-glm60-2` — the embedded-container gate arms on cross-layer
+  spellings (ANY layer's encoded assignment beside ANY layer's
+  separator), and the walk is the ONE parameterized per-layer
+  walker with the separator spellings in an
+  ENCODED_PAIR_SEPARATORS const.
+- `t31-glm60-3` — GitHub's documented 'X-GitHub-OTP' 2FA header
+  masks ('otp' joins the suffix tier; four spellings sensitive,
+  three neighbors verbatim).
+- `t31-glm60-4` — the marker consult seats: ';' serves the prose
+  consult alone (a statement-terminated ';' marker inside an
+  embedded sample launders nothing now), the '.dist' family
+  extension threads both consults, and the line-initial '*' arm
+  fires on the code consult only inside a real comment token (an
+  operator-line star marker is code, a docblock continuation keeps
+  exempting).
+- `t31-glm60-5` — the fixtures census rides the ONE
+  directory-listing owner beside the connectors censuses (a dot-led
+  fixture plugin is judged, never invisible).
+- `t31-glm60-6` — the artifact-name family's screen stack (grammar,
+  dev-entry, near-source) rides the ONE owner at both seams — the
+  family that landed one member per round for three rounds lands
+  the next member once.
+- `t31-glm60-7` — the round-59 routing docblocks narrate the
+  standing engine-verdict admission doctrine (both superseded
+  claims corrected; no code byte moves).
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 59)
 
 Forty-fifth claude-glm pass (/code-review max over the full branch
