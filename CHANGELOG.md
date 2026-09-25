@@ -6,6 +6,39 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 56)
+
+Forty-second claude-glm pass (/code-review max over the full branch
+diff, ledger-read first; the convergence round ordered — still not
+zero: the one driven production defect sits in the embedded-credential
+boundary whose neighboring arms prior rounds widened one at a time,
+and the worklist finding in the R54-9/R55-10 machinery's own body;
+six further findings recorded as Task 3.3 inheritance). Four fix
+commits t31-glm56-1..4 plus the docs close, the full offline check
+green after every commit. Suite 1987 → 1988 tests,
+48996 → 48998 assertions, 3 skipped unchanged.
+
+- `t31-glm56-1` — SecretMask's embedded-credential boundary now knows
+  the parameter SEPARATOR: an equals-less final parameter behind a
+  sibling ('?state=xyz&BCJK-3502', the cookie '; ' pair, the decoded
+  '%26' spelling) no longer judges the sibling's run and leak its
+  visible tail — the run restarts after the last '&'/';' beyond the
+  winning delimiter, monotone mask-more by construction (every
+  existing row unchanged; the long-parameter tail clause stands).
+- `t31-glm56-2` — the write-visibility function arm finds its body
+  opener with ONE native strcspn per construct match instead of a
+  per-byte PHP walk (hostile pre-lint input: 12.9s → 0.27s at 80KB,
+  verdict-identical over a 16,324-row seeded differential).
+- `t31-glm56-3` — the transitive worklist names its variable-extraction
+  pattern ONCE: the seed and the per-hop re-extraction rode two
+  spellings of the literal the R54-9 record calls the one owner — a
+  structural edit to one alone would silently stop the resolution one
+  hop early; a reflection source pin holds the composition at one.
+- `t31-glm56-4` — the secret scanner's label fold rides the ONE ascii
+  fold owner again (the branch-introduced seat was an unrecorded
+  fourth member of the ocr15-3 census of record; verdict-identical,
+  A/B-driven over the case-variant extension families).
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 55)
 
 Forty-first claude-glm pass (/code-review max over the FULL branch
