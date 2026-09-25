@@ -2701,7 +2701,7 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
     if (wp_connectors_anchor_walks_up($anchor_view)) {
         return array( 'escapes upward through dirname()' );
     }
-    if (stripos($anchor_view, '__DIR__') === false && strpos($anchor_view, 'ABSPATH') === false) {
+    if (! wp_connectors_anchor_is_present($anchor_view)) {
         return array( 'is not anchored to __DIR__ or ABSPATH' );
     }
     $quoted_literals = wp_connectors_quoted_literals($expression);
@@ -2718,6 +2718,27 @@ function wp_connectors_include_expression_reasons($file, $expression, $pluginDir
     }
 
     return array();
+}
+
+/**
+ * Whether the view carries an ANCHOR TOKEN — the ONE owner of the
+ * __DIR__/ABSPATH presence predicate (t31-glm54-7, R54-13): the
+ * two-token probe was hand-spelled at four consult seats beside this
+ * file's walks_up owner while the round-53 hoist consolidated every
+ * OTHER anchor vocabulary — a future anchor-vocabulary change (a new
+ * anchor token, a case-doctrine correction) had to land at four-five
+ * seats, and the rounds 33-34 case sweep already had to move every
+ * seat by hand. The __DIR__ probe is case-insensitive (PHP folds the
+ * magic constant's spelling), ABSPATH byte-exact (a define()'d
+ * constant is case-sensitive) — both spellings one seat, beside the
+ * dirname-family owner they compose with at every consult.
+ *
+ * @param string $view The anchor-consult view (the anchor_view() product, or the raw statement at the short-circuit probe).
+ * @return bool True when the view spells either anchor token.
+ */
+function wp_connectors_anchor_is_present($view)
+{
+    return false !== stripos($view, '__DIR__') || false !== strpos($view, 'ABSPATH');
 }
 
 /**
@@ -2805,8 +2826,7 @@ function wp_connectors_anchor_view($statement)
      * masker-view residual's exposure unchanged): never a silently
      * misaligned view consumed at the consults.
      */
-    if (stripos($statement, '__DIR__') === false
-        && strpos($statement, 'ABSPATH') === false
+    if (! wp_connectors_anchor_is_present($statement)
         && stripos($statement, 'dirname') === false) {
         return $statement;
     }
@@ -2885,6 +2905,28 @@ function wp_connectors_include_argument($statement)
      * twin resolves clean).
      */
     return trim((string) preg_replace('/^(?:require|include)(?:_once)?\s*/i', '', trim($statement)), " \t\n\r();?>");
+}
+
+/**
+ * The assignment's VALUE expression — the ONE owner of the
+ * strip-the-'$var ='-head extraction (t31-glm54-7, R54-10): the
+ * idiom was spelled byte-identically at three collector seats (the
+ * expression reasons, the variable-argument resolution, the
+ * two-level inner resolution) while the sibling include-argument
+ * owner rides one seat — a future head grammar or terminator
+ * widening landing at one copy leaves the other collectors judging
+ * stale tail bytes (the phantom-flag/false-clear drift class).
+ * The ';' trim is the seats' own recorded divergence from the
+ * include-argument owner's fuller terminator class ('?>' included,
+ * the R29-2 doctrine round 53 consolidated): a widening here is one
+ * edit with a drive, never three.
+ *
+ * @param string $assignment The assignment statement text.
+ * @return string The value expression with the assignment head and trailing ';' shed.
+ */
+function wp_connectors_assignment_value_expression($assignment)
+{
+    return trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
 }
 
 function wp_connectors_include_runtime_segments($statement)
@@ -3957,6 +3999,56 @@ function wp_connectors_same_file_assignments($code, $masked, $variable, $offset)
 }
 
 /**
+ * The TRANSITIVE same-file variable-resolution worklist — the ONE
+ * owner of the R43-1/R44-1 walk (t31-glm54-7, R54-9): the composer
+ * screens' t31-glm53-1 seat and the autoloader operand probe's
+ * t31-glm44-1 seat had spelled the same walk byte-identically by hand
+ * (the extraction regex, the LIFO pending stack, the seen-set closing
+ * cycles, the per-hop same-file-assignment resolution, the hop
+ * re-extraction), so every resolution widening had to land at two
+ * seats or the screens silently disagreed over the same file — the
+ * fail-open one-seat-short class the ledger records four rounds
+ * running. The walk visits every resolved assignment VALUE through
+ * the callback; a false return stops the walk (the consumer's
+ * violation landed — the autoloader seat's early exit, the composer
+ * seat accumulating every value instead).
+ *
+ * @param string   $code             The file's raw source.
+ * @param string   $masked           The file's string-masked view (same length).
+ * @param string   $statement_text   The statement whose variable operands resolve.
+ * @param int      $statement_offset The statement's byte offset in $code.
+ * @param callable $visit            Receives each resolved assignment value; return false to stop.
+ * @return void
+ */
+function wp_connectors_each_transitive_assignment_value($code, $masked, $statement_text, $statement_offset, $visit)
+{
+    $variable_names = array();
+    preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $statement_text, $variable_names);
+    $pending = array();
+    foreach (array_reverse($variable_names[1]) as $variable_name) {
+        $pending[] = array( '$' . $variable_name, $statement_offset );
+    }
+    $seen_variables = array();
+    while ($pending !== array()) {
+        $hop = array_pop($pending);
+        if (isset($seen_variables[ $hop[0] ])) {
+            continue;
+        }
+        $seen_variables[ $hop[0] ] = true;
+        foreach (wp_connectors_same_file_assignments($code, $masked, $hop[0], $hop[1]) as $assignment_value) {
+            if (false === $visit($assignment_value)) {
+                return;
+            }
+            $hop_names = array();
+            preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $assignment_value, $hop_names);
+            foreach (array_reverse($hop_names[1]) as $hop_name) {
+                $pending[] = array( '$' . $hop_name, $hop[1] );
+            }
+        }
+    }
+}
+
+/**
  * Whether a mixed anchored expression is the mandated PSR-4 autoloader shape.
  *
  * The ONE sanctioned variable include in a plugin: inside the plugin's own
@@ -4033,7 +4125,7 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
     // t31-glm33-2: anchor consults judge the masked view (string data
     // never anchors) — see wp_connectors_anchor_view(), the ONE owner.
     $anchor_view = wp_connectors_anchor_view($statement);
-    if (stripos($anchor_view, '__DIR__') === false && strpos($anchor_view, 'ABSPATH') === false) {
+    if (! wp_connectors_anchor_is_present($anchor_view)) {
         // Unanchored statements are flagged by the literal analysis already.
         return array();
     }
@@ -4057,7 +4149,7 @@ function wp_connectors_runtime_segment_reasons($file, $code, $statement, $offset
             continue;
         }
         foreach ($assignments as $assignment) {
-            $value = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
+            $value = wp_connectors_assignment_value_expression($assignment);
             /*
              * t31-glm36-2 [R36-2, security:medium, driven fail-open —
              * round 35's junk guard was ONE SPELLING of a class]: an
@@ -4138,7 +4230,7 @@ function wp_connectors_hidden_include_reasons($file, $code, $include, $offset, $
         $reasons = array();
         $prefix = sprintf('variable %s resolves to a path that %%s', $argument);
         foreach ($assignments as $assignment) {
-            $expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($assignment)), ';');
+            $expression = wp_connectors_assignment_value_expression($assignment);
             foreach (wp_connectors_assignment_value_reasons($file, $code, $argument, $argument, $expression, $offset, $pluginDir, $masked, $prefix, 0) as $reason) {
                 $reasons[] = $reason;
             }
@@ -4223,7 +4315,7 @@ function wp_connectors_assignment_value_reasons($file, $code, $reason_variable, 
 
         $inner_prefix = sprintf('variable %s resolves through %s to a path that %%s', $reason_variable, $expression);
         foreach ($inner_assignments as $inner_assignment) {
-            $inner_expression = trim((string) preg_replace('/^[^=]*?(?:\.)?=\s*/', '', trim($inner_assignment)), ';');
+            $inner_expression = wp_connectors_assignment_value_expression($inner_assignment);
             foreach (wp_connectors_assignment_value_reasons($file, $code, $reason_variable, $expression, $inner_expression, $offset, $pluginDir, $masked, $inner_prefix, 1) as $reason) {
                 $reasons[] = $reason;
             }
@@ -4864,36 +4956,20 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                      * round-52 revival: the include's own span names
                      * no needle and the masker blanks the assignment's
                      * literal). The R43-1/R44-1 transitive worklist —
-                     * the autoloader seat's own shape — resolves the
-                     * statement's variable operands through the
-                     * SAME-FILE assignment machinery, every resolved
-                     * assignment VALUE's raw text joining the operand
-                     * span the screens judge: an operand path is
-                     * never prose, whatever its spelling or how many
-                     * same-file writes carry it to the channel.
+                     * t31-glm54-7's ONE owner now, the autoloader
+                     * seat's own shape — resolves the statement's
+                     * variable operands through the SAME-FILE
+                     * assignment machinery, every resolved assignment
+                     * VALUE's raw text joining the operand span the
+                     * screens judge: an operand path is never prose,
+                     * whatever its spelling or how many same-file
+                     * writes carry it to the channel.
                      */
-                    $include_variables = array();
-                    preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $include[0], $include_variables);
-                    $pending_variables = array();
-                    foreach (array_reverse($include_variables[1]) as $include_variable_name) {
-                        $pending_variables[] = array( '$' . $include_variable_name, $include[1] );
-                    }
-                    $seen_variables = array();
-                    while ($pending_variables !== array()) {
-                        $variable_hop = array_pop($pending_variables);
-                        if (isset($seen_variables[ $variable_hop[0] ])) {
-                            continue;
-                        }
-                        $seen_variables[ $variable_hop[0] ] = true;
-                        foreach (wp_connectors_same_file_assignments($code, $masked, $variable_hop[0], $variable_hop[1]) as $assignment_value) {
-                            $include_statements .= "\n" . $assignment_value;
-                            $hop_variable_names = array();
-                            preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $assignment_value, $hop_variable_names);
-                            foreach (array_reverse($hop_variable_names[1]) as $hop_variable_name) {
-                                $pending_variables[] = array( '$' . $hop_variable_name, $variable_hop[1] );
-                            }
-                        }
-                    }
+                    wp_connectors_each_transitive_assignment_value($code, $masked, $include[0], $include[1], static function ($assignment_value) use (&$include_statements) {
+                        $include_statements .= "\n" . $assignment_value;
+
+                        return true;
+                    });
                     $quoted_literals = wp_connectors_quoted_literals($include[0]);
                     if ($quoted_literals !== array()) {
                         /*
@@ -4932,7 +5008,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                          * survives: no masking is PAID here at all).
                          */
                         $anchor_view = (string) substr($masked, $include_match[1], strlen($include_match[0]));
-                        $anchored = stripos($anchor_view, '__DIR__') !== false || strpos($anchor_view, 'ABSPATH') !== false;
+                        $anchored = wp_connectors_anchor_is_present($anchor_view);
                         /*
                          * t31-glm34-2 (the review's R34-12): the escapesUp
                          * consult spells the explicit house form — an abort
@@ -5446,38 +5522,29 @@ function wp_connectors_autoloader_violations($pluginDir)
                      * the judgment read only the resolved assignment's
                      * OWN text ('$lib = $paths;' names no vendor bytes)
                      * and never recursed into '$paths'. The resolution
-                     * is TRANSITIVE now: a worklist of the assignment
-                     * value's own variables, a seen-set closing cycles
-                     * (the escape walk's own depth discipline), each
-                     * hop's assignments judged by the same standard —
-                     * the vendor path reaches the channel through any
-                     * chain of same-file writes the write-visibility
-                     * spans admit.
+                     * is TRANSITIVE now: the R43-1/R44-1 worklist —
+                     * t31-glm54-7's ONE owner, the composer screens'
+                     * own shape — a seen-set closing cycles, each
+                     * hop's assignments judged by the same standard,
+                     * the vendor path reaching the channel through
+                     * any chain of same-file writes the
+                     * write-visibility spans admit. A hit stops the
+                     * walk and the candidate loop together (the
+                     * former break-3 shape, one violation per file).
                      */
-                    $variable_names = array();
-                    preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $statement_text, $variable_names);
-                    $pending = array();
-                    foreach (array_reverse($variable_names[1]) as $variable_name) {
-                        $pending[] = array( '$' . $variable_name, $operand_start );
-                    }
-                    $seen_variables = array();
-                    while ($pending !== array()) {
-                        $hop = array_pop($pending);
-                        if (isset($seen_variables[ $hop[0] ])) {
-                            continue;
+                    $resolved_hit = false;
+                    wp_connectors_each_transitive_assignment_value($code, $masked, $statement_text, $operand_start, static function ($assignment_value) use (&$resolved_hit) {
+                        if (false !== stripos($assignment_value, 'vendor') || false !== stripos($assignment_value, 'composer')) {
+                            $resolved_hit = true;
+
+                            return false;
                         }
-                        $seen_variables[ $hop[0] ] = true;
-                        foreach (wp_connectors_same_file_assignments($code, $masked, $hop[0], $hop[1]) as $assignment_value) {
-                            if (false !== stripos($assignment_value, 'vendor') || false !== stripos($assignment_value, 'composer')) {
-                                $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
-                                break 3;
-                            }
-                            $hop_names = array();
-                            preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $assignment_value, $hop_names);
-                            foreach (array_reverse($hop_names[1]) as $hop_name) {
-                                $pending[] = array( '$' . $hop_name, $hop[1] );
-                            }
-                        }
+
+                        return true;
+                    });
+                    if ($resolved_hit) {
+                        $violations[] = sprintf('%s: src/autoload.php must not reference composer or vendor.', $slug);
+                        break;
                     }
                     continue;
                 }
