@@ -92,6 +92,29 @@ const WP_CONNECTORS_STATEMENT_TAIL_GRAMMAR = '[^;?]*+(?:\?(?!>)[^;?]*+)*+' . WP_
 const WP_CONNECTORS_COMPOUND_ASSIGNMENT_OPERATORS = '(?:\?\?=|\*\*=|<<=|>>=|[-+*\/%&|^.]=|=(?![=>]))';
 
 /**
+ * t31-glm57-2 [R57-2 — the channel-function family as ONE
+ * vocabulary]: the file/exec call family was spelled twice with no
+ * structural tie — the composer screen's keyword alternation inside
+ * wp_connectors_self_containment_violations() and the operand
+ * probe's $channel_functions map inside
+ * wp_connectors_autoloader_violations() — while the seat's own
+ * docblock claimed the tie in prose ('the channel candidates ride
+ * the autoloader seat's own family'). This exact lineage already
+ * lagged once (the composer screen missed the widened family across
+ * rounds 40-54 until R54-2 re-aligned it, precisely because nothing
+ * tied the seats); a fourth widening now lands everywhere or
+ * nowhere by construction. eval rides the alternation BESIDE the
+ * family (the regex judges code TEXT) while the token walk judges
+ * it by its own T_EVAL id — two spellings of one judgment, named at
+ * both seats. Order is load-bearing for byte-identity with the
+ * former inline literal.
+ */
+const WP_CONNECTORS_CHANNEL_FUNCTIONS = array(
+    'file_get_contents', 'readfile', 'shell_exec', 'exec', 'system',
+    'passthru', 'popen', 'proc_open', 'fopen', 'file_put_contents',
+);
+
+/**
  * Strips docblock and line comments so checks only see functional code.
  *
  * glm15-2: comment removal is TOKEN-based (token_get_all), not regex —
@@ -5127,7 +5150,14 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * driven producer ships one (the R39-3 boundary before
              * R40-3 widened it).
              */
-            $channel_scanned = preg_match_all('/(?<![\\$:>' . WP_CONNECTORS_LABEL_BYTES . '])(?i:file_get_contents|readfile|shell_exec|exec|system|passthru|popen|proc_open|fopen|file_put_contents|eval)\s*\(/', $masked, $channel_calls, PREG_OFFSET_CAPTURE);
+            /*
+             * t31-glm57-2 [R57-2]: the family rides the ONE
+             * vocabulary constant above with eval spelled beside it
+             * — this seat judges code TEXT, so the keyword needs its
+             * regex arm here where the token walk below judges it by
+             * T_EVAL id.
+             */
+            $channel_scanned = preg_match_all('/(?<![\\$:>' . WP_CONNECTORS_LABEL_BYTES . '])(?i:' . implode('|', WP_CONNECTORS_CHANNEL_FUNCTIONS) . '|eval)\s*\(/', $masked, $channel_calls, PREG_OFFSET_CAPTURE);
             if (false === $channel_scanned) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for channel calls — the self-containment scan aborted (PCRE: %s)',
@@ -5556,11 +5586,15 @@ function wp_connectors_autoloader_violations($pluginDir)
         ob_start();
         $operand_tokens = token_get_all($source);
         ob_end_clean();
-        $channel_functions = array(
-            'file_get_contents' => true, 'readfile' => true, 'shell_exec' => true, 'exec' => true,
-            'system' => true, 'passthru' => true, 'popen' => true, 'proc_open' => true,
-            'fopen' => true, 'file_put_contents' => true,
-        );
+        /*
+         * t31-glm57-2 [R57-2]: the membership map derives from the
+         * ONE vocabulary constant — eval is absent BY DESIGN here
+         * (the walk meets it as its own T_EVAL token id at the
+         * construct arm above, never as a T_STRING spelling to look
+         * up), the regex seat's `|eval` arm the same judgment's
+         * text-side spelling.
+         */
+        $channel_functions = array_fill_keys(WP_CONNECTORS_CHANNEL_FUNCTIONS, true);
         /*
          * t31-glm45-3: the walk accumulates each token's byte offset
          * (token_get_all answers LINE, never offset — and it never

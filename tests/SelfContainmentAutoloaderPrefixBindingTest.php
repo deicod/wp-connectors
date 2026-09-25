@@ -389,4 +389,48 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $direct), 'The direct spelling keeps its flag — the rewrite widens, never narrows.');
     }
 
+    /**
+     * Round-57 pin (t31-glm57-2 [R57-2] — the channel-function
+     * family as ONE vocabulary): the composer screen's keyword
+     * alternation (inside wp_connectors_self_containment_violations)
+     * and the operand probe's membership map (inside
+     * wp_connectors_autoloader_violations) spelled the file/exec
+     * family twice with no structural tie while the seat's own
+     * docblock claimed the tie in prose — the exact lineage that
+     * already lagged once (the composer screen missed the widened
+     * family across rounds 40-54 until R54-2 re-aligned it,
+     * precisely because nothing tied the seats). Both seats compose
+     * from WP_CONNECTORS_CHANNEL_FUNCTIONS now; eval rides the regex
+     * beside the family (that seat judges code TEXT) while the token
+     * walk judges it by its own T_EVAL id — two spellings of one
+     * judgment, named at both seats.
+     */
+    public function testTheChannelFunctionFamilyRidesOneVocabularyAtBothSeats(): void
+    {
+        /*
+         * Byte-identity with the former inline literal (the order is
+         * load-bearing for composition): a reordered constant is
+         * semantically inert to PCRE but this pin holds the composed
+         * string to the exact spelling the standing channel pins
+         * (R54-2's legs above) drove for four decades of rounds.
+         */
+        $this->assertSame(
+            'file_get_contents|readfile|shell_exec|exec|system|passthru|popen|proc_open|fopen|file_put_contents|eval',
+            implode('|', WP_CONNECTORS_CHANNEL_FUNCTIONS) . '|eval',
+            'The composed alternation is byte-identical to the former inline literal — order included.'
+        );
+
+        /*
+         * The two seats compose from the constant (the source pin: a
+         * pasted second spelling replaces the consult spelling it
+         * abandoned, and the count names the one declaration + two
+         * consults the owner exists to hold).
+         */
+        $source = (string) file_get_contents(__DIR__ . '/../bin/lib/plugin-tools.php');
+        $this->assertNotSame('', $source, 'The plugin-tools source must be readable for the composition pin.');
+        $this->assertStringContainsString("implode('|', WP_CONNECTORS_CHANNEL_FUNCTIONS)", $source, 'The composer screen\'s keyword alternation composes from the one vocabulary.');
+        $this->assertStringContainsString('array_fill_keys(WP_CONNECTORS_CHANNEL_FUNCTIONS', $source, 'The operand probe\'s membership map composes from the one vocabulary.');
+        $this->assertSame(3, substr_count($source, 'WP_CONNECTORS_CHANNEL_FUNCTIONS'), 'One declaration, two consults — no third spelling of the family grows beside the owner.');
+    }
+
 }
