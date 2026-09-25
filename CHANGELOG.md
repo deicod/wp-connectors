@@ -6,6 +6,53 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 58)
+
+Forty-fourth claude-glm pass (/code-review max over the full branch
+diff, ledger-read first — the convergence round ordered and answered
+still not zero, four of the seven fixes in the loop's own
+recent-round machinery and the headline falsifying a recorded
+premise): the dev-entry slug screen, the encoded-container gate
+arming, the composer screen's three gaps, the extension-less scan
+routing, the ';' comment enclosure, three stranded docblocks, and
+the segment-vocabulary fold. Seven fix commits t31-glm58-1..7 plus
+the docs close, the full offline check green. Two members recorded
+as Task 3.3 inheritance. Suite 1991 → 1996 tests,
+49030 → 49073 assertions, 3 skipped unchanged.
+
+- `t31-glm58-1` — a connector directory NAMED a development entry
+  ('tools', 'tests', …) built green while the inspector rejected
+  every entry of the same zip (driven: conventions 0 / build 0 /
+  inspect REJECTED); the dev-entry owner consults beside the
+  grammar owner at the build and conventions seams — one
+  vocabulary, three seats, falsifying ocr10-8's recorded premise.
+- `t31-glm58-2` — the embedded-credential gate arms on a
+  WHOLLY-ENCODED container now (encoded assignment beside encoded
+  pair-separator — an OAuth state cookie shape): the R51-15
+  opaque-key trade keeps its recorded tail, the container's short
+  final credential renders the bare mask.
+- `t31-glm58-3` — the per-file composer screen: identifier-interior
+  'composer' bytes in a connector's own PSR-4 prefix no longer make
+  it un-buildable (the word-boundary owner, the loader class names
+  kept as their own arm); a vendor/autoload path composed across
+  two literals flags through its concatenated literal spine; and a
+  lone channel-carried composer invocation flags without an
+  unrelated include in the file.
+- `t31-glm58-4` — an extension-less WALKED file (README, NOTICE)
+  rides the code arm only when its head opens PHP: prose-headed
+  payloads keep the text-family routing and their markers are
+  honored exactly like the .md twin's.
+- `t31-glm58-5` — ';' joins the marker grammar's enclosure
+  vocabulary for the ini/conf/config family (php.ini's own comment
+  character); toml/properties/env keep '#' only.
+- `t31-glm58-6` — three stranded docblocks relocated (the class
+  regrown in the loop's own fix commits: glm55-7, glm53-13,
+  glm28-8), verified and pinned attaching by reflection.
+- `t31-glm58-7` — wp_connectors_segment_is_named() folds its
+  constant name vocabulary once per name instead of once per call
+  (the inspector's hostile-archive per-segment walk; re-measured at
+  landing: the fold's per-call cost gone).
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 57)
 
 Forty-third claude-glm pass (/code-review max over the full branch
