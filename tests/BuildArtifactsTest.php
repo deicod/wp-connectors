@@ -2013,6 +2013,41 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * Round-59 pin (t31-glm59-7 [R59-10, driven at HEAD by both the
+     * review and the driver]): both connector-census globs silently
+     * skipped dot-led directories — a malformed '.wip' connector was
+     * INVISIBLE to the conventions census ('0 plugin-tree
+     * violation(s)' over a tree it never judged) and silently
+     * omitted from build-all at exit 0, against the build's own
+     * never-silently-omitted contract, while '--slug=.wip' refused
+     * it loudly (proving omission, not absence). The census reads
+     * the directory now — scandir, never glob — at both seats.
+     */
+    public function testADotLedConnectorDirectoryIsCensusedNeverOmitted(): void
+    {
+        if (! self::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the spawned build-all leg cannot run; the source pins below carry the census consult.');
+        }
+        $repo = $this->makeBuildCliRepo(array( '.wip' => false ));
+
+        try {
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' 2>&1', $output, $exit);
+            $report = implode("\n", $output);
+            $this->assertSame(1, $exit, "A tree containing a malformed dot-led connector must FAIL build-all — never silently omit it at exit 0:\n{$report}");
+            $this->assertStringContainsString('.wip', $report, 'The refusal names the dot-led connector the census now sees (red at HEAD: exit 0, the connector omitted).');
+        } finally {
+            WpHarness::releaseScratch($repo);
+        }
+
+        // Both census seats read the directory (the source pin).
+        foreach (array( __DIR__ . '/../bin/check-conventions.php', __DIR__ . '/../bin/build.php' ) as $census_file) {
+            $source = (string) file_get_contents($census_file);
+            $this->assertNotSame('', $source, "The census source must be readable: {$census_file}");
+            $this->assertStringContainsString("scandir(\$repoRoot . '/connectors')", $source, "The census at {$census_file} reads the directory — glob('*') never matches dot-led names.");
+        }
     }
 
     /**

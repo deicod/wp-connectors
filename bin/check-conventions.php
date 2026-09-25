@@ -26,8 +26,18 @@ if (wp_connectors_cli_entry(__FILE__)) {
 
     $repoRoot = dirname(__DIR__);
     $pluginRoots = array();
-    foreach (glob($repoRoot . '/connectors/*', GLOB_ONLYDIR) ?: array() as $dir) {
-        $pluginRoots[] = $dir;
+    /*
+     * t31-glm59-7 [R59-10, driven — glob('…/*') never matches
+     * dot-led names]: a malformed '.wip' connector was INVISIBLE to
+     * the census (0 violations over a tree it never judged) while
+     * '--slug=.wip' refused it loudly — omission, not absence. The
+     * census reads the directory: every child directory is a plugin
+     * root, dot-led included, judged by the same screens.
+     */
+    foreach (scandir($repoRoot . '/connectors') ?: array() as $name) {
+        if ('.' !== $name && '..' !== $name && is_dir($repoRoot . '/connectors/' . $name)) {
+            $pluginRoots[] = $repoRoot . '/connectors/' . $name;
+        }
     }
     foreach (glob($repoRoot . '/tests/fixtures/plugins/*', GLOB_ONLYDIR) ?: array() as $dir) {
         $pluginRoots[] = $dir;
