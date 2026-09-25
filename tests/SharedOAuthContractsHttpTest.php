@@ -3318,6 +3318,18 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('state%3Dxyz&code%3DBCJK-3502'), 'A RAW separator beside an encoded assignment is a container — the spellings mix (red at HEAD: …3502).');
         $this->assertSame('…', SecretMask::mask('state%253Dxyz%2526code%253DBCJK-3502'), 'A DOUBLE-encoded container arms through the layer walk — every encoding layer judged in turn, the decode pass\'s own doctrine (red at HEAD: …3502).');
         $this->assertSame('…uvwx', SecretMask::mask('abcdefghijklmnop%26qrstuvwx'), 'A separator ALONE is not a container either — the opaque key without an assignment keeps its tail (the err-safe mirror).');
+
+        /*
+         * t31-glm60-2 (R60-3, driven at HEAD by both the review and
+         * the driver — the round-59 walk required same-layer
+         * co-occurrence): a cross-layer mixed spelling — the
+         * assignment single-encoded, the separator one layer deeper —
+         * never armed at any layer. The conjuncts compose across the
+         * walk: ANY layer's assignment beside ANY layer's separator.
+         */
+        $this->assertSame('…', SecretMask::mask('state%3Dxyz%2526code%3DBCJK-3502'), 'A cross-layer container arms — the assignment at one layer, the separator one deeper (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('state%3Dxyz%253Bcode%3DBCJK-3502'), 'The %3b cross-layer spelling arms identically.');
+        $this->assertSame('…', SecretMask::mask('theme%3Ddark%253Bsid%3Dabcdefghi'), 'The cookie/matrix cross-layer shape arms (red at HEAD: …fghi).');
     }
 
     /**

@@ -425,6 +425,19 @@ final class SecretMask {
 	const ENCODED_DELIMITER_TRIPLES = array( '%3f', '%23', '%3d' );
 
 	/**
+	 * The percent-encoded PAIR-SEPARATOR spellings (t31-glm60-2
+	 * [R60-10]): the R56-1 separator family's encoded members — '%26'
+	 * the query/cookie-pair separator, '%3b' the cookie/matrix one —
+	 * ONE list beside the opener/assignment triples, the R54-1 'a
+	 * delimiter widening lands at the list or nowhere' doctrine the
+	 * file itself cites (the round-59 container arm spelled them
+	 * inline).
+	 *
+	 * @since 0.1.0
+	 */
+	const ENCODED_PAIR_SEPARATORS = array( '%26', '%3b' );
+
+	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
 	 *
 	 * Null and short values (at or below the minimum length, counted in
@@ -642,25 +655,47 @@ final class SecretMask {
 		 * (a lone opener triple, no assignment, no separator at ANY
 		 * layer) stays outside every shape.
 		 */
-		$container_armed = false;
-		$container_view  = $value;
-		while ( true ) {
-			if ( false !== stripos( $container_view, '%3d' )
-				&& ( false !== stripos( $container_view, '%26' )
-					|| false !== stripos( $container_view, '%3b' )
-					|| false !== strpos( $container_view, '&' )
-					|| false !== strpos( $container_view, ';' ) ) ) {
-				$container_armed = true;
-				break;
+
+		/*
+		 * t31-glm60-2 [R60-3, driven — the round-59 walk required the
+		 * assignment and the separator to co-occur within ONE layer's
+		 * view]: a cross-layer mixed spelling — the assignment
+		 * single-encoded, the separator one layer deeper (round 59's
+		 * own 'mixed' inner spelling re-encoded once by an outer
+		 * layer) — never armed the gate at any layer and the
+		 * whole-value tail clause printed four of nine device-code
+		 * characters ('state%3Dxyz%2526code%3DBCJK-3502' → '…3502'
+		 * where its same-layer twin masked). The conjuncts compose
+		 * across the walk now: ANY layer spelled '%3d' AND ANY layer
+		 * carried a separator (encoded or raw, the R56-1 family) —
+		 * one pass over the ONE per-layer walker, monotone mask-more
+		 * by construction, the R51-15 row (a lone opener triple, no
+		 * assignment at ANY layer, no separator at ANY layer) and the
+		 * alone-spelling keys staying outside every shape.
+		 */
+		$container_saw_assignment = false;
+		$container_saw_separator  = false;
+		$container_armed          = self::any_layer_carries(
+			$value,
+			static function ( string $view ) use ( &$container_saw_assignment, &$container_saw_separator ): bool {
+				if ( false !== stripos( $view, '%3d' ) ) {
+					$container_saw_assignment = true;
+				}
+				foreach ( self::ENCODED_PAIR_SEPARATORS as $separator ) {
+					if ( false !== stripos( $view, $separator ) ) {
+						$container_saw_separator = true;
+						break;
+					}
+				}
+				if ( false !== strpos( $view, '&' ) || false !== strpos( $view, ';' ) ) {
+					$container_saw_separator = true;
+				}
+
+				return $container_saw_assignment && $container_saw_separator;
 			}
-			if ( false === strpos( $container_view, '%' ) ) {
-				break;
-			}
-			$container_next = rawurldecode( $container_view );
-			if ( $container_next === $container_view ) {
-				break;
-			}
-			$container_view = $container_next;
+		);
+		if ( ! $container_armed && $container_saw_assignment && $container_saw_separator ) {
+			$container_armed = true;
 		}
 		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || $eq_armed || $container_armed;
 		if ( $raw_gated && self::value_carries_short_embedded_credential( $value ) ) {
@@ -944,12 +979,40 @@ final class SecretMask {
 	 * @return bool True when any encoding layer spells an encoded delimiter.
 	 */
 	private static function raw_carries_encoded_delimiter( string $value ): bool {
+		return self::any_layer_carries(
+			$value,
+			static function ( string $view ): bool {
+				foreach ( self::ENCODED_DELIMITER_TRIPLES as $triple ) {
+					if ( false !== stripos( $view, $triple ) ) {
+						return true;
+					}
+				}
+
+				return false;
+			}
+		);
+	}
+
+	/**
+	 * Whether ANY decode layer of a value satisfies a per-layer
+	 * predicate (t31-glm60-2 [R60-10, the one per-layer walker]): the
+	 * fixpoint decode walk — each decode strictly shrinks the view, so
+	 * the loop terminates; a view with no '%' byte (or one whose
+	 * escapes decode no further) ends the walk. The round-59 container
+	 * arm hand-spelled the loop a THIRD time beside this owner and the
+	 * decoded pass; every per-layer judgment rides the ONE walker now.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string   $value     The raw view.
+	 * @param callable $judges_layer Invoked per layer; true stops the walk.
+	 * @return bool True when any layer satisfied the predicate.
+	 */
+	private static function any_layer_carries( string $value, callable $judges_layer ): bool {
 		$view = $value;
 		while ( true ) {
-			foreach ( self::ENCODED_DELIMITER_TRIPLES as $triple ) {
-				if ( false !== stripos( $view, $triple ) ) {
-					return true;
-				}
+			if ( $judges_layer( $view ) ) {
+				return true;
 			}
 			if ( false === strpos( $view, '%' ) ) {
 				return false;
