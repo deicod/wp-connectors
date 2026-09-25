@@ -6,6 +6,80 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 55)
+
+Forty-first claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first; the convergence round ordered — still not
+zero, five of the eight driven defects in the round-54 commits' own
+machinery, the loop's shadow twenty generations on): the filler
+exemption's head side, the odd-quote guard's judged view, the
+compositor's join seams, the composer screen's channel completion,
+the mask's first-'=' arming, the relative global escape, the
+word-boundary vendor owner, the inspect CLI's extra-argument
+refusal, the worklist's abort conversions, the window derivation's
+one owner, and the redaction pin's middle windows. Eleven fix
+commits t31-glm55-1..14 plus the docs close, the full offline check
+green after every commit. One structural re-flag recorded (the
+three-walk use-fence). Suite 1986 → 1987 tests,
+48711 → 48992 assertions, 3 skipped unchanged.
+
+- **The filler exemption's head side (t31-glm55-1, driven
+  fail-open; bin/lib/secret-scanner.php)** — the tail rules judged
+  only the bytes AFTER the run, so any live credential inside one
+  segment became exempt filler by suffixing 'abcdefgh' or
+  '0123456789'; the head gates every tail rule now — empty or the
+  pure digit flank, the around-the-run contract true on both sides.
+- **The odd-quote guard's judged view (t31-glm55-2, driven both
+  directions; bin/lib/secret-scanner.php)** — the round-54 guard
+  counted the raw line while the pairing judges the
+  region-stripped prose view, an embedded sample's quotes flipping
+  the parity both ways (a fail-open exemption and a false flag
+  master never made); the guard counts the same string the consult
+  judges.
+- **The compositor's join seams (t31-glm55-3, driven fail-open;
+  bin/lib/secret-scanner.php)** — the concatenation of prose slices
+  around a region re-supplied whitespace adjacency the source never
+  had, a glued '//' riding the manufactured \s arm; every
+  contribution whose cursor a region advanced takes the sentinel.
+- **The composer screen's channel completion
+  (t31-glm55-4/9/13, driven; bin/lib/plugin-tools.php)** — the
+  'composer' needle and the variable worklist both reached the
+  channel operands (a composer.json file/exec operand and a
+  '$p = …vendor/autoload…; readfile($p);' chain both silent where
+  master refused); the span rides the one depth-loop owner and the
+  walk refuses its own abort at all three seats.
+- **The mask's first-'=' arming (t31-glm55-5, driven leak;
+  shared/src/Support/SecretMask.php)** — a trailing base64 pad
+  silently disarmed an earlier mid-value '=' carrying a real short
+  credential ('a=BCJK-3502xy=' rendering '…2xy=', the Cookie channel
+  leaking four of nine session-id bytes); the arm fires when the
+  FIRST '=' is followed by a byte, the '=' anchor and the pure
+  padding tail both standing.
+- **The relative global escape (t31-glm55-6, driven false refusal;
+  bin/lib/plugin-tools.php)** — 'namespace\define(…)' at global
+  scope (php -l clean, executing binding the constant) was consumed
+  as a foreign qualifier and refused must-define; the escape fires
+  exactly where the ledger's scope is null.
+- **The word-boundary vendor owner
+  (t31-glm55-7, driven false refusal; bin/lib/plugin-tools.php)** —
+  the autoloader gate's bare stripos consults refused a working
+  autoloader over the variable name $vendor_dir; every consult rides
+  wp_connectors_text_names_vendor_or_composer(), the needle as a
+  whole word over label-byte and '$' boundaries.
+- **The inspect CLI's extra-argument refusal (t31-glm55-8, driven;
+  bin/inspect-artifact.php)** — the entry script silently ignored
+  every argument past the first; exactly one artifact, the first
+  extra answering the usage refusal through the printable seam.
+- **The window derivation's one owner (t31-glm55-14,
+  verdict-identical hoist; bin/lib/secret-scanner.php)** — the
+  hyphenated-window pieces derive through the R54-15 split owner, a
+  word contributing a window exactly when it carries a separator.
+- **The redaction pin's middle windows (t31-glm55-12, driven;
+  tests/harness/WpConnectorsTestCase.php)** — assertRedacted pinned
+  only the head and tail 8-byte windows, the interior free to leak;
+  every 8-byte interior window is probed, each with its byte-range
+  failure message.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 54)
 
 Fortieth claude-glm pass (/code-review max over the FULL branch
