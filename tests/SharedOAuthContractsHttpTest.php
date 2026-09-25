@@ -3236,6 +3236,17 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('redirect%25253Fcode%25253DBCJK-3502='), 'A TRIPLE-encoded trailing-pad spelling judges the same — the layered probe and the fixpoint decode walk the same layers.');
         $this->assertSame('…', SecretMask::mask('redirect%253fcode%253dbcjk-3502='), 'The lowercase multi-layer spelling judges identically — every triple consult is case-insensitive.');
         $this->assertSame('…', SecretMask::mask('abcdefghijklmnopqrs=%25'), 'Padding followed by a NON-empty run still arms through the first disjunct — the mid-token \'=\' err-safe trade unchanged by the layered probe.');
+        /*
+         * t31-glm55-5 (R55-7, driven leak): the assignment arm
+         * consulted only the LAST '=', so a real short credential
+         * behind an EARLIER '=' plus a trailing base64 pad left the
+         * gate unarmed — the R52-6 mid-'=' trade broken in the one
+         * composition R53-4 fixed for the ENCODED arm alone. The
+         * arm fires when the FIRST '=' is followed by a byte.
+         */
+        $this->assertSame('…', SecretMask::mask('a=BCJK-3502xy='), 'A mid-value \'=\' carrying a real short credential arms the gate through a trailing pad — the last-\'=\' consult never disarms the earlier assignment (red at HEAD: …2xy=).');
+        $this->assertSame('…', SecretMask::mask('session=dGVzdA=='), 'The realistic double-padded cookie value masks whole — its unpadded twin always did.');
+        $this->assertSame('…', SecretMask::mask('zzzzzzzzzzzzAbCd=EFGH='), 'The recorded mid-\'=\' trade shape with a trailing pad added still masks — the trade holds whichever \'=\' is last.');
     }
 
     /**

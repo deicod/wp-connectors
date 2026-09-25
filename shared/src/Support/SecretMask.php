@@ -567,8 +567,33 @@ final class SecretMask {
 		 * cannot fire at all), and the pure padding shape keeps its
 		 * tail (no '%' byte means no layer ever spells a triple).
 		 */
-		$eq_at     = strrpos( $value, '=' );
-		$eq_armed  = false !== $eq_at && ( $eq_at + 1 < \strlen( $value ) || self::raw_carries_encoded_delimiter( $value ) );
+
+		/*
+		 * t31-glm55-5 [R55-7, driven leak — the trailing pad disarmed
+		 * an EARLIER mid-value '=']: the assignment arm consulted
+		 * only the LAST '=' (strrpos), so a two-'=' composition — a
+		 * real short credential behind an '=' plus a trailing
+		 * base64 pad — left the gate unarmed and the correlation
+		 * tail rendered through every safe debug surface
+		 * ('a=BCJK-3502xy=' rendered '…2xy=' where its padding-free
+		 * twin rendered the bare mask; the Cookie channel rendered
+		 * 'sid=abcdefghi=' with four of the nine session-id bytes,
+		 * and the realistic 'session=dGVzdA==' cookie leaked the
+		 * base64 tail where 'session=dGVzdA' masks whole), the
+		 * R52-6 mid-'=' err-safe trade broken in the one
+		 * composition round 53 fixed for the ENCODED arm alone.
+		 * The arm fires when the FIRST '=' is followed by a byte —
+		 * exactly "some '=' carries a non-empty run" — while the
+		 * '=' stays the ANCHOR (no '=' anywhere and the arm never
+		 * fires, the R51-15 '='-less tail untouched; the pure
+		 * padding shape's single trailing '=' followed by nothing
+		 * stays unarmed); the run judgment keeps the helper's own
+		 * LAST-'=' boundary, so a two-'=' shape whose trailing run
+		 * is empty or short always masks (the err-safe direction,
+		 * an unpinned double-pad opaque key newly masking with it).
+		 */
+		$eq_first  = strpos( $value, '=' );
+		$eq_armed  = false !== $eq_first && ( $eq_first + 1 < \strlen( $value ) || self::raw_carries_encoded_delimiter( $value ) );
 		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || $eq_armed;
 		if ( $raw_gated && self::value_carries_short_embedded_credential( $value ) ) {
 			return self::MASK;
