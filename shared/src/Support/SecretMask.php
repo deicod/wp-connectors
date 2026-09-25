@@ -592,9 +592,31 @@ final class SecretMask {
 		 * is empty or short always masks (the err-safe direction,
 		 * an unpinned double-pad opaque key newly masking with it).
 		 */
-		$eq_first  = strpos( $value, '=' );
-		$eq_armed  = false !== $eq_first && ( $eq_first + 1 < \strlen( $value ) || self::raw_carries_encoded_delimiter( $value ) );
-		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || $eq_armed;
+		$eq_first = strpos( $value, '=' );
+		$eq_armed = false !== $eq_first && ( $eq_first + 1 < \strlen( $value ) || self::raw_carries_encoded_delimiter( $value ) );
+
+		/*
+		 * t31-glm58-2 [R58-2, driven at HEAD by both the review and
+		 * the driver — the R51-15 trade reopened by a NEW shape, its
+		 * pinned row untouched]: a whole CONTAINER stored
+		 * percent-encoded (an OAuth state cookie carrying
+		 * 'state%3Dxyz%26code%3DBCJK-3502') has NO raw anchor byte
+		 * at all — no '://', no raw '?', '#', or '=' — so the gate
+		 * never armed and the whole-value tail clause printed four
+		 * of the nine device-code characters ('…3502') through every
+		 * safe debug form while every raw-delimiter twin masked. The
+		 * container SIGNATURE arms: an encoded assignment BESIDE an
+		 * encoded pair-separator (%3d + %26, case-insensitive per
+		 * the standing vocabulary) — the two-parameter shape a bare
+		 * opaque key never carries (R51-15's protected row holds a
+		 * lone opener triple and no pair-separator: its tail
+		 * stands). Monotone mask-more: arming only enters values
+		 * into the boundary judgment, whose decoded view resolves
+		 * every layer and whose run restarts after the R56-1
+		 * separator.
+		 */
+		$container_armed = false !== stripos( $value, '%3d' ) && false !== stripos( $value, '%26' );
+		$raw_gated       = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || $eq_armed || $container_armed;
 		if ( $raw_gated && self::value_carries_short_embedded_credential( $value ) ) {
 			return self::MASK;
 		}

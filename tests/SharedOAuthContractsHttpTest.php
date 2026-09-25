@@ -3265,6 +3265,27 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('https://client.example/cb%3Fstate%3Dxyz%26BCJK-3502'), 'The percent-encoded separator spelling judges through the decoded view — the fixpoint walk lands on these bytes.');
         $this->assertSame('…', SecretMask::mask('session=xxxxxxxxxxxxx; BCJK-3502'), 'The cookie pair separator bounds the run the same way — the final pair judges alone (red at HEAD: …3502).');
         $this->assertSame('…5678', SecretMask::mask('https://client.example/cb?state=xyz&code=BCJK3502xy12345678'), 'A LONG final parameter behind a separator keeps the correlation tail — the separator bounds the run, never the tail clause.');
+
+        /*
+         * t31-glm58-2 (R58-2, driven at HEAD by both the review and
+         * the driver — the R51-15 trade reopened by a NEW shape, its
+         * pinned row untouched): a whole CONTAINER stored
+         * percent-encoded (an OAuth state cookie carrying
+         * 'state%3Dxyz%26code%3DBCJK-3502') has NO raw anchor byte
+         * at all, so the gate never armed and the whole-value tail
+         * clause printed four of the nine device-code characters
+         * while every raw-delimiter twin masked. The container
+         * SIGNATURE arms — an encoded assignment beside an encoded
+         * pair-separator, the two-parameter shape a bare opaque key
+         * never carries: R51-15's protected row keeps its tail, an
+         * opaque key carrying %3D alone keeps its tail, and a LONG
+         * container credential keeps the correlation tail.
+         */
+        $this->assertSame('…', SecretMask::mask('state%3Dxyz%26code%3DBCJK-3502'), 'A WHOLLY-ENCODED two-parameter container renders the bare mask — the encoded assignment plus encoded separator is the container signature that arms the gate (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('STATE%3DXYZ%26CODE%3DBCJK-3502'), 'The container signature matches case-insensitively — the standing encoded-vocabulary doctrine.');
+        $this->assertSame('…uvwx', SecretMask::mask('abcdefghijklmnop%3Fqrstuvwx'), 'The R51-15 opaque-key row keeps its correlation tail — a lone opener triple is not a container.');
+        $this->assertSame('…uvwx', SecretMask::mask('abcdefghijklmnop%3Dqrstuvwx'), 'An encoded assignment ALONE is not a container — the opaque key without a pair-separator keeps its tail (the err-safe direction stands).');
+        $this->assertSame('…ghij', SecretMask::mask('state%3Dxyz%26code%3DBCJK3502abcdefghij'), 'A LONG encoded container credential keeps the correlation tail — the separator bounds the run, never the tail clause.');
     }
 
     /**
