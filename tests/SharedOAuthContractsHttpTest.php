@@ -3223,6 +3223,19 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
          */
         $this->assertSame('…', SecretMask::mask('redirect%3Fcode%3DBCJK3502='), 'A trailing-pad spelling whose decode carries the real delimiters renders the bare mask — the non-empty-run refinement yields to the encoded triple (red at HEAD: …502=).');
         $this->assertSame('…' . 'qrs=', SecretMask::mask('abcdefghijklmnopqrs='), 'The PURE padding shape — no encoded triple, no literal shape — keeps its correlation tail exactly as round 52 pinned.');
+        /*
+         * t31-glm54-1 (R54-1, driven leak): the round-53 yield armed
+         * only the SINGLE-layer triple — '%253F' spells no '%3f'
+         * substring — so the multi-layer spellings with trailing-pad
+         * '=' left the gate unarmed and the fixpoint decode never
+         * judged them ('…502=' at HEAD, the R53-4 leak one encoding
+         * layer over). The yield rides the LAYERED probe: every
+         * encoding layer's own raw spelling judged in turn.
+         */
+        $this->assertSame('…', SecretMask::mask('redirect%253Fcode%253DBCJK-3502='), 'A DOUBLE-encoded delimiter whose only raw \'=\' is the trailing pad renders the bare mask — the yield armed at every layer (red at HEAD: …502=).');
+        $this->assertSame('…', SecretMask::mask('redirect%25253Fcode%25253DBCJK-3502='), 'A TRIPLE-encoded trailing-pad spelling judges the same — the layered probe and the fixpoint decode walk the same layers.');
+        $this->assertSame('…', SecretMask::mask('redirect%253fcode%253dbcjk-3502='), 'The lowercase multi-layer spelling judges identically — every triple consult is case-insensitive.');
+        $this->assertSame('…', SecretMask::mask('abcdefghijklmnopqrs=%25'), 'Padding followed by a NON-empty run still arms through the first disjunct — the mid-token \'=\' err-safe trade unchanged by the layered probe.');
     }
 
     /**

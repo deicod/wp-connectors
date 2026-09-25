@@ -396,6 +396,22 @@ final class SecretMask {
 	const SENSITIVE_HEADER_NAME_SUFFIXES = array( 'auth', 'authorization', 'authentication', 'token', 'secret', 'key', 'password', 'apikey', 'subscriptionkey', 'secretkey', 'accesskey', 'accesstoken', 'refreshtoken', 'clientsecret', 'securitytoken', 'sharedsecret', 'csrftoken', 'requestverificationtoken', 'signature', 'signature-256', 'session-id', 'sessionid', 'jsessionid' );
 
 	/**
+	 * The percent-encoded delimiter triples (judged case-insensitively
+	 * at every consult): query '%3f', fragment '%23', assignment '%3d'.
+	 *
+	 * One vocabulary, both seats (t31-glm54-1): the gate's layered
+	 * arming probe and the boundary scan's opener/assignment resolution
+	 * judge the SAME triples — a future delimiter widening lands at
+	 * this list or nowhere (the indexed composition names each member's
+	 * role at its seat, the HARNESS_MODEL_ID house idiom).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @var list<string>
+	 */
+	const ENCODED_DELIMITER_TRIPLES = array( '%3f', '%23', '%3d' );
+
+	/**
 	 * Masks a secret value: ellipsis plus the last four characters.
 	 *
 	 * Null and short values (at or below the minimum length, counted in
@@ -534,9 +550,25 @@ final class SecretMask {
 		 * is real whatever the raw '=' placement — while the pure
 		 * padding shape ('abcdefghijklmnopqrs=', no '%' byte) keeps
 		 * its correlation tail exactly as round 52 pinned.
+		 *
+		 * t31-glm54-1 [R54-1, driven leak — the yield armed only the
+		 * SINGLE-layer spelling]: the round-53 yield stripos'd the
+		 * one-layer triples, and '%253F' contains no '%3f' substring
+		 * — so the double- and triple-encoded spellings whose only
+		 * raw '=' is the trailing pad left the gate unarmed and the
+		 * fixpoint-decode pass never judged them ('redirect%253Fcode
+		 * %253DBCJK-3502=' rendered '…502=' at HEAD, the R53-4 leak
+		 * one encoding layer over, regressed against the round-51
+		 * parent). The yield consults the LAYERED probe now — every
+		 * encoding layer's own raw spelling judged in turn, the same
+		 * fixpoint walk the decode pass rides — so the multi-layer
+		 * spellings arm exactly as the single-layer one does. The
+		 * '='-less R51-15 tail is untouched (no '=' means the arm
+		 * cannot fire at all), and the pure padding shape keeps its
+		 * tail (no '%' byte means no layer ever spells a triple).
 		 */
 		$eq_at     = strrpos( $value, '=' );
-		$eq_armed  = false !== $eq_at && ( $eq_at + 1 < \strlen( $value ) || false !== stripos( $value, '%3f' ) || false !== stripos( $value, '%23' ) || false !== stripos( $value, '%3d' ) );
+		$eq_armed  = false !== $eq_at && ( $eq_at + 1 < \strlen( $value ) || self::raw_carries_encoded_delimiter( $value ) );
 		$raw_gated = false !== strpos( $value, '://' ) || false !== strrpos( $value, '?' ) || false !== strrpos( $value, '#' ) || $eq_armed;
 		if ( $raw_gated && self::value_carries_short_embedded_credential( $value ) ) {
 			return self::MASK;
@@ -803,6 +835,41 @@ final class SecretMask {
 	}
 
 	/**
+	 * Whether a percent-encoded delimiter triple rides the value at ANY
+	 * encoding layer (t31-glm54-1): each layer's own raw spelling is
+	 * judged in turn — '%253F' carries no triple at layer 0 and its
+	 * once-decoded view '%3F' does — so the gate arms on the multi-layer
+	 * spellings exactly as it arms on the single-layer one, whatever the
+	 * raw '=' placement. The walk is mask()'s fixpoint decode itself:
+	 * each decode strictly shrinks the view, so the loop terminates, and
+	 * a view with no '%' byte (or one whose escapes decode no further)
+	 * answers false without ever having spelled a triple at any layer.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $value The raw view.
+	 * @return bool True when any encoding layer spells an encoded delimiter.
+	 */
+	private static function raw_carries_encoded_delimiter( string $value ): bool {
+		$view = $value;
+		while ( true ) {
+			foreach ( self::ENCODED_DELIMITER_TRIPLES as $triple ) {
+				if ( false !== stripos( $view, $triple ) ) {
+					return true;
+				}
+			}
+			if ( false === strpos( $view, '%' ) ) {
+				return false;
+			}
+			$decoded = rawurldecode( $view );
+			if ( $decoded === $view ) {
+				return false;
+			}
+			$view = $decoded;
+		}
+	}
+
+	/**
 	 * Whether ONE view of a value carries a short credential at its
 	 * tail (t31-glm51-2): the caller's RAW GATE owns the value-shape
 	 * question — this helper judges only views already URL-shaped or
@@ -821,10 +888,18 @@ final class SecretMask {
 	 * @return bool True when the trailing run is a short embedded credential.
 	 */
 	private static function value_carries_short_embedded_credential( string $value ): bool {
+		/*
+		 * The encoded arms compose the ONE triple vocabulary
+		 * (t31-glm54-1): [0] is the query opener, [1] the fragment
+		 * opener, [2] the assignment — the indexed composition names
+		 * each member's role at its seat (the HARNESS_MODEL_ID house
+		 * idiom), so a delimiter widening lands at the list or
+		 * nowhere.
+		 */
 		$query_at  = strrpos( $value, '?' );
-		$encoded_q = strripos( $value, '%3f' );
+		$encoded_q = strripos( $value, self::ENCODED_DELIMITER_TRIPLES[0] );
 		$frag_at   = strrpos( $value, '#' );
-		$encoded_f = strripos( $value, '%23' );
+		$encoded_f = strripos( $value, self::ENCODED_DELIMITER_TRIPLES[1] );
 		$open_at   = -1;
 		$open_len  = 0;
 		foreach ( array(
@@ -840,7 +915,7 @@ final class SecretMask {
 		}
 
 		$assign_at  = strrpos( $value, '=' );
-		$encoded_a  = strripos( $value, '%3d' );
+		$encoded_a  = strripos( $value, self::ENCODED_DELIMITER_TRIPLES[2] );
 		$assign_len = 1;
 		if ( false !== $encoded_a && ( false === $assign_at || $encoded_a > $assign_at ) ) {
 			$assign_at  = $encoded_a;
