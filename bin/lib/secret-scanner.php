@@ -67,6 +67,27 @@ function wp_connectors_fake_secret_dictionary_words()
     return array( 'not-a-real', 'notareal', 'test-value', 'placeholder', 'example', 'fixture', 'redacted', 'sample', 'dummy', 'fake', 'your', 'test', 'wpct', 'api', 'key', 'here' );
 }
 
+/**
+ * The fake-secret SEGMENT SPLIT — the ONE owner of the separator
+ * vocabulary (t31-glm54-8, R54-15): the R53-9 fix delegated the
+ * per-segment PREDICATE to the walker but left the SPLIT spelled at
+ * the three seats inside the one-value judgment (the head before the
+ * dictionary word, the tail after it, the value-level all-placeholder
+ * pass) — a future separator widening (admitting '.' for token
+ * bodies) landing at some of the three splits one value differently
+ * per arm, the exact one-value-two-verdicts-by-separator-spelling
+ * class R53-8 drove red and R53-9 fixed for the predicate, reborn at
+ * the split. One spelling beside the dictionary owner both derive
+ * from; the head/tail/final arms can no longer disagree.
+ *
+ * @param string $value The value (or side) whose segments the walker judges.
+ * @return list<string|false> The split segments, the preg_split product as ever.
+ */
+function wp_connectors_fake_secret_segments($value)
+{
+    return preg_split('/[-_\s]+/', (string) $value);
+}
+
 /*
  * t31-glm52-12 [R52-11 — the stranded docblock, the R48-14 class at
  * the round-51 insertion's own neighbor]: the round-51 dictionary
@@ -527,7 +548,7 @@ function wp_connectors_is_recognizably_fake_secret($value)
          * key 3 + abc123 6), one number derived from the corpus
          * the way glm48-3 derived its 6.
          */
-        $head_segments = preg_split('/[-_\s]+/', (string) substr($value, 0, $word_match[1][1]));
+        $head_segments = wp_connectors_fake_secret_segments(substr($value, 0, $word_match[1][1]));
         $head_is_placeholder = true;
         $head_total = 0;
         foreach (wp_connectors_fake_secret_placeholder_spans($head_segments) as $head_span) {
@@ -559,7 +580,7 @@ function wp_connectors_is_recognizably_fake_secret($value)
              * prefix whose 6-byte hex tail rides the same bound).
              */
             $tail = (string) substr($value, $word_match[1][1] + strlen($word_match[1][0]));
-            $tail_segments = preg_split('/[-_\s]+/', $tail);
+            $tail_segments = wp_connectors_fake_secret_segments($tail);
             /*
              * t31-glm48-3 [R48-3, driven — the tail's entropy budget
              * is AGGREGATE, never per segment]: the per-segment
@@ -625,7 +646,7 @@ function wp_connectors_is_recognizably_fake_secret($value)
      * the walker — its empty-span answer IS the all-placeholder
      * verdict, one predicate everywhere.
      */
-    return array() === wp_connectors_fake_secret_placeholder_spans(preg_split('/[-_\s]+/', $value));
+    return array() === wp_connectors_fake_secret_placeholder_spans(wp_connectors_fake_secret_segments($value));
 }
 
 /**
