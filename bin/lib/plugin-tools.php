@@ -7072,6 +7072,64 @@ function wp_connectors_ascii_upper($value)
 }
 
 /**
+ * The child DIRECTORIES of a directory, dot-led included
+ * (t31-glm60-4 [R60-7, driven — the round-59 scandir fix left the
+ * fixtures census on glob, the identical silent skip one line below
+ * the fix): glob('dir/*') never matches a dot-led name, so a
+ * dot-led child was invisible to every census riding it — omission,
+ * not absence (the R59-10 class). ONE owner serves all three census
+ * seats (the connectors census at build and conventions, the
+ * fixtures census); every child directory is listed, the screens
+ * stay the verdict.
+ *
+ * @param string $dir The directory to read.
+ * @return list<string> Absolute child-directory paths, sorted.
+ */
+function wp_connectors_child_directories($dir)
+{
+    $children = array();
+    foreach (scandir($dir) ?: array() as $name) {
+        if ('.' !== $name && '..' !== $name && is_dir($dir . '/' . $name)) {
+            $children[] = $dir . '/' . $name;
+        }
+    }
+
+    return $children;
+}
+
+/**
+ * The artifact-name family's SCREEN STACK — ONE owner of every
+ * slug judgment the builder and the conventions gate hand down
+ * (t31-glm60-5 [R60-9, the family's own landing history as the
+ * drift evidence]: grammar (R57-1), dev-entry (R58-1), near-source
+ * (R59-1) each landed exactly one member per round, each
+ * hand-applied at BOTH seams — the next member again needs two
+ * hand landings, the one-verdict drift class the family has closed
+ * three times). ONE owner answers the violation strings; the build
+ * throws them, the conventions gate appends them (each gate its
+ * own rendering wrapper), the inspector keeps its own fences over
+ * the archive-controlled names no build composed.
+ *
+ * @param string $slug The connector directory basename.
+ * @return list<string> Violation sentences (empty when the name passes).
+ */
+function wp_connectors_slug_name_screen_violations($slug)
+{
+    $violations = array();
+    if (! wp_connectors_slug_is_legal_artifact_name($slug)) {
+        $violations[] = "{$slug}: the connector directory name is outside the artifact grammar [A-Za-z0-9_.-] — bin/inspect-artifact.php rejects every zip composed under this name; rename the connector directory";
+    }
+    if (wp_connectors_is_development_entry($slug)) {
+        $violations[] = "{$slug}: the connector directory name IS a development-entry name — bin/inspect-artifact.php rejects every zip whose top level carries it; rename the connector directory";
+    }
+    if (wp_connectors_segment_is_near_source_php($slug)) {
+        $violations[] = "{$slug}: the connector directory name is a NEAR-SOURCE PHP spelling (trailing edge junk hiding the extension) — bin/inspect-artifact.php rejects every zip composed under this name; rename the connector directory";
+    }
+
+    return $violations;
+}
+
+/**
  * Whether a connector slug (the top-level plugin directory name) is
  * legal ARTIFACT vocabulary — ONE owner of the grammar every gate
  * judges the name by (t31-glm57-1 [R57-1, the one-verdict drift

@@ -4631,13 +4631,12 @@ if (wp_connectors_cli_entry(__FILE__)) {
         // main-file header) must FAIL the run via buildPlugin() — never be
         // silently omitted from a release with exit 0. Explicit-slug mode
         // rejects the same directory the same way.
-        // t31-glm59-7 [R59-10]: scandir, never glob — glob('*')
-        // silently skips dot-led names, omitting them from
-        // build-all at exit 0 against this very contract.
-        foreach (scandir($repoRoot . '/connectors') ?: array() as $name) {
-            if ('.' !== $name && '..' !== $name && is_dir($repoRoot . '/connectors/' . $name)) {
-                $targets[] = $repoRoot . '/connectors/' . $name;
-            }
+        // t31-glm59-7 [R59-10] + t31-glm60-4 [R60-7]: the ONE
+        // directory-listing owner, dot-led included — glob('*')
+        // silently skips dot-led names, omitting them from build-all
+        // at exit 0 against this very contract.
+        foreach (wp_connectors_child_directories($repoRoot . '/connectors') as $plugin_dir) {
+            $targets[] = $plugin_dir;
         }
     }
 
