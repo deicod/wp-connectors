@@ -3118,6 +3118,25 @@ FIXTURE;
         $this->assertSame(1, $exit, "The bare option must refuse:\n{$report}");
         $this->assertStringContainsString('--fixture=<value>', $report);
 
+        /*
+         * t31-glm54-5 (R54-5, driven): the if/elseif target selection
+         * let --fixture silently WIN over a co-passed --slug — the
+         * run built and landed only the fixture's artifacts at exit 0
+         * with no diagnostic naming the dropped option (the silent-
+         * option-drop class every neighboring spelling refuses
+         * loudly). Both selectors passed answer the block's own
+         * refusal vocabulary naming the pair — the check preceding
+         * the target selection, so the fixture-directory validation
+         * never runs first.
+         */
+        $output = array();
+        $exit = 0;
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/build.php') . ' --fixture=example-connector --slug=alpha-demo 2>&1', $output, $exit);
+        $report = implode("\n", $output);
+        $this->assertSame(1, $exit, "Both target selectors passed must refuse, never silently drop one:\n{$report}");
+        $this->assertStringContainsString('--fixture and --slug are mutually exclusive', $report, 'The refusal names the pair (red at HEAD: exit 0, the slug silently dropped and the fixture built alone).');
+        $this->assertFileDoesNotExist($repo . '/dist/connectors-beta-demo-1.0.0.zip', 'Nothing more is built on the refused invocation.');
+
         WpHarness::releaseScratch($repo);
     }
 

@@ -4546,6 +4546,23 @@ if (wp_connectors_cli_entry(__FILE__)) {
             exit(1);
         }
     }
+    /*
+     * t31-glm54-5 [R54-5, driven — the silent-option-drop class the
+     * block's own refusals exist to close]: the if/elseif target
+     * selection let '--fixture' silently WIN over a co-passed
+     * '--slug' (driven: '--fixture=example-connector --slug=<other>'
+     * built and landed only the fixture's artifacts at exit 0, no
+     * diagnostic naming the dropped option) — the shape pre-existing
+     * at master, but the whole validation block is this branch's
+     * rewrite and its every neighboring spelling refuses loudly (the
+     * glm14-5/R52-13/R53-11 lineage). The two selectors are mutually
+     * exclusive: both passed answers the block's own refusal
+     * vocabulary naming the pair.
+     */
+    if (isset($args['fixture']) && isset($args['slug'])) {
+        fwrite(STDERR, "build: --fixture and --slug are mutually exclusive target selectors — pass one, not both\n");
+        exit(1);
+    }
 
     $targets = array();
     if (isset($args['fixture'])) {
