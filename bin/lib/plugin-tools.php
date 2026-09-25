@@ -2313,8 +2313,24 @@ function wp_connectors_shared_family_references($source, $target_namespace = nul
                  * the whole opener could — and the pin (the r20-3
                  * battery's opener-spelling rows) holds the
                  * classification to the engine's verdict.
+                 *
+                 * t31-glm54-4 [R54-4, driven false refusal — the
+                 * R48-6/R53-5 b/B prefix class one seat over]: the
+                 * anchor spelled no binary-string prefix, so a
+                 * b-prefixed nowdoc ('b<<<\'V\'', php -l clean —
+                 * the T_START_HEREDOC token text carries the prefix
+                 * byte) classified as the escape-resolving heredoc
+                 * and the value lens DECODED an engine-verbatim body
+                 * ('Deicod\x5cWpConnectors…' reporting a 'string'
+                 * family reference where the unprefixed nowdoc twin
+                 * reports none — a legal b-nowdoc spelling taking a
+                 * false family refusal). The prefix rides the anchor
+                 * exactly as the define collector's shared heredoc
+                 * arm rode it at t31-glm53-7: a prefixed nowdoc is
+                 * still a nowdoc, a prefixed heredoc still a heredoc
+                 * — the prefix is value-free at BOTH seats.
                  */
-                'quote' => 1 === preg_match('/\A<<<\s*\'/', $text) ? "'" : '"',
+                'quote' => 1 === preg_match('/\A[bB]?<<<\s*\'/', $text) ? "'" : '"',
                 'dynamic' => false,
             );
 

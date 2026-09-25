@@ -7972,6 +7972,23 @@ FIXTURE;
             'shared/src/NowdocOpenerStore.php'
         );
         $this->assertStringContainsString('Deicod\\WpConnectors\\OpenAiOauth\\Shared;', $nowdoc_opener, 'The nowdoc opener\'s file rewrites clean — its body resolves no escapes, so no family value exists to refuse.');
+        /*
+         * t31-glm54-4 (R54-4, driven): the classification anchor
+         * spelled no binary-string prefix, so the b-prefixed nowdoc
+         * ('b<<<\'EOT\'', php -l clean — the T_START_HEREDOC token
+         * text carries the prefix byte) classified as the
+         * escape-resolving heredoc and the value lens decoded an
+         * engine-verbatim body into a phantom family reference — the
+         * legal b-nowdoc spelling took a false rewrite refusal. The
+         * prefix rides the anchor (the R48-6/R53-5 class one seat
+         * over): a prefixed nowdoc is still a nowdoc.
+         */
+        $prefixed_nowdoc_opener = WpConnectorsBuild::rewriteSharedNamespace(
+            "<?php\nnamespace Deicod\\WpConnectors\\Shared;\nclass BNowdocOpenerStore\n{\n    public function name(): string\n    {\n        return b<<<'EOT'\n\\104eicod\\\\WpConnectors\\\\Shared\\\\Clock\nEOT;\n    }\n}\n",
+            'OpenAiOauth',
+            'shared/src/BNowdocOpenerStore.php'
+        );
+        $this->assertStringContainsString('Deicod\\WpConnectors\\OpenAiOauth\\Shared;', $prefixed_nowdoc_opener, 'The b-prefixed nowdoc opener rewrites clean — the prefix is value-free, its body resolves no escapes (red at HEAD: the escape-misreading heredoc classification refused the file).');
 
         /*
          * OCR round 7 (t31-ocr7-2): LEGAL import spellings the rewriter
