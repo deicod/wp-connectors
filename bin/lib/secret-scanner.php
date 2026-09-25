@@ -1290,8 +1290,22 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * the php-headed payload rides the CODE arm whatever its name
      * spells, while text content keeps glm17-3's benign extension
      * routing exactly.
+     *
+     * t31-glm58-6 [R58-7, driven at HEAD by both the review and the
+     * driver — the extension-less WALKED file one routing arm over]:
+     * the bare ''=== arm sent EVERY extension-less payload the walk
+     * admits (README, NOTICE, LICENSE) onto the whole-file masked
+     * view with no regions, so all prose blanks as inline HTML and a
+     * legitimately-marked 'secrets:allow' marker could never exempt
+     * — the byte-identical .md twin exempted through the
+     * region-bounded routing (driven: README flagged, README.md
+     * clean). The extension-less payload now rides the CODE arm only
+     * when its HEAD opens PHP (the glm18-2 content-shape owner —
+     * operator intent, the CLI-script spelling the '' arm was built
+     * for); everything else keeps glm17-3's text-family routing with
+     * the matched-pair gate exactly.
      */
-    $php_family = '' === $label_ext || 'php' === $label_ext || 'phtml' === $label_ext
+    $php_family = ('' === $label_ext && wp_connectors_head_opens_php($contents)) || 'php' === $label_ext || 'phtml' === $label_ext
         || ($named_target && wp_connectors_head_opens_php($contents));
     /*
      * glm19-1: the region walk rides the tokenizer now, so the census
