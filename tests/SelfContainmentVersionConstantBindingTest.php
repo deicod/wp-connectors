@@ -622,6 +622,52 @@ final class SelfContainmentVersionConstantBindingTest extends TestCase
         WpHarness::releaseScratch($base);
     }
 
+    public function testTheDecoyConsultsRound52Gaps(): void
+    {
+        /*
+         * R52-2+R52-4+R52-5 (all driven at HEAD, php -l clean): the
+         * trait-adaptation fence read the byte IMMEDIATELY before
+         * '{' — a group use spelling its trivia there ('use Foo\ {
+         * function define };') was skipped as an adaptation and the
+         * shadow never charged (fail-open); the declaration walk's
+         * use-fence closed at the FIRST ';' — a trait adaptation's
+         * inner ';' ended the region early, its '{' consumed
+         * uncounted while the matching '}' decremented the walk's
+         * brace depth, the class frame filtered out mid-body and a
+         * later method named 'define' recorded as a namespace-scope
+         * declaration (false refusal — the fence counts braces now,
+         * the nested-declaration control beside it keeping its
+         * decoy verdict through the honest depth); and the
+         * null-to-null import scope over-applied to ANONYMOUS blocks
+         * — 'namespace { use …; } namespace { define(…); }' both
+         * resolving to the null global scope, block 1's import
+         * shadowing block 2's call (each shadow records its REGION
+         * END — the enclosing block's close or a following
+         * namespace declaration start — the single-block control
+         * keeping its refusal).
+         */
+        $b = chr(92);
+        $base = sys_get_temp_dir() . '/wp-connectors-version-r52-' . uniqid('', true);
+        @mkdir($base . '/myplug', 0755, true);
+        foreach (array(
+            'ws-group-use-launder' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nuse Foo{$b} { function define };\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'nested-decl-after-adaptation' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\ntrait T { public function m() { return 1; } }\nclass Boot {\n    use T { m as define; }\n    public function boot() { function define( \$n, \$v ) { return true; } }\n}\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'same-anonymous-block' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace { use function Foo{$b}define; define( 'MYPLUG_VERSION', '1.2.3' ); }\n",
+        ) as $name => $source) {
+            file_put_contents($base . '/myplug/myplug.php', $source);
+            $v = wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php'));
+            $this->assertStringContainsString('must define constant', implode("\n", $v), "The {$name} shape launders no more (red at HEAD: binds clean).");
+        }
+        foreach (array(
+            'method-define-after-adaptation' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace E;\ntrait T { public function m() { return 1; } }\nclass Registry {\n    use T { m as rename_me; }\n    public function define( \$n, \$v ) { return true; }\n}\ndefine( 'MYPLUG_VERSION', '1.2.3' );\n",
+            'two-anonymous-blocks' => "<?php\n/**\n * Plugin Name: My Plug\n * Version: 1.2.3\n */\nnamespace { use function Foo{$b}define; }\nnamespace { define( 'MYPLUG_VERSION', '1.2.3' ); }\n",
+        ) as $name => $source) {
+            file_put_contents($base . '/myplug/myplug.php', $source);
+            $this->assertSame(array(), wp_connectors_version_constant_violations($base . '/myplug', array('version' => '1.2.3'), array($base . '/myplug/myplug.php')), "The {$name} shape binds — the false refusal dead (red at HEAD: must-define).");
+        }
+        WpHarness::releaseScratch($base);
+    }
+
     public function testTightGlueAndCommentGlueDefineShapes(): void
     {
         /*

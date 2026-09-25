@@ -6688,10 +6688,23 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
                  * ('use Foo\{…}'); a trait adaptation's brace rides a
                  * class NAME ('use T {…}') — the byte before '{'
                  * decides, the adaptation skipped wholesale.
+                 *
+                 * t31-glm52-2 [R52-2, driven fail-open — the fence was
+                 * WHITESPACE-blind]: the separator may spell any trivia
+                 * before the brace ('use Foo\ { function define };'
+                 * php -l clean), and the byte immediately preceding
+                 * '{' was then a space — the GROUP use skipped as a
+                 * trait adaptation, the shadow never charged, the
+                 * decoy call treated as binding (driven end-to-end:
+                 * binds-clean where the glued twin refuses). The LAST
+                 * NON-WHITESPACE byte before the brace decides.
                  */
                 $brace_at = strpos($statement_text, '{');
-                if (false !== $brace_at && '\\' !== substr($statement_text, $brace_at - 1, 1)) {
-                    continue; // A trait/class use statement — never a function import.
+                if (false !== $brace_at) {
+                    $before_brace = rtrim(substr($statement_text, 0, $brace_at));
+                    if ('' === $before_brace || '\\' !== substr($before_brace, -1)) {
+                        continue; // A trait/class use statement — never a function import.
+                    }
                 }
                 $group_statement = false !== $brace_at;
                 $statement_is_function = false;
@@ -6740,7 +6753,76 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
                         continue; // The absolute self-import ('\define') — benign.
                     }
                     if ('define' === $bound) {
-                        $import_shadows[] = $statement_offset; // The bare name bound to a foreign function — the shadow, at its seat.
+                        /*
+                         * t31-glm52-4 [R52-5, driven false refusal —
+                         * the null-to-null scope match over-applies to
+                         * ANONYMOUS blocks]: 'namespace { use function
+                         * Foo\define; } namespace { define(…); }' —
+                         * the anonymous blocks carry no ledger entry
+                         * (no name to declare), so both the import
+                         * and the call resolved to the null GLOBAL
+                         * scope and block 1's import shadowed block
+                         * 2's call (driven: must-define refused a
+                         * plugin whose block 2 binds the global
+                         * define). Each shadow records its REGION
+                         * END on the flat view: the '}' closing the
+                         * import's enclosing braced block (a '}' met
+                         * at depth zero — the use statement's own
+                         * group braces balance inside it), or a
+                         * 'namespace' DECLARATION keyword at
+                         * statement position starting a later region
+                         * (anonymous blocks included — any new region
+                         * owns its own import table). Null end = the
+                         * unbraced region, open to the file's
+                         * remainder exactly as before.
+                         */
+                        $region_end = null;
+                        $scan = $statement_offset;
+                        $scan_depth = 0;
+                        $flat_len = strlen($flat);
+                        while ($scan < $flat_len) {
+                            $byte = $flat[ $scan ];
+                            if ('{' === $byte) {
+                                ++$scan_depth;
+                            } elseif ('}' === $byte) {
+                                if (0 === $scan_depth) {
+                                    $region_end = $scan;
+                                    break;
+                                }
+                                --$scan_depth;
+                            } elseif (('n' === $byte || 'N' === $byte) && 0 === stripos($flat, 'namespace', $scan)) {
+                                $back = $scan;
+                                while ($back > 0 && ctype_space($flat[ $back - 1 ])) {
+                                    --$back;
+                                }
+                                $after_keyword = $flat[ $scan + 9 ] ?? '';
+                                $ahead = $scan + 9;
+                                while ($ahead < $flat_len && ctype_space($flat[ $ahead ])) {
+                                    ++$ahead;
+                                }
+                                $follower = $ahead < $flat_len ? $flat[ $ahead ] : ';';
+                                /*
+                                 * The keyword must stand at STATEMENT
+                                 * position (the preceding significant
+                                 * byte a terminator) and open a
+                                 * declaration shape — a glued label
+                                 * byte after the nine keyword chars is
+                                 * a longer name ('namespacex'), a '\\'
+                                 * follower is the RELATIVE spelling
+                                 * ('namespace\Foo' as a type or call),
+                                 * neither a region boundary.
+                                 */
+                                if (($back < 1 || false !== strpos(';}{>', $flat[ $back - 1 ]))
+                                    && (ctype_space($after_keyword) || ';' === $after_keyword || '{' === $after_keyword)
+                                    && (';' === $follower || '{' === $follower || 1 === preg_match('/^[' . WP_CONNECTORS_LABEL_BYTES . ']/', $follower))) {
+                                    $region_end = $scan;
+                                    break;
+                                }
+                                $scan += 8; // Past the matched keyword — the follower bytes are not a boundary.
+                            }
+                            ++$scan;
+                        }
+                        $import_shadows[] = array($statement_offset, $region_end); // The bare name bound to a foreign function — the shadow, at its seat and its region's end.
                     }
                 }
             }
@@ -6761,6 +6843,23 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
          * its boundary twin, exactly the namespace ledger's walk.
          */
         $use_open = false;
+        /*
+         * t31-glm52-3 [R52-4, driven false refusal — the fence closed
+         * at the FIRST ';', and a trait adaptation carries one INSIDE
+         * its braces]: 'class C { use T { m as x; } ... }' — the
+         * adaptation's inner ';' ended the region early, the fence
+         * then consumed the adaptation's '{' without counting it
+         * while the matching '}' fell OUTSIDE and decremented
+         * $brace_depth — the class frame filtered out mid-body and
+         * every later method judged at a corrupted depth (driven: a
+         * method named 'define' after an adaptation recorded as a
+         * namespace-scope declaration and falsely refused the working
+         * bare define below it). The fence counts braces inside the
+         * region: ';' still bounds it at the use's own opening depth,
+         * a '}' returning to that depth closes it — the adaptation's
+         * whole braced region fenced, the depth honest past it.
+         */
+        $use_braces = 0;
         for ($i = 0; $i < $count; ++$i) {
             $token = $tokens[ $i ];
             $id = is_array($token) ? $token[0] : null;
@@ -6768,7 +6867,15 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
             $token_offset = $offset;
             $offset += strlen($text);
             if ($use_open) {
-                if (wp_connectors_is_use_statement_boundary($token, $id)) {
+                if ('{' === $text) {
+                    ++$use_braces;
+                } elseif ('}' === $text) {
+                    --$use_braces;
+                    if ($use_braces <= 0) {
+                        $use_open = false;
+                        $use_braces = 0;
+                    }
+                } elseif (wp_connectors_is_use_statement_boundary($token, $id) && 0 === $use_braces) {
                     $use_open = false;
                 }
 
@@ -6946,7 +7053,8 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
      * blocks (R50-7), only imports block-scoped (R50-13's intent,
      * spelled correctly per-arm now).
      */
-    foreach ($import_shadows as $import_offset) {
+    foreach ($import_shadows as $import_shadow) {
+        list($import_offset, $import_region_end) = $import_shadow;
         if ($import_offset >= $call_offset) {
             continue;
         }
@@ -6954,6 +7062,17 @@ function wp_connectors_define_call_resolves_to_decoy($source, $call_offset)
         $import_scope_id = null === $import_scope ? null : $import_scope['offset'];
         $call_scope_id = null === $call_scope ? null : $call_scope['offset'];
         if ($import_scope_id === $call_scope_id) {
+            /*
+             * t31-glm52-4 [R52-5's application half]: the null-to-null
+             * identity is the GLOBAL REGION only when no region
+             * boundary falls between — the anonymous-block shapes
+             * (and any later region) never inherit an earlier
+             * region's import at runtime.
+             */
+            if (null === $import_scope_id && null !== $import_region_end && $import_region_end < $call_offset) {
+                continue;
+            }
+
             return true; // A shadowing import in the call's own braced block (or the global region), preceding the call.
         }
     }
