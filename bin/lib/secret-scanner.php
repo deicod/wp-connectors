@@ -234,6 +234,32 @@ function wp_connectors_allow_marker_pattern($extension = '', $with_markup_arm = 
 }
 
 /**
+ * Whether the line's quote pairing is AMBIGUOUS to a line-local lens
+ * (t31-glm54-6): an ODD count of unescaped quote bytes in either class
+ * leaves the leftmost-first pairing arbitrary — "don't say 'x // marker
+ * y' key" pairs the prose apostrophe with the string's own opener, so
+ * the marker rides OUTSIDE every blanked pair and reads as code (driven:
+ * the line exempted a live credential while the apostrophe-free control
+ * flags). A tokenizer lens could settle the pairing, but the prose arm's
+ * charter is exactly the payloads that lex no PHP tokens (glm15-1); the
+ * honest answer there is that a marker whose line's pairing is ambiguous
+ * cannot prove it sits in a real comment — the exemption refuses (the
+ * fail-safe direction: a legitimately-marked line with an odd quote
+ * count flags and forces a rephrase, the glm18-3 trade). Escape pairs
+ * are shed before the count ('It\'s' pairs cleanly; a doubled
+ * backslash before a quote leaves the quote counted).
+ *
+ * @param string $line One source line.
+ * @return bool True when either quote class counts an odd unescaped run.
+ */
+function wp_connectors_line_quote_pairing_is_ambiguous($line)
+{
+    $unescaped = (string) preg_replace('/\\\\./s', '', $line);
+
+    return 1 === substr_count($unescaped, "'") % 2 || 1 === substr_count($unescaped, '"') % 2;
+}
+
+/**
  * Removes PHP string-literal CONTENTS from a source line — the NON-PHP
  * payload arm of the marker judge (glm16-1).
  *
@@ -1421,6 +1447,23 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                             $prose_view = wp_connectors_line_without_string_literals($line);
                         }
                         /*
+                         * t31-glm54-6 [R54-6, driven fail-open — the
+                         * ambiguous pairing]: an ODD count of
+                         * unescaped quote bytes leaves the leftmost-
+                         * first pairing arbitrary, so a marker that
+                         * rides outside every blanked pair under the
+                         * arbitrary reading ('don't say 'x // marker
+                         * y' key' — the prose apostrophe pairing with
+                         * the string's own opener) read as CODE and
+                         * exempted the credential. The ambiguity
+                         * refuses the exemption: the marker cannot
+                         * prove comment-hood on a line whose pairing
+                         * no line-local lens can settle (the masked
+                         * view could — but the prose arm's charter is
+                         * the payloads that lex no PHP tokens, the
+                         * glm15-1 doctrine).
+                         */
+                        /*
                          * t31-glm39-1 [R39-1, security:medium, driven
                          * fail-open — the marker honored inside STRING
                          * DATA at the sample-straddling boundary]: a
@@ -1444,7 +1487,7 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                          * DATA, never an exemption) at the one
                          * boundary the per-slice view left open.
                          */
-                        $prose_marker = 1 === preg_match($allowMarker, wp_connectors_blank_quoted_strings($prose_view));
+                        $prose_marker = ! wp_connectors_line_quote_pairing_is_ambiguous($line) && 1 === preg_match($allowMarker, wp_connectors_blank_quoted_strings($prose_view));
                     }
                     if ($prose_marker) {
                         continue;

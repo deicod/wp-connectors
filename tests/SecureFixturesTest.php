@@ -1681,6 +1681,19 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertSame(array(), wp_connectors_scan_string("guide <?php \$x=1; ?> done\n- * secrets:allow {$key}\n", 'slice-clean.md'), 'A genuinely line-initial marked bullet on its own line keeps its exemption — the sentinel rides only the slice that FOLLOWS a region on the same line.');
 
         /*
+         * R54-6 (driven at HEAD): an ODD count of unescaped quotes
+         * leaves the leftmost-first pairing arbitrary — the prose
+         * apostrophe in "don't" paired with the string's own opener,
+         * the marker rode OUTSIDE every blanked pair, read as code,
+         * and exempted the credential. The ambiguity refuses the
+         * exemption; the apostrophe-free control and the
+         * cleanly-paired escaped-quote line keep their verdicts.
+         */
+        $this->assertNotEmpty(wp_connectors_scan_string("don't say 'x // secrets:allow y' {$key}\n", 'odd-quote.txt'), 'A marker on a line whose quote pairing is ambiguous never exempts — no line-local lens can prove it sits in a comment (red at HEAD: exempt).');
+        $this->assertNotEmpty(wp_connectors_scan_string("do not say 'x // secrets:allow y' {$key}\n", 'even-quote.txt'), 'The apostrophe-free control keeps its flag — the marker rides inside a cleanly-paired string, string data never exempting.');
+        $this->assertSame(array(), wp_connectors_scan_string("note: 'It'\\''s marked' // secrets:allow {$key}\n", 'escaped-quote.txt'), 'A cleanly-paired line with escaped quotes keeps its exemption — escape pairs are shed before the count, the marker sitting in a real comment after the string.');
+
+        /*
          * R53-8 (driven): the value-level final pass re-derived the
          * per-segment predicate without the derived hyphenated
          * windows — one value, two verdicts by separator spelling
