@@ -6,6 +6,36 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 57)
+
+Forty-third claude-glm pass (/code-review max over the full branch
+diff, ledger-read first; the prior round-57 run void, this round
+fresh — the convergence round ordered and answered still not zero):
+the connector slug's own grammar screen, the channel-function
+family's one vocabulary, and the fake-secret spans walker's
+once-per-process prelude. Three fix commits t31-glm57-1..3 plus the
+docs close, the full offline check green. Two structural seats
+recorded beside R56-F7. Suite 1988 → 1991 tests,
+48998 → 49030 assertions, 3 skipped unchanged.
+
+- `t31-glm57-1` — the connector slug now meets the inspector's own
+  grammar ([A-Za-z0-9_.-] under /D, one owner) at the build and
+  conventions seams BEFORE an artifact is composed: a directory
+  spelled 'zai copy' built, passed conventions, and published a zip
+  the inspector rejected (driven: conventions 0 / build 0 / inspect
+  REJECTED — nothing lands post-fix); the build's success echo
+  rides the printable seam beside it.
+- `t31-glm57-2` — the file/exec channel-function family rides ONE
+  vocabulary constant composed into both gates (the composer
+  screen's regex alternation with eval beside the list; the operand
+  probe's membership map with eval judged by its own T_EVAL id) —
+  the drift lineage that already lagged once across rounds 40-54,
+  now a fourth widening lands everywhere or nowhere.
+- `t31-glm57-3` — the fake-secret spans walker's dictionary
+  alternation and hyphenated-window table compute once per process
+  (a dense 2 MB payload: 1609ms → 626ms at landing, scan outputs
+  byte-identical both sides).
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 56)
 
 Forty-second claude-glm pass (/code-review max over the full branch
