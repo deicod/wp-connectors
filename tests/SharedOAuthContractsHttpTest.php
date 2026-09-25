@@ -3247,6 +3247,24 @@ final class SharedOAuthContractsHttpTest extends WpConnectorsTestCase
         $this->assertSame('…', SecretMask::mask('a=BCJK-3502xy='), 'A mid-value \'=\' carrying a real short credential arms the gate through a trailing pad — the last-\'=\' consult never disarms the earlier assignment (red at HEAD: …2xy=).');
         $this->assertSame('…', SecretMask::mask('session=dGVzdA=='), 'The realistic double-padded cookie value masks whole — its unpadded twin always did.');
         $this->assertSame('…', SecretMask::mask('zzzzzzzzzzzzAbCd=EFGH='), 'The recorded mid-\'=\' trade shape with a trailing pad added still masks — the trade holds whichever \'=\' is last.');
+        /*
+         * t31-glm56-1 (R56-1, driven leak — no parameter SEPARATOR
+         * in the boundary's vocabulary): the run stretched from the
+         * winning delimiter to the view's end, so an equals-less
+         * FINAL parameter behind a sibling judged the sibling's run
+         * — '?state=xyz&BCJK-3502' rendered '…3502' where
+         * '?BCJK-3502' and '?state=xyz&code=BCJK-3502' render the
+         * bare mask; the cookie separator and the fixpoint-decode
+         * pass over '%26' leaked identically. The FINAL parameter
+         * judges: the run restarts after the last '&'/';' beyond
+         * the winning delimiter (the R48-7 doctrine's own clause,
+         * closed at its own gap) — and the long-parameter tail
+         * clause stands untouched behind a separator.
+         */
+        $this->assertSame('…', SecretMask::mask('https://client.example/cb?state=xyz&BCJK-3502'), 'An equals-less final parameter behind a sibling renders the bare mask — the run never spans the separator (red at HEAD: …3502).');
+        $this->assertSame('…', SecretMask::mask('https://client.example/cb%3Fstate%3Dxyz%26BCJK-3502'), 'The percent-encoded separator spelling judges through the decoded view — the fixpoint walk lands on these bytes.');
+        $this->assertSame('…', SecretMask::mask('session=xxxxxxxxxxxxx; BCJK-3502'), 'The cookie pair separator bounds the run the same way — the final pair judges alone (red at HEAD: …3502).');
+        $this->assertSame('…5678', SecretMask::mask('https://client.example/cb?state=xyz&code=BCJK3502xy12345678'), 'A LONG final parameter behind a separator keeps the correlation tail — the separator bounds the run, never the tail clause.');
     }
 
     /**

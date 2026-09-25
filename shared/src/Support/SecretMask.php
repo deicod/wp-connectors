@@ -948,9 +948,9 @@ final class SecretMask {
 		}
 
 		if ( false !== $assign_at && $assign_at > $open_at ) {
-			$run = (string) substr( $value, $assign_at + $assign_len );
+			$run_at = $assign_at + $assign_len;
 		} elseif ( $open_at >= 0 ) {
-			$run = (string) substr( $value, $open_at + $open_len );
+			$run_at = $open_at + $open_len;
 		} else {
 			/*
 			 * t31-glm52-5 [R52-7, driven over-mask — the branch's
@@ -968,6 +968,42 @@ final class SecretMask {
 			 */
 			return false;
 		}
+
+		/*
+		 * t31-glm56-1 [R56-1, driven fail-open — no parameter
+		 * SEPARATOR in the boundary's vocabulary]: the run once
+		 * stretched from the winning delimiter to the view's end,
+		 * so when the FINAL parameter is equals-less the last '='
+		 * belongs to an EARLIER sibling and the judged run spanned
+		 * both parameters — an OTP-class credential riding behind
+		 * a sibling kept its visible tail through every safe debug
+		 * form ('https://client.example/cb?state=xyz&BCJK-3502'
+		 * rendered '…3502' where its equals-bearing and final-only
+		 * twins render the bare mask; the cookie separator ';' and
+		 * the fixpoint-decode pass over '%26' leaked identically,
+		 * the decoded view judged with the same separator-less
+		 * vocabulary). The FINAL parameter judges (the R48-7
+		 * doctrine's own words): the run restarts after the last
+		 * parameter separator beyond the winning delimiter — '&' the
+		 * query/cookie-pair separator, ';' the cookie/matrix one
+		 * (their percent-encoded spellings ride the decoded view,
+		 * where they are these bytes). The separator only ever
+		 * moves the run start FORWARD — the run shortens, a short
+		 * run stays short — so no verdict can loosen, only a leak
+		 * can close (every earlier row's run carries no separator).
+		 */
+		$separator_at = false;
+		foreach ( array( '&', ';' ) as $separator ) {
+			$found = strrpos( $value, $separator, $run_at );
+			if ( false !== $found && ( false === $separator_at || $found > $separator_at ) ) {
+				$separator_at = $found;
+			}
+		}
+		if ( false !== $separator_at ) {
+			$run_at = $separator_at + 1;
+		}
+
+		$run = (string) substr( $value, $run_at );
 
 		return self::count_characters( $run ) <= self::MIN_LENGTH_FOR_VISIBLE_TAIL;
 	}
