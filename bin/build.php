@@ -2964,41 +2964,18 @@ final class WpConnectorsBuild
          * own grammar (hoisted); the build refuses BEFORE composing
          * an artifact under a name its own inspector would reject.
          */
-        if (! wp_connectors_slug_is_legal_artifact_name($slug)) {
-            throw new RuntimeException("build: {$slug}: the connector directory name is outside the artifact grammar [A-Za-z0-9_.-] — bin/inspect-artifact.php rejects every zip composed under this name, so the build refuses before composing it; rename the connector directory");
-        }
         /*
-         * t31-glm58-1 [R58-1, driven end-to-end by both the review
-         * and the driver — the R57-1 class one vocabulary member
-         * over, FALSIFYING ocr10-8's recorded premise that 'no
-         * builder-produced zip can carry a dev-entry root']: a
-         * connector directory NAMED a development entry ('tools',
-         * 'tests', 'dist', ... — every one grammar-legal) passed
-         * conventions at 0 violations and published
-         * 'connectors-tools-0.1.0.zip' at exit 0 while the
-         * inspector rejected every entry of the same zip (it judges
-         * wp_connectors_is_development_entry() over parts[0] too).
-         * The dev-entry owner beside the grammar owner: one
-         * vocabulary, three seats.
+         * t31-glm60-5 [R60-9]: the artifact-name family's screen
+         * stack — grammar (R57-1), dev-entry (R58-1), near-source
+         * (R59-1), each landing hand-applied at both seams for
+         * three consecutive rounds — rides the ONE owner now
+         * (wp_connectors_slug_name_screen_violations); this gate
+         * throws its sentences, the conventions gate appends them,
+         * the next family member landing once.
          */
-        if (wp_connectors_is_development_entry($slug)) {
-            throw new RuntimeException("build: {$slug}: the connector directory name IS a development-entry name — bin/inspect-artifact.php rejects every zip whose top level carries it, so the build refuses before composing it; rename the connector directory");
-        }
-        /*
-         * t31-glm59-1 [R59-2, driven end-to-end at HEAD by both the
-         * review and the driver — the artifact-name family's
-         * NEAR-SOURCE member, the R57-1/R58-1 one-verdict class at
-         * the family's next member]: a grammar-legal trailing-junk
-         * slug ('zai.php.') passed conventions at 0 violations and
-         * published 'connectors-zai.php.-0.1.0.zip' at exit 0 while
-         * the inspector rejected every entry of the same zip (64
-         * NEAR-SOURCE violations — it rides the ONE near-source
-         * composition over every segment, parts[0] included). The
-         * near-source owner consults beside the grammar and
-         * dev-entry owners: one vocabulary, three seats.
-         */
-        if (wp_connectors_segment_is_near_source_php($slug)) {
-            throw new RuntimeException("build: {$slug}: the connector directory name is a NEAR-SOURCE PHP spelling (trailing edge junk hiding the extension) — bin/inspect-artifact.php rejects every zip composed under this name, so the build refuses before composing it; rename the connector directory");
+        $slug_screen_violations = wp_connectors_slug_name_screen_violations($slug);
+        if ($slug_screen_violations !== array()) {
+            throw new RuntimeException('build: ' . implode("; ", $slug_screen_violations));
         }
         $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
         if ($mainFiles === array()) {

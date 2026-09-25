@@ -1969,7 +1969,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             // grammar consult).
             $conventions_source = (string) file_get_contents(__DIR__ . '/../bin/check-conventions.php');
             $this->assertNotSame('', $conventions_source, 'The conventions gate source must be readable for the consult pin.');
-            $this->assertStringContainsString('wp_connectors_is_development_entry', $conventions_source, 'The conventions gate consults the dev-entry owner beside the grammar owner.');
+            $this->assertStringContainsString('wp_connectors_slug_name_screen_violations', $conventions_source, 'The conventions gate consults the artifact-name family\'s ONE owner — the dev-entry member among them (the t31-glm60-5 hoist).');
         } finally {
             WpHarness::releaseScratch($scratch);
         }
@@ -2007,7 +2007,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
 
             $conventions_source = (string) file_get_contents(__DIR__ . '/../bin/check-conventions.php');
             $this->assertNotSame('', $conventions_source, 'The conventions gate source must be readable for the consult pin.');
-            $this->assertStringContainsString('wp_connectors_segment_is_near_source_php', $conventions_source, 'The conventions gate consults the near-source owner beside the grammar and dev-entry owners.');
+            $this->assertStringContainsString('wp_connectors_slug_name_screen_violations', $conventions_source, 'The conventions gate consults the artifact-name family\'s ONE owner — the near-source member among them (the t31-glm60-5 hoist).');
         } finally {
             WpHarness::releaseScratch($scratch);
         }
@@ -2046,7 +2046,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         foreach (array( __DIR__ . '/../bin/check-conventions.php', __DIR__ . '/../bin/build.php' ) as $census_file) {
             $source = (string) file_get_contents($census_file);
             $this->assertNotSame('', $source, "The census source must be readable: {$census_file}");
-            $this->assertStringContainsString("scandir(\$repoRoot . '/connectors')", $source, "The census at {$census_file} reads the directory — glob('*') never matches dot-led names.");
+            $this->assertStringContainsString('wp_connectors_child_directories(', $source, "The census at {$census_file} rides the ONE directory-listing owner — glob('*') never matches dot-led names (the t31-glm60-4 hoist).");
         }
     }
 
@@ -2130,7 +2130,7 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
              */
             $conventions_source = (string) file_get_contents(__DIR__ . '/../bin/check-conventions.php');
             $this->assertNotSame('', $conventions_source, 'The conventions gate source must be readable for the consult pin.');
-            $this->assertStringContainsString('wp_connectors_slug_is_legal_artifact_name', $conventions_source, 'The conventions gate consults the one grammar owner — no gate derives the slug unjudged.');
+            $this->assertStringContainsString('wp_connectors_slug_name_screen_violations', $conventions_source, 'The conventions gate consults the artifact-name family\'s ONE owner — no gate derives the slug unjudged (the t31-glm60-5 hoist: grammar, dev-entry, and near-source ride one call).');
         } finally {
             WpHarness::releaseScratch($scratch);
         }
