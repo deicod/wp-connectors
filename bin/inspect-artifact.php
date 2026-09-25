@@ -1186,8 +1186,25 @@ if (wp_connectors_cli_entry(__FILE__)) {
      */
 
     $cliArgs = wp_connectors_cli_args();
+    /*
+     * t31-glm55-9 [R55-9, driven — the silent-argument-drop class the
+     * branch's own CLI doctrine refuses loudly at every sibling
+     * entry script]: the seat consumed only $cliArgs[1] and ignored
+     * every further argument byte-silently (driven: a second path
+     * that did not even EXIST produced the single-zip run's output
+     * verbatim, no diagnostic naming it — an operator inspecting two
+     * artifacts believes both were judged when only the first was
+     * opened; build.php's per-argument validation loop three files
+     * over is the intended shape). The CLI takes exactly one
+     * artifact: any further argument answers the usage refusal
+     * naming the first extra, never a silently-dropped judgment.
+     */
     if (count($cliArgs) < 2) {
         fwrite(STDERR, "usage: php bin/inspect-artifact.php <zip>\n");
+        exit(2);
+    }
+    if (count($cliArgs) > 2) {
+        fwrite(STDERR, 'inspect: unexpected argument: ' . wp_connectors_printable((string) $cliArgs[2]) . " (this CLI inspects exactly one artifact)\n");
         exit(2);
     }
     $zipPath = (string) $cliArgs[1];

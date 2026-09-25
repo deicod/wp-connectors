@@ -1639,6 +1639,18 @@ final class BuildSeamPropertyTest extends WpConnectorsTestCase
         $this->assertStringNotContainsString("\ninspect: totally-legit", implode("\n", $forgedOutput), 'A newline in the caller path cannot START a verdict line — the guard line rides the printable seam.');
 
         /*
+         * R55-9 (driven): the seat consumed only $cliArgs[1] and
+         * ignored every further argument BYTE-SILENTLY — a second
+         * path that did not even exist produced the single-zip
+         * output verbatim, the operator believing both artifacts
+         * were judged. The CLI takes exactly one artifact: the
+         * first extra answers the usage refusal naming it.
+         */
+        exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($resolvedEntryScripts['/../bin/inspect-artifact.php']) . ' /nonexistent-zip.zip /also-nonexistent.zip 2>&1', $extraOutput, $extraExit);
+        $this->assertSame(2, $extraExit, 'A second argument refuses, never silently drops (red at HEAD: the single-arg refusal alone — the second path unseen).');
+        $this->assertStringContainsString('unexpected argument', implode("\n", $extraOutput), 'The refusal names the extra argument through the printable seam.');
+
+        /*
          * glm21-14: the GPC lint leg once spawned the FULL serial
          * php -l walk over the real repository (6.4 s measured, ~18%
          * of the suite's wall clock) for a tree-independent subject —
