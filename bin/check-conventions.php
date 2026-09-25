@@ -68,6 +68,17 @@ if (wp_connectors_cli_entry(__FILE__)) {
         if (wp_connectors_is_development_entry($slug)) {
             $violations[] = sprintf('%s: the connector directory name IS a development-entry name — bin/inspect-artifact.php rejects every artifact composed under it; rename the connector directory.', $slug);
         }
+        /*
+         * t31-glm59-1 [R59-2]: the near-source owner beside the
+         * grammar and dev-entry owners — a trailing-junk slug
+         * ('zai.php.') certified green here while the inspector
+         * rejected the published zip's every entry (driven:
+         * conventions 0 / build 0 / inspect REJECTED x64). One
+         * vocabulary, three seats.
+         */
+        if (wp_connectors_segment_is_near_source_php($slug)) {
+            $violations[] = sprintf('%s: the connector directory name is a NEAR-SOURCE PHP spelling (trailing edge junk hiding the extension) — bin/inspect-artifact.php rejects every artifact composed under it; rename the connector directory.', $slug);
+        }
 
         $mainFiles = wp_connectors_find_main_plugin_files($pluginRoot);
         if ($mainFiles === array()) {

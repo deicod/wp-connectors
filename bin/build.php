@@ -2984,6 +2984,22 @@ final class WpConnectorsBuild
         if (wp_connectors_is_development_entry($slug)) {
             throw new RuntimeException("build: {$slug}: the connector directory name IS a development-entry name — bin/inspect-artifact.php rejects every zip whose top level carries it, so the build refuses before composing it; rename the connector directory");
         }
+        /*
+         * t31-glm59-1 [R59-2, driven end-to-end at HEAD by both the
+         * review and the driver — the artifact-name family's
+         * NEAR-SOURCE member, the R57-1/R58-1 one-verdict class at
+         * the family's next member]: a grammar-legal trailing-junk
+         * slug ('zai.php.') passed conventions at 0 violations and
+         * published 'connectors-zai.php.-0.1.0.zip' at exit 0 while
+         * the inspector rejected every entry of the same zip (64
+         * NEAR-SOURCE violations — it rides the ONE near-source
+         * composition over every segment, parts[0] included). The
+         * near-source owner consults beside the grammar and
+         * dev-entry owners: one vocabulary, three seats.
+         */
+        if (wp_connectors_segment_is_near_source_php($slug)) {
+            throw new RuntimeException("build: {$slug}: the connector directory name is a NEAR-SOURCE PHP spelling (trailing edge junk hiding the extension) — bin/inspect-artifact.php rejects every zip composed under this name, so the build refuses before composing it; rename the connector directory");
+        }
         $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
         if ($mainFiles === array()) {
             throw new RuntimeException("build: no main plugin file with a Plugin Name header in {$pluginDir}");

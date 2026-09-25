@@ -1976,6 +1976,46 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
     }
 
     /**
+     * Round-59 pin (t31-glm59-1 [R59-2] — the artifact-name family's
+     * NEAR-SOURCE member, the R57-1/R58-1 one-verdict class at the
+     * family's next member): a grammar-legal trailing-junk slug
+     * ('zai.php.') passed conventions at 0 violations and published
+     * 'connectors-zai.php.-0.1.0.zip' at exit 0 while the inspector
+     * rejected every entry of the same zip (64 NEAR-SOURCE
+     * violations — driven at HEAD by both the review and the
+     * driver). The near-source owner consults beside the grammar and
+     * dev-entry owners at both seams.
+     */
+    public function testANearSourceSlugRefusesTheBuildSoAllFencesAnswerOneVerdict(): void
+    {
+        $scratch = self::scratchPath('nearsource-slug');
+        if (is_dir($scratch)) {
+            WpHarness::releaseScratch($scratch);
+        }
+        try {
+            mkdir($scratch . '/dist', 0755, true);
+            $plugin = $this->makeMinimalPlugin($scratch . '/plugin', 'zai.php.');
+            $this->assertFileExists($plugin . '/zai.php..php', 'staging: the near-source-slug fixture must land — a staging failure fails as staging, never as the refusal verdict.');
+            try {
+                WpConnectorsBuild::buildPlugin($plugin, $scratch . '/dist');
+                $this->fail('A trailing-junk slug must REFUSE the build (red at HEAD: the build published connectors-zai.php.-0.1.0.zip at exit 0 while the inspector rejected its every entry).');
+            } catch (RuntimeException $refusal) {
+                $this->assertStringContainsString('NEAR-SOURCE', $refusal->getMessage(), 'The refusal names the near-source class.');
+                $this->assertStringContainsString('zai.php.', $refusal->getMessage(), 'The refusal names the offending slug.');
+            }
+            $this->assertSame(array(), glob($scratch . '/dist/*'), 'Nothing lands — the refusal fires before any artifact, sidecar, or manifest line is composed.');
+
+            $conventions_source = (string) file_get_contents(__DIR__ . '/../bin/check-conventions.php');
+            $this->assertNotSame('', $conventions_source, 'The conventions gate source must be readable for the consult pin.');
+            $this->assertStringContainsString('wp_connectors_segment_is_near_source_php', $conventions_source, 'The conventions gate consults the near-source owner beside the grammar and dev-entry owners.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    }
+
+    /**
      * Round-57 pin (t31-glm57-1 [R57-1] — the slug grammar's
      * one-verdict close, the t31-ocr63-3 class never closed for the
      * slug itself): the inspector screened the EXTRACTED top-level
