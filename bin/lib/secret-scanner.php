@@ -165,7 +165,18 @@ function wp_connectors_secret_patterns()
 function wp_connectors_span_sits_in_comment($contents, $start, $end)
 {
     static $token_cache = array();
-    $key = crc32($contents);
+    /*
+     * t31-glm61-1 [R61-2, driven — crc32 is linearly patchable, a
+     * crafted last-4-byte collision making one payload's cached
+     * comment map answer ANOTHER payload's marker consult (the
+     * two-file scan drive laundering the second file's live token
+     * through the first's map; inspect-artifact scans every archive
+     * entry in one process, attacker-controlled order against this
+     * cache)]: the key rides md5 — the house cache-key idiom
+     * (glm25-8's path+md5) — not linearly patchable at any
+     * realistic cost.
+     */
+    $key = md5($contents);
     if (! isset($token_cache[$key])) {
         ob_start();
         $tokens = token_get_all($contents);
@@ -1715,7 +1726,7 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                 }
                 if ($in_code) {
                     if (null === $code_marker) {
-                        $code_marker = 1 === preg_match(wp_connectors_allow_marker_pattern($marker_family_ext, false), $code_view);
+                        $code_marker = 1 === preg_match(wp_connectors_allow_marker_pattern($marker_family_ext, false), $code_view, $marker_match, PREG_OFFSET_CAPTURE);
                         /*
                          * t31-glm60-6 [R60-2, driven — the star arm
                          * served the code consult ungated]: in code
@@ -1734,8 +1745,31 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                          */
                         if ($code_marker) {
                             $star_stripped = preg_replace('/' . WP_CONNECTORS_MARKER_STAR_ARM . '[ \t]*/', ' ', $code_view, 1);
+                            /*
+                             * t31-glm61-1 [R61-1, driven x4 — the
+                             * round-60 verdict judged the WHOLE
+                             * LINE's span]: ANY comment token
+                             * overlapping any byte of the line — a
+                             * trailing '// c' or '# c' AFTER the
+                             * credential, a docblock later on the
+                             * line, an unclosed '/* c' — kept a
+                             * code-bytes line-initial '*' marker
+                             * exempt and laundered the live
+                             * credential (star.md with an unrelated
+                             * tail note answering 0 findings where
+                             * the byte-identical comment-free control
+                             * flagged). The verdict judges the
+                             * MARKER'S OWN SPAN — the matched opener
+                             * through 'secrets:allow' — so only a
+                             * comment covering the marker itself
+                             * exempts (the pinned docblock row keeps
+                             * its exemption: the marker sits INSIDE
+                             * the comment there).
+                             */
+                            $marker_span_start = $line_start + (int) $marker_match[0][1];
+                            $marker_span_end = $marker_span_start + strlen($marker_match[0][0]) - 1;
                             if (1 !== preg_match(wp_connectors_allow_marker_pattern($marker_family_ext, false), $star_stripped)
-                                && ! wp_connectors_span_sits_in_comment($contents, $line_start, $line_start + max(0, strlen($line) - 1))) {
+                                && ! wp_connectors_span_sits_in_comment($contents, $marker_span_start, $marker_span_end)) {
                                 $code_marker = false;
                             }
                         }

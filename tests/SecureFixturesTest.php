@@ -3020,6 +3020,50 @@ CHILD;
         $this->assertStringNotContainsString('/hash.ini.dist:', $report, 'The .dist twin exempts identically — the code consult carries the family extension.');
         $this->assertStringContainsString('/star.md:', $report, 'An operator-line star marker is CODE — the token flags (red at HEAD: laundered).');
         $this->assertStringNotContainsString('/doc.md:', $report, 'A real docblock continuation keeps its exemption — the token verdict holds the honest rows.');
+
+        /*
+         * t31-glm61-1 (R61-1+R61-2, driven x4 at HEAD by both the
+         * review and the driver — the round-60 verdict judged the
+         * WHOLE LINE's span, so ANY unrelated comment sharing the
+         * line — a trailing '// tail note' or '# c' AFTER the
+         * credential, a docblock later on the line — kept a
+         * code-bytes star marker exempt and laundered the live
+         * credential; and the comment-map cache keyed crc32, a
+         * linearly patchable collision making one payload's map
+         * answer another's consult — the key rides md5 now, the
+         * house cache-key idiom).
+         */
+        $temp_dir2 = $this->scanScratchRoot('wp-connectors-scan-markerspan');
+        try {
+            $this->assertTrue(@mkdir($temp_dir2, 0755, true), "staging: {$temp_dir2} must create.");
+            $writes2 = array(
+                'trail.md' => "<?php\n* secrets:allow \$k = '{$token}'; // tail note ?>\n",
+                'no-trail.md' => "<?php\n* secrets:allow \$k = '{$token}'; ?>\n",
+                'later-doc.md' => "<?php\n* secrets:allow /** notes */ \$k = '{$token}'; ?>\n",
+                'hash-tail.md' => "<?php\n* secrets:allow \$k = '{$token}'; # hash tail ?>\n",
+                'inside.md' => "<?php\n/**\n * secrets:allow '{$token}'\n */\n?>\n",
+            );
+            foreach ($writes2 as $name => $body) {
+                $this->assertNotFalse(file_put_contents($temp_dir2 . '/' . $name, $body), "staging: {$name} must write.");
+            }
+
+            $findings2 = wp_connectors_scan_paths(array( $temp_dir2 ));
+        } finally {
+            WpHarness::releaseScratch($temp_dir2);
+        }
+        $report2 = implode("\n", $findings2);
+        $this->assertStringContainsString('/trail.md:', $report2, 'An UNRELATED trailing comment after the credential exempts nothing — the verdict judges the MARKER\'s own span (red at HEAD: laundered).');
+        $this->assertStringContainsString('/no-trail.md:', $report2, 'The comment-free control flags as ever.');
+        $this->assertStringContainsString('/later-doc.md:', $report2, 'An unrelated docblock later on the line exempts nothing.');
+        $this->assertStringContainsString('/hash-tail.md:', $report2, 'An unrelated trailing hash comment exempts nothing.');
+        $this->assertStringNotContainsString('/inside.md:', $report2, 'A marker INSIDE a real docblock keeps its exemption — the span verdict holds the honest row.');
+
+        // The cache-key discipline (R61-2): md5, never a linearly
+        // patchable checksum, at the comment-map cache.
+        $scanner_source = (string) file_get_contents(__DIR__ . '/../bin/lib/secret-scanner.php');
+        $this->assertNotSame('', $scanner_source, 'The scanner source must be readable for the cache-key pin.');
+        $this->assertStringContainsString('$key = md5($contents);', $scanner_source, 'The comment-map cache keys by md5 — the house cache-key idiom (crc32 is linearly patchable, one payload\'s map answering another\'s consult).');
+        $this->assertStringNotContainsString('crc32($contents)', $scanner_source, 'No linearly patchable checksum keys a cross-payload cache.');
     }
 
     /**
