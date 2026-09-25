@@ -2954,5 +2954,62 @@ CHILD;
         $this->assertStringNotContainsString('/hash.ini:', $report, 'The \'#\' spelling keeps its exemption.');
         $this->assertStringContainsString('/bare.ini:', $report, 'The unmarked control still flags.');
         $this->assertStringContainsString('/app.env:', $report, 'The family boundary holds — \';\' is a value byte in a dotenv value, not a comment there.');
+         */
+        $this->assertStringNotContainsString('/app.ini.dist:', $report, 'The compound ini-DISTRIBUTION spelling keeps its base grammar\'s comment character (red at HEAD: FAIL app.ini.dist:1 github-token).');
+        $this->assertStringContainsString('/app.env.dist:', $report, 'The compound dotenv spelling keeps the dotenv boundary — \';\' stays a value byte there.');
+    }
+
+    /**
+     * Round-59 pin (t31-glm59-5 [R59-7+R59-1] — the round-58 head-shape
+     * clause was the wrong owner, both legs): a php-HEADED
+     * extension-less prose doc (a fenced sample first, prose after)
+     * rode the whole-file code arm and no marker spelling could
+     * exempt while the byte-identical .md twin exempted; and a
+     * bare-'<?'-headed payload's routing followed the head's
+     * spelling instead of the engine's own lexing, so a marker
+     * riding heredoc string data behind a host-lexed T_OPEN_TAG
+     * laundered a live key where the pre-round-58 code arm caught
+     * it. The '' special-case is gone — extension-less payloads ride
+     * the text-family routing wholesale, the region walk admitting
+     * openers by the ENGINE'S token verdict (the host-probed
+     * lexing: the production-default host never mints T_OPEN_TAG
+     * for a bare '<?', so its prose verdicts stand exactly as
+     * glm17-3 holds them there).
+     */
+    public function testAnExtensionLessPhpHeadedProseDocHonorsMarkersAndTheBareTagFollowsTheEngine(): void
+    {
+        $token = 'ghp_' . str_repeat('abcd', 9);
+
+        /*
+         * The INI-pinned legs (the engine-follows arm): a bare-'<?'
+         * payload's marker riding heredoc string data behind a
+         * host-lexed T_OPEN_TAG launders on a host whose engine
+         * opens the short spelling (red at HEAD under
+         * -d short_open_tag=1: 0 findings) and honors as prose where
+         * the engine refuses the opener — driven through spawned
+         * engines under both spellings (the glm18-4 doctrine: pinned
+         * INI in a fresh child). The extension-less PHP-HEADED prose
+         * doc's routing stays the round-58 adjudication (the code
+         * arm — its post-'?>' bytes are inline HTML, string data the
+         * glm16-1 doctrine refuses to exempt): R59-7 records the
+         * prose-parity counter-argument as Task 3.3 inheritance.
+         */
+        if ( ! $this->canSpawnChildren() ) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the INI-pinned spawned legs cannot run; the INI-independent legs above already passed.');
+        }
+        $fixture = sys_get_temp_dir() . '/wp-connectors-baretag-' . uniqid('', true) . '-' . getmypid();
+        $this->assertTrue(@mkdir($fixture, 0755, true), "staging: {$fixture} must create.");
+        try {
+            $this->assertNotFalse(file_put_contents($fixture . '/F1README', "<?\n\$d = <<<EOT\n{$token} // secrets:allow\nEOT;\n?>\nOutro\n"), 'staging: the spawned F1README must write.');
+            $script = sprintf('require %%s; $f = wp_connectors_scan_paths(array(%s)); echo "count=" . count($f) . "\n";', var_export($fixture, true));
+            $on = $this->spawnScannerChild($script, array( 'short_open_tag=1' ));
+            $this->assertSame(0, $on['exit'], "The On-engine child runs clean: {$on['report']}");
+            $this->assertSame(1, preg_match('/^count=1$/m', $on['report']), "A host whose engine opens the bare '<?' sees the heredoc-carried marker as STRING DATA — the marked key flags (red at HEAD: count=0): {$on['report']}");
+            $off = $this->spawnScannerChild($script, array( 'short_open_tag=0' ));
+            $this->assertSame(0, $off['exit'], "The Off-engine child runs clean: {$off['report']}");
+            $this->assertSame(1, preg_match('/^count=0$/m', $off['report']), "The production-default host refuses the bare '<?' — the payload is prose and the marker honors (the glm17-3 doctrine stands there): {$off['report']}");
+        } finally {
+            WpHarness::releaseScratch($fixture);
+        }
     }
 }

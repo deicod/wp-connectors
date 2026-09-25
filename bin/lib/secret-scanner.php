@@ -831,6 +831,25 @@ function wp_connectors_scan_token_memory_headroom()
  */
 function wp_connectors_payload_has_sample_open($contents)
 {
+    /*
+     * t31-glm59-5 [R59-1, driven — the pre-screen's INI-independent
+     * bare-'<?' refusal gated the whole text path before the
+     * host-aware machinery behind it ever ran]: on a
+     * short_open_tag host the engine lexes every '<?' spelling as a
+     * real open tag, and the round-58 routing moved extension-less
+     * payloads onto the text path — so a bare-'<?'-headed payload
+     * never reached a token pass and a marker riding heredoc string
+     * data behind it laundered a live key where the pre-round-58
+     * code arm (the real tokenizer) caught it (driven under
+     * -d short_open_tag=1, engine-token proof in the ledger). The
+     * probe arm admits the payload where THIS engine opens short
+     * spellings; the production-default host answers false and the
+     * INI-independent spellings below stand exactly as glm17-3/glm63-2
+     * hold them there.
+     */
+    if (wp_connectors_engine_opener_lexing()['bare']) {
+        return false !== strpos($contents, '<?');
+    }
     $at = 0;
     while (false !== ($open = strpos($contents, '<?', $at))) {
         $after = $open + 2;
@@ -947,12 +966,22 @@ function wp_connectors_php_sample_regions($contents)
         $token = $tokens[ $i ];
         $text = is_array($token) ? $token[1] : $token;
         $id = is_array($token) ? $token[0] : null;
-        $opens = T_OPEN_TAG_WITH_ECHO === $id;
-        if (! $opens && T_OPEN_TAG === $id) {
-            $follower = (string) substr($text, 5);
-            $opens = 'php' === wp_connectors_ascii_lower((string) substr($text, 2, 3))
-                && ('' === $follower || str_contains(" \t\r\n", $follower));
-        }
+        /*
+         * t31-glm59-5 [R59-1]: admission by the ENGINE'S OWN verdict
+         * — the token id IS this host's probed lexing. On the
+         * production-default host the engine never mints T_OPEN_TAG
+         * for a bare '<?' or a glued '<?phpecho', so those spellings
+         * stay prose exactly as the glm17-3/glm18-11 doctrine holds
+         * there (verdict-identical by construction on the default);
+         * on a short_open_tag host the engine says code and the walk
+         * now agrees — the text-based override once refused the
+         * host's own openings, treating engine-lexed code as prose
+         * (the ON-host half of glm17-1's standing corner, closed
+         * here for the scanner's region walk; glm63-2's
+         * INI-independence is the FENCE walk's doctrine,
+         * check-conventions' own, untouched).
+         */
+        $opens = T_OPEN_TAG_WITH_ECHO === $id || T_OPEN_TAG === $id;
         if (! $opens) {
             $at += strlen($text);
             continue;
