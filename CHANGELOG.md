@@ -6,6 +6,71 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 52)
+
+Thirty-eighth claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first; the convergence round ordered — still not
+zero, EVERY production finding of the round in the round-51 commits'
+own machinery, the loop's shadow at its sharpest): the dead composer
+screens, the decoy consult's three further gaps, the mask boundary's
+three further arms, the mid-line star operator's exemption, the
+derived hyphenated windows beside the dictionary owner, and the
+four-seat cleanup (the readlink one-owner, the derived empty-'='
+check, the stale narration, the stranded docblocks). Five fix
+commits t31-glm52-1..12 plus the docs close, the full offline check
+green after every commit. The mask's mid-token '=' trade recorded as
+the conscious err-safe direction. Suite 1982 → 1985 tests,
+48637 → 48663 assertions, 3 skipped unchanged.
+
+- **The composer screens judge the include operands
+  (t31-glm52-1, driven fail-open; bin/lib/plugin-tools.php)** — the
+  round-51 masked conjuncts killed both screens outright (the
+  needles ride string bytes the masker blanks); 'vendor/autoload'
+  and 'composer' now judge the position-filtered include statements'
+  raw spans beside the masked view's code bytes, the keyword conjunct
+  on the masked view alone.
+
+- **The decoy consult's three further gaps (t31-glm52-2..4, driven;
+  bin/lib/plugin-tools.php)** — the trait fence reads the LAST
+  NON-WHITESPACE byte before the brace ('use Foo\ { function
+  define };' php -l clean, the launder closed), the declaration
+  walk's use-fence counts braces (a trait adaptation's inner ';'
+  no longer corrupting the class-frame depth — a method named
+  'define' after an adaptation falsely refused the working bare
+  define below it), and each import shadow carries its REGION END
+  (the anonymous 'namespace {}' blocks never inheriting an earlier
+  region's import; a following namespace declaration start bounding
+  the unbraced region).
+
+- **The mask boundary's three further arms (t31-glm52-5, driven;
+  shared/src/Support/SecretMask.php)** — the assignment gate
+  requires a non-empty run after the '=' (a long opaque token's
+  trailing base64 PADDING never arms; the mid-token '=' the
+  recorded err-safe trade), the no-opener branch answers honestly
+  (the false+1 slice that masked a 13-character scheme-bearing
+  value dead), and the decode runs to FIXPOINT (a TRIPLE-encoded
+  delimiter leaking four characters no more); the no-'%' decoded
+  pass skipped and the unreachable internal gate folded away.
+
+- **The marker's line-initial star and the derived windows
+  (t31-glm52-6..8, driven; bin/lib/secret-scanner.php)** — the
+  docblock-continuation opener '\*' carries its own line anchor
+  ('note 1 * secrets:allow then key …' in prose exempting nothing,
+  the line-initial continuation keeping its exemption), the
+  hyphenated dictionary windows DERIVE from the one owner (the
+  hand-coded piece triples gone), and the dictionary alternation is
+  imploded once per call at both segment-loop seats.
+
+- **The four-seat cleanup (t31-glm52-9..12; bin/lib/
+  plugin-tools.php, bin/build.php, bin/lint-php.php, bin/lib/
+  secret-scanner.php)** — the ocr57-3 readlink doctrine at ONE
+  owner (wp_connectors_link_target_or_unreadable(), the three
+  hand-copied spellings folded), the empty-'=' check derived from
+  the name the loop itself parsed, the import-shadow narration
+  restating the offset-identity rule R51-6 actually shipped, and
+  the three stranded docblocks relocated (the functions'
+  ReflectionFunction-verified).
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 51)
 
 Thirty-seventh claude-glm pass (/code-review max over the FULL branch
