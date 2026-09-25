@@ -1706,6 +1706,14 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         $this->assertNotEmpty(wp_connectors_scan_string("don't say 'x // secrets:allow y' {$key}\n", 'odd-quote.txt'), 'A marker on a line whose quote pairing is ambiguous never exempts — no line-local lens can prove it sits in a comment (red at HEAD: exempt).');
         $this->assertNotEmpty(wp_connectors_scan_string("do not say 'x // secrets:allow y' {$key}\n", 'even-quote.txt'), 'The apostrophe-free control keeps its flag — the marker rides inside a cleanly-paired string, string data never exempting.');
         $this->assertSame(array(), wp_connectors_scan_string("note: 'It'\\''s marked' // secrets:allow {$key}\n", 'escaped-quote.txt'), 'A cleanly-paired line with escaped quotes keeps its exemption — escape pairs are shed before the count, the marker sitting in a real comment after the string.');
+        /*
+         * R55-2 (driven both directions): the guard counted the RAW
+         * line while the pairing it guards judges the region-stripped
+         * prose view — an embedded sample's quotes flipped the parity
+         * both ways. The guard counts the judged view now.
+         */
+        $this->assertNotEmpty(wp_connectors_scan_string("<?php \$a = \"don't\"; ?> don't say 'x // secrets:allow y' {$key}\n", 'sample-parity-open.md'), 'A SAMPLE apostrophe making the raw count even never arms the guard over an odd JUDGED view — the marker reads as code no more (red at HEAD: exempt).');
+        $this->assertSame(array(), wp_connectors_scan_string("<?php \$a = \"don't\"; ?> ok // secrets:allow {$key}\n", 'sample-parity-clean.md'), 'A sample apostrophe over a quote-free judged view never refuses the marker — the legitimately-marked comment keeps its exemption (red at HEAD: false-flagged, master exempts).');
 
         /*
          * R53-8 (driven): the value-level final pass re-derived the

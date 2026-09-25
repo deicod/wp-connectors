@@ -1527,7 +1527,30 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
                          * DATA, never an exemption) at the one
                          * boundary the per-slice view left open.
                          */
-                        $prose_marker = ! wp_connectors_line_quote_pairing_is_ambiguous($line) && 1 === preg_match($allowMarker, wp_connectors_blank_quoted_strings($prose_view));
+                        /*
+                         * t31-glm55-2 [R55-2, driven both directions —
+                         * the guard counted the WRONG string]: the
+                         * round-54 guard counted unescaped quotes on
+                         * the WHOLE RAW line while the pairing it
+                         * guards judges the region-stripped PROSE
+                         * view — an embedded sample's quotes flipped
+                         * the parity both ways (a sample apostrophe
+                         * making the raw count even while the judged
+                         * view stayed odd, the marker reading as code
+                         * and exempting the live credential; and the
+                         * mirror — a sample apostrophe making the raw
+                         * count odd over a QUOTE-FREE prose view,
+                         * false-flagging a legitimately-marked line
+                         * master exempts). The guard counts the same
+                         * string the consult judges: the prose view
+                         * (the non-region arm's view is the house
+                         * grammar's product over the whole line,
+                         * whose empty-shell replacement preserves the
+                         * per-class parity — counting it and counting
+                         * the raw line answer identically there, so
+                         * every round-54 pin rides unchanged).
+                         */
+                        $prose_marker = ! wp_connectors_line_quote_pairing_is_ambiguous($prose_view) && 1 === preg_match($allowMarker, wp_connectors_blank_quoted_strings($prose_view));
                     }
                     if ($prose_marker) {
                         continue;
