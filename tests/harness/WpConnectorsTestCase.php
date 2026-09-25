@@ -1051,6 +1051,21 @@ abstract class WpConnectorsTestCase extends TestCase
         if (strlen($secret) > 12) {
             $this->assertStringNotContainsString(substr($secret, 0, 8), $haystack);
             $this->assertStringNotContainsString(substr($secret, -8), $haystack);
+            /*
+             * t31-glm55-12 [R55-12, driven — the middle window was
+             * unpinned]: the first-8/last-8 pair left the interior
+             * free — a haystack carrying substr($secret, 12, 20) of a
+             * 40-char secret passed all three checks while twenty
+             * consecutive secret bytes leaked, the partial-echo class
+             * the method exists to catch (glm29-7's record notes a
+             * hex fragment once leaking 'through all three checks').
+             * Every 8-byte window of the interior is probed now — a
+             * str_replace([head, tail], …) redactor ships red across
+             * the 26 call sites pinning the Zai surfaces.
+             */
+            for ($at = 8; $at + 8 <= strlen($secret) - 8; $at += 8) {
+                $this->assertStringNotContainsString(substr($secret, $at, 8), $haystack, sprintf('A middle window of the secret (bytes %d-%d) leaks through the redaction.', $at, $at + 7));
+            }
         }
     }
 
