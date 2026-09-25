@@ -6,6 +6,70 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 54)
+
+Fortieth claude-glm pass (/code-review max over the FULL branch
+diff, ledger-read first; the convergence round ordered — still not
+zero, five of the six driven defects in the loop's own recent
+commits' machinery, the loop's shadow nineteen generations on): the
+mask gate's single-layer yield, the composer screen's non-include
+channels, the compositor slice's line anchor, the family detector's
+b/B nowdoc, the CLI's silent slug drop, the odd-quote marker
+laundering, and four one-owner hoists. Eight fix commits
+t31-glm54-1..15 plus the docs close, the full offline check green
+after every commit. Four re-flags dropped as ledger-covered
+(glm27-2's cosmetic class twice, the standing R43-15 inheritance,
+the below-root arithmetic). Suite 1986 tests unchanged,
+48687 → 48711 assertions, 3 skipped unchanged.
+
+- **The mask gate's layered yield (t31-glm54-1, driven leak;
+  shared/src/Support/SecretMask.php)** — the round-53 encoded-triple
+  arm armed only the single-layer spelling, so the double- and
+  triple-encoded trailing-pad shapes never armed the gate and the
+  fixpoint decode never judged them; the layered probe judges every
+  encoding layer's own raw spelling, and ENCODED_DELIMITER_TRIPLES
+  is the one vocabulary the gate and the boundary scan compose.
+- **The composer screen's channel family (t31-glm54-2, driven
+  fail-open vs master; bin/lib/plugin-tools.php)** — a
+  vendor/autoload operand riding file_get_contents/shell_exec/eval
+  string bytes was invisible to both screen arms where master's raw
+  scan refused; the channel candidates ride the autoloader seat's
+  own family by the two-view doctrine (keyword on the masked view,
+  the depth-matched argument span slicing the raw code), the
+  variable-callee spelling the recorded residual.
+- **The compositor slice's sentinel (t31-glm54-3, driven
+  fail-open; bin/lib/secret-scanner.php)** — a marker run after an
+  embedded `<?php … ?>` sample read as line-initial in the prose
+  SLICE and exempted the credential beside it; a mid-line head
+  carries a sentinel byte no '^'-anchored arm can fire on.
+- **The family detector's b/B nowdoc (t31-glm54-4, driven false
+  refusal; bin/lib/plugin-tools.php)** — 'b<<<\x27V\x27'
+  classified as the escape-resolving heredoc, the value lens
+  decoding an engine-verbatim body into a phantom family reference
+  and the false rewrite refusal; the prefix rides the classification
+  anchor exactly as the define collector's shared heredoc arm took
+  it.
+- **The CLI's mutual exclusion (t31-glm54-5, driven;
+  bin/build.php)** — '--fixture' silently dropped a co-passed
+  '--slug' at exit 0; both selectors passed answer the block's own
+  refusal vocabulary naming the pair.
+- **The odd-quote ambiguity (t31-glm54-6, driven fail-open;
+  bin/lib/secret-scanner.php)** — an odd count of unescaped quotes
+  left the leftmost-first pairing arbitrary, a prose apostrophe
+  pairing with the string's own opener and the marker reading as
+  code; the ambiguity refuses the exemption (escape pairs shed
+  before the count, the cleanly-paired line keeping its verdicts).
+- **The round-53 territory's one-owner completions
+  (t31-glm54-7..10, verdict-identical hoists;
+  bin/lib/plugin-tools.php)** — the transitive variable-resolution
+  worklist (the R53-1 copy beside the R44-1 original), the
+  anchor-present predicate (four seats), and the assignment
+  value-expression extraction (three seats) each ride one owner.
+- **The fake-secret segment split (t31-glm54-15, verdict-identical
+  hoist; bin/lib/secret-scanner.php)** — the separator vocabulary
+  one owner beside the dictionary, the head/tail/final arms no
+  longer able to disagree on one value.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 53)
 
 Thirty-ninth claude-glm pass (/code-review max over the FULL branch
