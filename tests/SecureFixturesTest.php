@@ -1624,6 +1624,47 @@ final class SecureFixturesTest extends WpConnectorsTestCase
         );
     }
 
+    public function testAMidLineStarOperatorNeverExempts()
+    {
+        /*
+         * R52-3 (driven through the scan API): the docblock-
+         * continuation opener '\*' rode the shared '(?:^|\s)' guard,
+         * so a MID-LINE '*' needed only whitespace before it —
+         * 'note 1 * secrets:allow then key …' in a prose payload
+         * exempted a live credential on the line (red at HEAD:
+         * exempt) while a real docblock continuation is always
+         * LINE-INITIAL. The bare '\*' arm carries its own line
+         * anchor; the line-initial continuation keeps its exemption.
+         */
+        $key = 'ghp_' . str_repeat('q', 30);
+        $this->assertNotEmpty(
+            wp_connectors_scan_string("note 1 * secrets:allow then key {$key}\n", 'm.txt'),
+            'A mid-line star operator never exempts — multiplication is not a comment (red at HEAD: exempt).'
+        );
+        $this->assertSame(
+            array(),
+            wp_connectors_scan_string("/*\n * secrets:allow {$key}\n */\n", 'd.php'),
+            'The LINE-INITIAL docblock continuation keeps its exemption — the anchor admits leading whitespace and the star, never a mid-line operator.'
+        );
+        $this->assertNotEmpty(
+            wp_connectors_scan_string("note key {$key}\n", 'n.txt'),
+            'The no-marker control flags beside the anchored arm.'
+        );
+
+        /*
+         * R52-9 (the fourth seat's closure, the R44-9 two-arm-copy
+         * class at the round-51 owner's own neighbor): the
+         * hyphenated dictionary words are WINDOW-spelled at the
+         * segment walks by pieces DERIVED from the one owner — the
+         * hand-coded piece triples are gone, a future hyphenated
+         * word landing everywhere or nowhere. The window pieces
+         * count ZERO budget bytes.
+         */
+        $this->assertSame(array(), wp_connectors_fake_secret_placeholder_spans(array( 'not', 'a', 'real' )), 'The not-a-real window pieces count no bytes — derived from the owner.');
+        $this->assertSame(array(), wp_connectors_fake_secret_placeholder_spans(array( 'test', 'value' )), 'The test-value window pieces count no bytes — derived from the owner.');
+        $this->assertSame(array( 3 ), wp_connectors_fake_secret_placeholder_spans(array( 'test', 'value', 'xyz' )), 'A non-window segment past the window still counts its bytes.');
+    }
+
     public function testMarkerInsideAHeredocBodyExemptsNothing()
     {
         /*

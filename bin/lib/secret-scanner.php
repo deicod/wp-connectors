@@ -193,7 +193,21 @@ function wp_connectors_allow_marker_pattern($extension = '', $with_markup_arm = 
      * (the pure-HTML .php template of glm24-1, every .html) IS
      * prose, its '<!--' a real comment there.
      */
-    $line_comment_openers = '\/\/|#|\/\*|\*';
+    /*
+     * t31-glm52-7 [R52-3, driven fail-open — the bare '\*' arm fired
+     * on MID-LINE multiplication]: the docblock-continuation opener
+     * rode the shared '(?:^|\s)' guard like the ///# spellings, but
+     * its '*' needs only WHITESPACE before it there — '1 * secrets:
+     * allow' in a prose payload exempted a live credential on the
+     * line (driven: the .txt shape answered exempt where the
+     * no-marker control flags) while a real docblock continuation is
+     * always LINE-INITIAL. The bare '\*' arm carries its own line
+     * anchor: '^\\s*\\*' — leading whitespace then the star, never
+     * a mid-line operator. (Every consult matches this pattern
+     * against ONE line's view — the composed code slice or the
+     * line-local prose — so '^' is the line start at every seat.)
+     */
+    $line_comment_openers = '\/\/|#|\/\*|^\s*\*';
     if (! $with_markup_arm) {
         return '/(?:^|\s)(?:' . $line_comment_openers . ')\s*secrets:allow\b/';
     }
@@ -338,21 +352,53 @@ function wp_connectors_fake_secret_placeholder_spans(array $segments)
 {
     $spans = array();
     $count = count($segments);
+    /*
+     * t31-glm52-8 [R52-9+R52-15, the fourth seat's closure — the
+     * R44-9 two-arm-copy class at the round-51 owner's own
+     * neighbor]: the hyphenated dictionary words ('not-a-real',
+     * 'test-value') were window-spelled HERE by hand — two
+     * hard-coded piece triples the owner's own list had to agree
+     * with, a future hyphenated word landing in the owner and not
+     * at this seat the exact split the owner exists to close. The
+     * windows DERIVE from the owner now: every dictionary word
+     * carrying a hyphen contributes its piece sequence, matched
+     * against consecutive folded segments. The dictionary
+     * alternation is imploded ONCE per call (the R52-15 fold: the
+     * implode rode inside the per-segment loop, re-stringing the
+     * sixteen words for every segment of every side of every
+     * candidate value).
+     */
+    $dictionary_alternation = implode( '|', wp_connectors_fake_secret_dictionary_words() );
+    $hyphenated_windows = array();
+    foreach (wp_connectors_fake_secret_dictionary_words() as $word) {
+        if (false !== strpos($word, '-')) {
+            $hyphenated_windows[] = array_map('wp_connectors_ascii_lower', explode('-', $word));
+        }
+    }
     for ($i = 0; $i < $count; ++$i) {
         $folded = wp_connectors_ascii_lower((string) $segments[ $i ]);
         if ('' === $folded) {
             continue;
         }
-        $next = $i + 1 < $count ? wp_connectors_ascii_lower((string) $segments[ $i + 1 ]) : null;
-        $after = $i + 2 < $count ? wp_connectors_ascii_lower((string) $segments[ $i + 2 ]) : null;
-        if ('not' === $folded && 'a' === $next && 'real' === $after) {
-            $i += 2;
-
-            continue;
+        $window_hit = false;
+        foreach ($hyphenated_windows as $window) {
+            $window_len = count($window);
+            if ($i + $window_len > $count) {
+                continue;
+            }
+            $j = 0;
+            for (; $j < $window_len; ++$j) {
+                if (wp_connectors_ascii_lower((string) $segments[ $i + $j ]) !== $window[ $j ]) {
+                    break;
+                }
+            }
+            if ($j === $window_len) {
+                $i += $window_len - 1;
+                $window_hit = true;
+                break;
+            }
         }
-        if ('test' === $folded && 'value' === $next) {
-            ++$i;
-
+        if ($window_hit) {
             continue;
         }
         /*
@@ -375,7 +421,7 @@ function wp_connectors_fake_secret_placeholder_spans(array $segments)
          * YOUR_API_KEY and the <your-token-here> wrapper only, the
          * three-word tail unpinned until now.
          */
-        if (1 === preg_match('/^(?:' . implode( '|', wp_connectors_fake_secret_dictionary_words() ) . ')$/i', $segments[ $i ])
+        if (1 === preg_match('/^(?:' . $dictionary_alternation . ')$/i', $segments[ $i ])
             || wp_connectors_segment_is_sequential_filler($folded)) {
             continue;
         }
@@ -514,12 +560,18 @@ function wp_connectors_is_recognizably_fake_secret($value)
      * klmnopqrstuvwxyz01' body rides the walker's
      * alphabet-continuation arm ('abcdefgh' + 'ij' continuing).
      */
+    /*
+     * The value-level twin's own alternation hoist (R52-15): the
+     * implode rode inside the per-segment loop here too — one
+     * stringing per segment, the same fold the spans walker took.
+     */
+    $dictionary_alternation = implode( '|', wp_connectors_fake_secret_dictionary_words() );
     foreach (preg_split('/[-_\s]+/', $value) as $segment) {
         $folded_value = wp_connectors_ascii_lower($segment);
         if ('' === $folded_value) {
             continue;
         }
-        if (1 !== preg_match('/^(?:' . implode( '|', wp_connectors_fake_secret_dictionary_words() ) . ')$/i', $segment)
+        if (1 !== preg_match('/^(?:' . $dictionary_alternation . ')$/i', $segment)
             && ! wp_connectors_segment_is_sequential_filler($folded_value)) {
             return false;
         }
