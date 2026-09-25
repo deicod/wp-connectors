@@ -772,4 +772,31 @@ final class SelfContainmentIncludeScanAbortTest extends TestCase
         $this->assertTrue($walked, 'The restored-limit walk scans clean.');
         $this->assertSame(1, $visits, 'The control resolves the one assignment value — the abort was the abort, never the shape.');
     }
+
+    /**
+     * R56-F9 (source pin): the worklist owner names its variable-
+     * extraction pattern ONCE. The seed and the re-extraction hop
+     * each spelled the literal — a structural edit landing at one
+     * spelling but not the other seeds a variable the walk can
+     * never re-extract from resolved values, the resolution
+     * silently stopping one hop early (the R55-10 silent-stop
+     * class, uncatchable by any abort). The composition count is
+     * held at exactly one (a pasted-back second spelling fails).
+     */
+    public function testTheTransitiveWorklistSpellsItsExtractionPatternOnce(): void
+    {
+        $reflection = new \ReflectionFunction('wp_connectors_each_transitive_assignment_value');
+        $source = (string) file_get_contents($reflection->getFileName());
+        $this->assertNotFalse($source, 'The worklist owner\'s source file must be readable for the composition pin.');
+
+        $lines = explode("\n", $source);
+        $body = implode("\n", array_slice(
+            $lines,
+            $reflection->getStartLine() - 1,
+            $reflection->getEndLine() - $reflection->getStartLine() + 1
+        ));
+
+        $composition = "'/\\\\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/'";
+        $this->assertSame(1, substr_count($body, $composition), 'The variable-extraction pattern is composed exactly once inside the worklist owner — the seed and the hop ride the one local (a second spelling is the silent one-hop-stop drift).');
+    }
 }

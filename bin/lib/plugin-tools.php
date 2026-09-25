@@ -4041,9 +4041,23 @@ function wp_connectors_each_transitive_assignment_value($code, $masked, $stateme
      * silently stopping]: the family's abort-as-reject doctrine
      * (glm36-8) converts every false here to a refused proof — the
      * seats mint their own loud refusals on the false return.
+     *
+     * t31-glm56-3 [R56-F9 — the extraction pattern spelled twice
+     * inside its own owner]: the R54-9 record names this function
+     * the ONE owner of the variable-extraction regex, but the seed
+     * and the hop each spelled the literal — a structural edit to
+     * one spelling (anchor, capture shape) would seed a variable
+     * the walk can never re-extract from resolved values, the
+     * resolution silently stopping one hop early, the exact
+     * R55-10 silent-stop class this function was just hardened
+     * against (constant-level widening rides both spellings — the
+     * literals interpolated the same constants). ONE local names
+     * the pattern; both extractions ride it (pinned: the
+     * composition spelled exactly once in this function's source).
      */
+    $variable_pattern = '/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/';
     $variable_names = array();
-    $extracted = preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $statement_text, $variable_names);
+    $extracted = preg_match_all($variable_pattern, $statement_text, $variable_names);
     if (false === $extracted) {
         return false;
     }
@@ -4063,7 +4077,7 @@ function wp_connectors_each_transitive_assignment_value($code, $masked, $stateme
                 return true;
             }
             $hop_names = array();
-            $hop_extracted = preg_match_all('/\\$([' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*)/', $assignment_value, $hop_names);
+            $hop_extracted = preg_match_all($variable_pattern, $assignment_value, $hop_names);
             if (false === $hop_extracted) {
                 return false;
             }
