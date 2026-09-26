@@ -2081,20 +2081,21 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                         }
                     }
                 }
+                /*
+                 * t31-glm64-3 [R64-5, driven — the round-63 fence
+                 * sat INSIDE the !isFile() branch]: a resolving
+                 * FILE symlink answers isFile() TRUE (is_file
+                 * follows the link) and the walk READ THROUGH it,
+                 * judging the target's bytes under the link's own
+                 * pathname — the fence's own message falsified one
+                 * shape over. The link judgment precedes the kind
+                 * judgment: every link entry answers the refusal.
+                 */
+                if ($file->isLink()) {
+                    $findings[] = sprintf('%s: %s is a symlink — the secret scan never reads through a link; replace or remove the link', $root, $file->getPathname());
+                    continue;
+                }
                 if (! $file->isFile()) {
-                    /*
-                     * t31-glm63-5 [R63-4, driven — the one tree walk
-                     * in the family without the no-symlinks fence]:
-                     * a resolving dir-symlink answered isFile() false
-                     * and its subtree was silently skipped, the walk
-                     * certifying bytes it never read at exit 0 — the
-                     * glm14-3 never-clean-over-unread-bytes doctrine
-                     * the size-cap arm below spells. A link entry
-                     * answers the finding-line refusal.
-                     */
-                    if ($file->isLink()) {
-                        $findings[] = sprintf('%s: %s is a symlink — the secret scan never reads through a link; replace or remove the link', $root, $file->getPathname());
-                    }
                     continue;
                 }
                 /*

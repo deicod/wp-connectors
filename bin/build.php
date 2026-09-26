@@ -2849,9 +2849,32 @@ final class WpConnectorsBuild
                      * traversal predicate rejected the same entry
                      * as an escape ('...' collapses to the parent).
                      */
-                    if ('' !== $part && '' === trim($part, '.') && strlen($part) >= 2) {
+                    /*
+                     * t31-glm64-1 [R64-10, driven — the R63-5 member
+                     * one fold class over]: the inspector folds every
+                     * edge-junk byte out before its dots-only test,
+                     * the collector judged byte-exact — a '..<TAB>'
+                     * directory built green and inspected REJECTED.
+                     * The fold first, then the dots-only test.
+                     */
+                    $folded_part = trim($part, str_replace('.', '', wp_connectors_path_edge_junk()));
+                    if ('' !== $folded_part && '' === trim($folded_part, '.') && strlen($folded_part) >= 2) {
                         throw new RuntimeException(sprintf(
                             "build: the plugin tree carries a dots-only segment in the name %s (segment '%s') — a normalizing extraction target collapses it to a parent token, plugin-reachable bytes no content gate judges under the dots-only spelling; the collector refuses at collection what bin/inspect-artifact.php refuses at extraction — one class, two owners, one verdict; write the dots-free name.",
+                            $relative,
+                            $part
+                        ));
+                    }
+                    /*
+                     * t31-glm64-1 [R64-11, driven]: the inspector
+                     * refuses any backslash in an entry name
+                     * absolutely (a path separator under PHP on
+                     * Windows) — the collector's screen carries the
+                     * member beside ':' now, one class, two owners.
+                     */
+                    if (strpos($part, '\\') !== false) {
+                        throw new RuntimeException(sprintf(
+                            "build: the plugin tree carries a backslash in the name %s (segment '%s') — a path separator on Windows extraction targets, plugin-reachable bytes no content gate judges under the backslash-bearing spelling; the collector refuses at collection what bin/inspect-artifact.php refuses at extraction — one class, two owners, one verdict; write the backslash-free name.",
                             $relative,
                             $part
                         ));
@@ -2989,25 +3012,10 @@ final class WpConnectorsBuild
          * throws its sentences, the conventions gate appends them,
          * the next family member landing once.
          */
-        $slug_screen_violations = wp_connectors_slug_name_screen_violations($slug);
+        // t31-glm64-1 [R64-below-cap]: the path-bearing call — the owner's own link member serving this seam (the round-63 landing left a hand-copied fence beside a pathless call).
+        $slug_screen_violations = wp_connectors_slug_name_screen_violations($slug, $pluginDir);
         if ($slug_screen_violations !== array()) {
             throw new RuntimeException('build: ' . implode("; ", $slug_screen_violations));
-        }
-        /*
-         * t31-glm62-1 [R62-1, driven end-to-end at HEAD by both the
-         * review and the driver — the connector ROOT carried no
-         * symlink fence]: is_dir() follows a resolving link, so a
-         * plugin tree OUTSIDE the repo built through a connectors/
-         * link shipped its unscanned bytes through every green gate
-         * while the inspector rejected the published zip (the
-         * out-of-tree includes/creds.php carrying a live key, unzip
-         * -p verified); a DANGLING link silently vanished from
-         * build-all. A link is never silently skipped and never read
-         * through (the ocr3-3 build.json fence's own vocabulary) —
-         * the fence sits at the root, dangling and resolving alike.
-         */
-        if (is_link($pluginDir)) {
-            throw new RuntimeException("build: {$slug}: the connector directory is a symlink — dangling or resolving, a link is never silently skipped and never read through; make the connector a real directory under connectors/");
         }
         $mainFiles = wp_connectors_find_main_plugin_files($pluginDir);
         if ($mainFiles === array()) {
@@ -4648,14 +4656,33 @@ if (wp_connectors_cli_entry(__FILE__)) {
     if (isset($args['fixture'])) {
         $fixtureDir = $repoRoot . '/tests/fixtures/plugins/' . (string) $args['fixture'];
         if (! is_dir($fixtureDir)) {
-            fwrite(STDERR, "build: no fixture plugin named {$args['fixture']}\n");
+            fwrite(STDERR, 'build: no fixture plugin named ' . wp_connectors_printable((string) $args['fixture']) . "\n");
+            exit(1);
+        }
+        // t31-glm64-1 [R64-2]: the fixture door consults the link-root refusal beside its slug twin.
+        if (null === wp_connectors_child_directories($fixtureDir)) {
+            fwrite(STDERR, "build: the fixture root is a symlink or unreadable — the fixture census cannot run\n");
             exit(1);
         }
         $targets[] = $fixtureDir;
     } elseif (isset($args['slug'])) {
         $pluginDir = $repoRoot . '/connectors/' . (string) $args['slug'];
         if (! is_dir($pluginDir)) {
-            fwrite(STDERR, "build: no plugin named {$args['slug']}\n");
+            fwrite(STDERR, 'build: no plugin named ' . wp_connectors_printable((string) $args['slug']) . "\n");
+            exit(1);
+        }
+        /*
+         * t31-glm64-1 [R64-2, driven — the R63-1 fence armed only
+         * the census door]: the selector doors resolved their target
+         * with a bare follow-the-link is_dir(), so a resolving
+         * connectors/ ROOT packaged the out-of-tree tree green
+         * through --slug while build-all and conventions refused
+         * the identical tree. The doors consult the census owner's
+         * link-root refusal (R64-14: the interpolated argv rides
+         * the printable seam beside it).
+         */
+        if (null === wp_connectors_child_directories($repoRoot . '/connectors')) {
+            fwrite(STDERR, "build: {$repoRoot}/connectors is unreadable or a symlink — the connector census cannot run\n");
             exit(1);
         }
         $targets[] = $pluginDir;
@@ -4680,6 +4707,17 @@ if (wp_connectors_cli_entry(__FILE__)) {
         }
     }
 
+    /*
+     * t31-glm64-1 [R64-7, driven — the R62-1/R63-2 family's one
+     * unfenced sibling]: a resolving dist/ symlink made every
+     * staging/publication path compose through the link, the entire
+     * artifact set landing in an out-of-tree target at exit 0. The
+     * dist root refuses links before anything composes.
+     */
+    if (is_link($repoRoot . '/dist')) {
+        fwrite(STDERR, "build: {$repoRoot}/dist is a symlink — the release artifacts land wherever it points; make dist a real directory\n");
+        exit(1);
+    }
     if ($targets === array()) {
         echo "build: no plugins to build\n";
         exit(0);
@@ -4708,7 +4746,7 @@ if (wp_connectors_cli_entry(__FILE__)) {
             continue;
         }
         $collision_headers = wp_connectors_parse_plugin_headers($collision_mains[0]);
-        $collision_version = trim((string) ($collision_headers['Version'] ?? ''));
+        $collision_version = trim((string) ($collision_headers['version'] ?? ''));
         if ('' === $collision_version) {
             continue;
         }

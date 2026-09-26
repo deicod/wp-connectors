@@ -243,6 +243,20 @@ function wp_connectors_unused_import_violations(string $root, ?int &$counted = n
             new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
         );
         foreach ($iterator as $file) {
+            /*
+             * t31-glm64-3 [R64-6, driven — the R63-4 link class at
+             * the one walk the round-63 census never named]: a
+             * resolving dir-symlink is yielded as a LEAF, isDir()
+             * follows it, and the linked subtree was silently
+             * skipped unjudged — the lint gate refusing the
+             * identical shape loudly. A link entry answers the FAIL
+             * line.
+             */
+            if ($file->isLink()) {
+                fwrite(STDERR, 'conventions: FAIL ' . wp_connectors_printable($file->getPathname()) . " is a symlink — the unused-import walk never reads through a link; replace or remove the link.\n");
+                ++$violations;
+                continue;
+            }
             if ($file->isDir()) {
                 // The iterator yields directories too, and one NAMED *.php
                 // passes the extension gate below (glm17-10).

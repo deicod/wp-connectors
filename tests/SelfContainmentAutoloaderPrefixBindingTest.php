@@ -415,7 +415,7 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
          * (R54-2's legs above) drove for four decades of rounds.
          */
         $this->assertSame(
-            'file_get_contents|readfile|shell_exec|exec|system|passthru|popen|proc_open|fopen|file_put_contents|eval',
+            'file_get_contents|file|readfile|shell_exec|exec|system|passthru|popen|proc_open|fopen|file_put_contents|eval',
             implode('|', WP_CONNECTORS_CHANNEL_FUNCTIONS) . '|eval',
             'The composed alternation is byte-identical to the former inline literal — order included.'
         );
@@ -538,6 +538,51 @@ Spl_AutoLoad_Register(function (\$class) { \$prefix = 'Deicod\\\\WpConnectors\\\
         $this->assertNotFalse(file_put_contents($gate_dir . '/src/autoload.php', "<?php\n\$prefix = 'Deicod\\\\WpConnectors\\\\Zai\\\\';\nspl_autoload_register(static function (\$class) use (\$prefix) {\n    \$file = __DIR__ . '/' . str_replace('\\\\', '/', substr(\$class, strlen(\$prefix))) . '.php';\n    if (is_file(\$file)) { require \$file; }\n});\n\$fallback = __DIR__ . '/ven' . 'dor/autoload.php';\nrequire \$fallback;\n"), 'staging: the split-fallback autoload must write.');
         $gate = wp_connectors_autoloader_violations($gate_dir);
         $this->assertStringContainsString('must not reference composer or vendor', implode("\n", $gate), 'A vendor/autoload path composed across two literals flags through the autoloader gate — the spine serves both gates (red at HEAD: clean).');
+    }
+
+    /**
+     * Round-64 pin (t31-glm64-2 [R64-3+R64-4+R64-12+R64-13] — the
+     * composer screen's four round-64 members, all driven A/B by
+     * both the review and the driver): the 'file' channel twin, the
+     * backtick execution operator, the member-glue refusal, and the
+     * concatenated prefix literal.
+     */
+    public function testTheComposerScreensFourRound64Members(): void
+    {
+        $base = $this->base . '-r64';
+        $d = $base . '/plug'; @mkdir($d . '/src', 0755, true);
+        $autoloader = "<?php\n"
+            . "\$prefix = 'Deicod\\\\\\\\WpConnectors\\\\\\\\Zai\\\\\\\\';\n"
+            . "spl_autoload_register(static function (\$class) use (\$prefix) {\n"
+            . "    \$file = __DIR__ . \"/\" . str_replace(\"\\\\\\\\\", \"/\", substr(\$class, strlen(\$prefix))) . \".php\";\n"
+            . "    if (is_file(\$file)) { require \$file; }\n"
+            . "});\n";
+        $this->assertNotFalse(file_put_contents($d . '/src/autoload.php', $autoloader), 'staging: autoload must write.');
+        $writes = array(
+            'file.php' => "<?php\nreturn \$x = file( __DIR__ . '/../vendor/autoload.php' );\n",
+            'tick.php' => "<?php\n\$out = `composer install --no-dev`;\n",
+            'member.php' => "<?php\n\$package = new stdClass(); \$package->composer = 'John'; require __DIR__ . '/helper.php';\n",
+            'control.php' => "<?php\n\$package = new stdClass(); \$package->composerName = 'John'; require __DIR__ . '/helper.php';\n",
+        );
+        foreach ($writes as $name => $body) {
+            $this->assertNotFalse(file_put_contents($d . "/src/{$name}", $body), "staging: {$name} must write.");
+        }
+        $v = wp_connectors_self_containment_violations($d);
+        $joined = implode("\n", $v);
+        $this->assertStringContainsString('src/file.php references vendor/autoload', $joined, 'The file() twin is a channel (red at HEAD: invisible).');
+        $this->assertStringContainsString('src/tick.php references Composer', $joined, 'The backtick operator is a channel — the raw-view collector (red at HEAD: invisible).');
+        $this->assertStringNotContainsString('src/member.php', $joined, 'A benign member named composer mints nothing — the member-glue refusal (red at HEAD: false refusal).');
+        $this->assertStringNotContainsString('src/control.php', $joined, 'The control stays clean.');
+
+        // R64-13: the concatenated prefix binds.
+        $g = $base . '/plug2'; @mkdir($g . '/src', 0755, true);
+        $this->assertNotFalse(file_put_contents($g . '/src/autoload.php', "<?php\n"
+            . "\$prefix = 'Deicod\\\\\\\\WpConnectors\\\\\\\\' . 'Plug2\\\\\\\\';\n"
+            . "spl_autoload_register(static function (\$class) use (\$prefix) {\n"
+            . "    \$file = __DIR__ . \"/\" . str_replace(\"\\\\\\\\\", \"/\", substr(\$class, strlen(\$prefix))) . \".php\";\n"
+            . "    if (is_file(\$file)) { require \$file; }\n"
+            . "});\n"), 'staging: the concatenated autoload must write.');;
+        $this->assertSame(array(), wp_connectors_autoloader_violations($g), 'A working autoloader binding the prefix through TWO literals binds — the token-adjacency equality arm (red at HEAD: false refusal).');
     }
 
 }

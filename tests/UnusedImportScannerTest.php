@@ -998,7 +998,14 @@ FIXTURE
         }
         file_put_contents($this->root . '/real.php', "<?php\nuse Vendor\\Package\\Used;\n\$x = new Used();\n");
 
-        $this->assertSame(0, wp_connectors_unused_import_violations($this->root));
+        /*
+         * SUPERSEDED at t31-glm64-3 (R64-6): the round-64 link
+         * fence replaces the isDir() silent skip this pin certified
+         * — a resolving dir-symlink answers the FAIL line now, the
+         * lint gate's own doctrine at the walk (the silent skip was
+         * the omission-not-absence shape the fence family closes).
+         */
+        $this->assertSame(1, wp_connectors_unused_import_violations($this->root));
     }
 
     public function testADanglingSymlinkNamedPhpFailsLoudly(): void

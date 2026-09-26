@@ -68,6 +68,19 @@ if (wp_connectors_cli_entry(__FILE__)) {
      */
     $walk_refusals = 0;
     foreach ($roots as $root) {
+        /*
+         * t31-glm64-3 [R64-8, driven — the R63-1 root-link shape at
+         * the lint gate's own seats]: a resolving symlinked declared
+         * root was followed and the walk linted the out-of-tree tree
+         * through the link, the conventions census owner refusing
+         * the identical shape loudly. A link root answers the loud
+         * refusal.
+         */
+        if (is_link($root)) {
+            fwrite(STDERR, "lint-php: {$root} is a symlink — the lint walk never reads through a link; make the root a real directory\n");
+            ++$walk_refusals;
+            continue;
+        }
         if (!is_dir($root)) {
             /*
              * glm22-10 (the glm21-3 silent-skip class at the lint

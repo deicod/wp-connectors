@@ -120,7 +120,7 @@ const WP_CONNECTORS_COMPOSER_CLASS_REFERENCES = array( 'ComposerAutoloader', 'Co
  * former inline literal.
  */
 const WP_CONNECTORS_CHANNEL_FUNCTIONS = array(
-    'file_get_contents', 'readfile', 'shell_exec', 'exec', 'system',
+    'file_get_contents', 'file', 'readfile', 'shell_exec', 'exec', 'system',
     'passthru', 'popen', 'proc_open', 'fopen', 'file_put_contents',
 );
 
@@ -5465,6 +5465,16 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * statement — adjacent statements never compose across
              * their separators).
              */
+            /*
+             * t31-glm64-2 [R64-4]: the backtick spans collect from
+             * the RAW view — the masker blanks their bodies as
+             * interpolated strings, so this is the only arm that can
+             * see a runtime invocation's operand bytes.
+             */
+            preg_match_all('/`[^`]*`/', $code, $backtick_spans, PREG_OFFSET_CAPTURE);
+            foreach ($backtick_spans[0] as $backtick_span) {
+                $channel_operands .= "\n" . $backtick_span[0];
+            }
             if (stripos($include_statements . $channel_operands, 'vendor/autoload') !== false || stripos($masked, 'vendor/autoload') !== false) {
                 $violations[] = sprintf('%s: %s references vendor/autoload (no Composer at runtime).', $slug, $relative);
             }
@@ -5644,7 +5654,13 @@ function wp_connectors_text_names_vendor_or_composer($text, $vocabulary = 'compo
      * not fire on a word-bounded 'vendor' that never spells composer.
      * The boundary class is the ONE owner's either way.
      */
-    $hit = preg_match('/(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:' . $vocabulary . ')(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', (string) $text);
+    /*
+     * t31-glm64-2 [R64-12, driven — the member-glue byte pairs the
+     * channel family refuses by its own R62-5 doctrine]: a benign
+     * '$package->composer = …' minted the violation; the owner
+     * refuses the member glue on the left beside the label bytes.
+     */
+    $hit = preg_match('/(?<!->)(?<!\?->)(?<!::)(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:' . $vocabulary . ')(?![' . WP_CONNECTORS_LABEL_BYTES . '])/', (string) $text);
 
     return false === $hit || 1 === $hit;
 }
@@ -6094,11 +6110,61 @@ function wp_connectors_autoloader_violations($pluginDir)
         }
     }
     if (! $prefix_bound) {
-        $violations[] = sprintf(
-            '%s: src/autoload.php must bind PSR-4 prefix %s (derived from the plugin slug).',
-            $slug,
-            $expectedPrefix
-        );
+        /*
+         * t31-glm64-2 [R64-13, driven A/B — the concatenation join
+         * the define-value seat took at R47-5, never threaded
+         * here]: a working autoloader binding the correct
+         * slug-derived prefix through two literals false-refused —
+         * each single token unequal to the whole, the masked arm
+         * blanking every piece. The CONCATENATION spine (the same
+         * composition the operand seats ride) carrying the prefix
+         * binds.
+         */
+        /*
+         * The bar is EQUALITY (R37-2) over the TOKEN STREAM's own
+         * adjacency: a run of T_CONSTANT_ENCAPSED_STRING tokens
+         * separated only by whitespace and '.' (the concatenation
+         * operator) whose decoded join IS the prefix binds — a
+         * single prose piece containing the prefix binds nothing,
+         * and quote-shaped text inside nowdoc/heredoc/comment
+         * regions never lexes the literal token kind (the R42-1
+         * doctrine at this seat's own arm).
+         */
+        $concat_binds = false;
+        $run = '';
+        $run_open = false;
+        foreach ($family_tokens as $token) {
+            $text = is_array($token) ? $token[1] : $token;
+            $id = is_array($token) ? $token[0] : null;
+            if (is_array($token) && T_CONSTANT_ENCAPSED_STRING === $id) {
+                $quote_at = ('b' === $text[0] || 'B' === $text[0]) ? 1 : 0;
+                $run .= str_replace('\\\\', '\\', wp_connectors_unescape_php_string_literal($text[ $quote_at ], (string) substr($text, $quote_at + 1, -1)));
+                $run_open = true;
+                continue;
+            }
+            $is_glue = (is_array($token) && T_WHITESPACE === $id) || '.' === $text;
+            if ($run_open && $is_glue) {
+                continue;
+            }
+            if ($run_open) {
+                if ($run === $expectedPrefix) {
+                    $concat_binds = true;
+                    break;
+                }
+                $run = '';
+                $run_open = false;
+            }
+        }
+        if ($run_open && $run === $expectedPrefix) {
+            $concat_binds = true;
+        }
+        if (! $concat_binds) {
+            $violations[] = sprintf(
+                '%s: src/autoload.php must bind PSR-4 prefix %s (derived from the plugin slug).',
+                $slug,
+                $expectedPrefix
+            );
+        }
     }
 
     return $violations;
