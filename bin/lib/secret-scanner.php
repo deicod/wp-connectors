@@ -1430,6 +1430,16 @@ function wp_connectors_scan_string($contents, $label, $named_target = false)
      * 'ini', ';' honored; '.env.dist' → 'env', '#' only — the
      * boundary preserved).
      */
+    /*
+     * t31-glm63-4 [R63-8, driven at both seats — the marker-family
+     * consults judged byte-exactly one seat over the round-62 read
+     * fold]: a legitimately-marked file whose name carries edge
+     * junk was READ by the walk but denied its family's comment
+     * grammar ('t.ini ' failing where 't.ini' exempted). The label
+     * extension folds the same class (minus the dot) before the
+     * family derivation; every clean-named file identical.
+     */
+    $label_ext = trim($label_ext, str_replace('.', '', wp_connectors_path_edge_junk()));
     $marker_family_ext = $label_ext;
     if ('dist' === $label_ext) {
         /*
@@ -2072,6 +2082,19 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                     }
                 }
                 if (! $file->isFile()) {
+                    /*
+                     * t31-glm63-5 [R63-4, driven — the one tree walk
+                     * in the family without the no-symlinks fence]:
+                     * a resolving dir-symlink answered isFile() false
+                     * and its subtree was silently skipped, the walk
+                     * certifying bytes it never read at exit 0 — the
+                     * glm14-3 never-clean-over-unread-bytes doctrine
+                     * the size-cap arm below spells. A link entry
+                     * answers the finding-line refusal.
+                     */
+                    if ($file->isLink()) {
+                        $findings[] = sprintf('%s: %s is a symlink — the secret scan never reads through a link; replace or remove the link', $root, $file->getPathname());
+                    }
                     continue;
                 }
                 /*
@@ -2099,8 +2122,9 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                  * residual's re-open condition FIRED with the
                  * demanded producer]: the read allowlist judged the
                  * extension byte-exactly, so a trailing edge-junk
-                 * byte (space/tab/control) made a credential-bearing
-                 * file of a scanned family invisible to the walk AND
+                 * byte (space/tab/control, either edge) made a
+                 * credential-bearing file of a scanned family
+                 * invisible to the walk AND
                  * to artifact inspection (a shipped
                  * 'docs/notes.md\x20' carrying a live token ACCEPTED
                  * where the clean-named twin REJECTED). The gate
@@ -2110,7 +2134,7 @@ function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
                  * inspector's fence owns that class; folding it here
                  * would re-adjudicate near-source verdicts).
                  */
-                $extension = rtrim(strtolower($file->getExtension()), " \t\n\r\v\f\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f");
+                $extension = trim(strtolower($file->getExtension()), str_replace('.', '', wp_connectors_path_edge_junk()));
                 /*
                  * t31-glm38-2 [R38-2, security:medium, driven end-to-end]:
                  * the walk's extension allowlist omitted html/htm/xhtml

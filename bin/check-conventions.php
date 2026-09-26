@@ -81,7 +81,7 @@ if (wp_connectors_cli_entry(__FILE__)) {
          * stack rides the ONE owner — the sentences append, the
          * build throws them, the next family member landing once.
          */
-        foreach (wp_connectors_slug_name_screen_violations($slug) as $screen_violation) {
+        foreach (wp_connectors_slug_name_screen_violations($slug, $pluginRoot) as $screen_violation) {
             $violations[] = $screen_violation . '.';
         }
         /*
@@ -91,9 +91,7 @@ if (wp_connectors_cli_entry(__FILE__)) {
          * silently vanished. Never silently skipped, never read
          * through.
          */
-        if (is_link($pluginRoot)) {
-            $violations[] = sprintf('%s: the connector directory is a symlink — dangling or resolving, a link is never silently skipped and never read through; make the connector a real directory under connectors/.', $slug);
-        }
+
         $mainFiles = wp_connectors_find_main_plugin_files($pluginRoot);
         if ($mainFiles === array()) {
             $violations[] = sprintf('%s: no main plugin file with a "Plugin Name:" header at the plugin root.', $slug);

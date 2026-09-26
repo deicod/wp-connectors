@@ -1063,7 +1063,14 @@ abstract class WpConnectorsTestCase extends TestCase
              * str_replace([head, tail], …) redactor ships red across
              * the 26 call sites pinning the Zai surfaces.
              */
-            for ($at = 8; $at + 8 <= strlen($secret) - 8; $at += 8) {
+            /*
+             * t31-glm63-9 [R63-9, driven]: the R55-12 comment claims
+             * 'Every 8-byte window of the interior is probed' — the
+             * step-8 loop probed only the ALIGNED windows, a
+             * misaligned 8-byte interior echo passing the whole
+             * pin. Step 1, the comment's own word.
+             */
+            for ($at = 8; $at + 8 <= strlen($secret) - 8; $at += 1) {
                 $this->assertStringNotContainsString(substr($secret, $at, 8), $haystack, sprintf('A middle window of the secret (bytes %d-%d) leaks through the redaction.', $at, $at + 7));
             }
         }

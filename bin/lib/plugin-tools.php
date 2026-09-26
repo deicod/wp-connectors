@@ -5363,6 +5363,21 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
             } else {
                 foreach ($channel_calls[0] as $channel_call) {
                     /*
+                     * t31-glm63-3 [R63-7, driven A/B — the fixed
+                     * lookbehinds spacing-blind and declaration-blind]:
+                     * a mere function DECLARATION whose parameter list
+                     * matches '\s*\(' and a member call spaced off its
+                     * operator ('$l-> file_get_contents(') were
+                     * collected as channel calls, minting the
+                     * composer violation for clean plugins — the
+                     * glm46-2 doctrine at the channel seat: the
+                     * spacing-proof position owner the three keyword
+                     * siblings consult.
+                     */
+                    if (! wp_connectors_keyword_at_statement_position($masked, $channel_call[1])) {
+                        continue;
+                    }
+                    /*
                      * t31-glm55-13 [R55-13, verdict-identical hoist —
                      * the round-54 seat's private walk was a THIRD
                      * copy of the ONE depth loop (glm20-10's 'exactly
@@ -7173,6 +7188,19 @@ function wp_connectors_child_directories($dir)
     if (! is_dir($dir)) {
         return array();
     }
+    /*
+     * t31-glm63-1 [R63-1, driven end-to-end by the review — the
+     * round-62 fence one level up]: the connectors/ directory ITSELF
+     * a symlink was followed by @scandir and every downstream
+     * screen, an out-of-tree plugin tree read through by build and
+     * conventions while the scanner never read it (the child is_link
+     * fence never firing — the child path is not itself a link).
+     * A link census root answers the NULL refusal: the seats render
+     * it, never certifying a tree through a link.
+     */
+    if (is_link($dir)) {
+        return null;
+    }
     $entries = @scandir($dir);
     if (false === $entries) {
         return null;
@@ -7216,9 +7244,19 @@ function wp_connectors_child_directories($dir)
  * @param string $slug The connector directory basename.
  * @return list<string> Violation sentences (empty when the name passes).
  */
-function wp_connectors_slug_name_screen_violations($slug)
+function wp_connectors_slug_name_screen_violations($slug, $path = null)
 {
     $violations = array();
+    /*
+     * t31-glm63-2 [R63-13 — the family's fourth member landed one
+     * round after the R60-9 hoist whose charter is 'the next member
+     * lands once']: the round-62 symlink screen hand-copied at both
+     * seams joins the owner — the path-bearing member, both seams
+     * already holding the path.
+     */
+    if (null !== $path && is_link($path)) {
+        $violations[] = "{$slug}: the connector directory is a symlink — dangling or resolving, a link is never silently skipped and never read through; make the connector a real directory under connectors/";
+    }
     if (! wp_connectors_slug_is_legal_artifact_name($slug)) {
         $violations[] = "{$slug}: the connector directory name is outside the artifact grammar [A-Za-z0-9_.-] — bin/inspect-artifact.php rejects every zip composed under this name; rename the connector directory";
     }

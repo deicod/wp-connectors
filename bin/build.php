@@ -2840,6 +2840,22 @@ final class WpConnectorsBuild
                  * too.
                  */
                 foreach ($parts as $part) {
+                    /*
+                     * t31-glm63-6 [R63-5, driven end-to-end by the
+                     * review — the one-verdict doctrine one
+                     * vocabulary member over]: a plugin-tree
+                     * directory named '...' (a legal POSIX name)
+                     * packaged at exit 0 while the inspector's
+                     * traversal predicate rejected the same entry
+                     * as an escape ('...' collapses to the parent).
+                     */
+                    if ('' !== $part && '' === trim($part, '.') && strlen($part) >= 2) {
+                        throw new RuntimeException(sprintf(
+                            "build: the plugin tree carries a dots-only segment in the name %s (segment '%s') — a normalizing extraction target collapses it to a parent token, plugin-reachable bytes no content gate judges under the dots-only spelling; the collector refuses at collection what bin/inspect-artifact.php refuses at extraction — one class, two owners, one verdict; write the dots-free name.",
+                            $relative,
+                            $part
+                        ));
+                    }
                     if (strpos($part, ':') !== false) {
                         throw new RuntimeException(sprintf(
                             'build: the plugin tree carries a stream separator in the name %s (segment \'%s\') — on a Windows/NTFS extraction target the zip entry resolves into an alternate data stream of the colon-free file (the \':$DATA\' spelling its MAIN stream), plugin-reachable bytes no content gate judges under the separator-bearing spelling; the collector refuses at collection what bin/inspect-artifact.php refuses at extraction — one class, two owners, one verdict; write the colon-free name.',
@@ -3367,6 +3383,20 @@ final class WpConnectorsBuild
         $manifestLock = null;
         try {
             $licenseFile = dirname($distDir) . '/LICENSE';
+            /*
+             * t31-glm63-7 [R63-2, driven in a repo copy by the
+             * review — the one read/copy seam with no link fence]:
+             * is_file() follows a resolving link, so a linked
+             * LICENSE read out-of-tree bytes into EVERY plugin's
+             * zip (a live-shaped key riding the build's own
+             * composition, no artifact gate scanning it), and a
+             * dangling link silently omitted the LICENSE at exit 0
+             * — the R62-1 doctrine one seam over, the seventh
+             * sibling fence this file already spells.
+             */
+            if (is_link($licenseFile)) {
+                throw new RuntimeException('build: the repository LICENSE is a symlink — dangling or resolving, a link is never silently skipped and never read through; make the LICENSE a real file at the repository root');
+            }
             $entries = array();
             foreach (self::collectFiles($pluginDir) as $relative) {
                 self::copyNormalized($pluginDir . '/' . $relative, $stage . '/' . $slug . '/' . $relative);
@@ -4201,8 +4231,18 @@ final class WpConnectorsBuild
      */
     private static function normalize($path)
     {
-        chmod($path, 0644);
-        touch($path, self::FIXED_MTIME);
+        /*
+         * t31-glm63-8 [R63-12 — the r8-noted unchecked pair, the
+         * re-open condition fired]: the mtime normalization is the
+         * LAST word on bytes that ship (zip entries carry mtimes —
+         * a failed touch lands two builds of byte-identical
+         * sources at different sidecar checksums, the determinism
+         * premise the manifest arithmetic rides). Both returns
+         * owned; a failure refuses naming the file.
+         */
+        if (! @chmod($path, 0644) || ! @touch($path, self::FIXED_MTIME)) {
+            throw new RuntimeException("build: cannot normalize the staged file {$path} (chmod/touch refused) — the deterministic-artifact premise fails; the staging tree or filesystem refuses the write");
+        }
     }
 
     /**
@@ -4643,6 +4683,41 @@ if (wp_connectors_cli_entry(__FILE__)) {
     if ($targets === array()) {
         echo "build: no plugins to build\n";
         exit(0);
+    }
+    /*
+     * t31-glm63-9 [R63-6, driven end-to-end by the review — the
+     * ambiguous artifact name]: 'connectors-' . slug . '-' .
+     * version '.zip' composes across (slug, version) with no
+     * separator escaping, so 'aa' @ '1-x' and 'aa-1' @ 'x' both
+     * compose 'connectors-aa-1-x.zip' — the second build silently
+     * replacing the first plugin's release (one zip, one sidecar,
+     * one manifest line, aa's release never published). A collision
+     * within the target set refuses loudly naming both plugins.
+     */
+    $composed_names = array();
+    foreach ($targets as $collision_dir) {
+        $collision_slug = basename(rtrim($collision_dir, '/'));
+        /*
+         * A target with no main file (or no header version) skips
+         * the collision screen — buildPlugin's own malformed-shape
+         * refusal owns it below, and the screen never fatals over
+         * bytes it cannot read.
+         */
+        $collision_mains = wp_connectors_find_main_plugin_files($collision_dir);
+        if ($collision_mains === array()) {
+            continue;
+        }
+        $collision_headers = wp_connectors_parse_plugin_headers($collision_mains[0]);
+        $collision_version = trim((string) ($collision_headers['Version'] ?? ''));
+        if ('' === $collision_version) {
+            continue;
+        }
+        $composed = 'connectors-' . $collision_slug . '-' . $collision_version . '.zip';
+        if (isset($composed_names[$composed])) {
+            fwrite(STDERR, "build: the artifact name {$composed} is ambiguous — {$composed_names[$composed]} and {$collision_slug} compose the same zip name (slug 'aa' with version '1-x' and slug 'aa-1' with version 'x' alike); rename one so every release publishes\n");
+            exit(1);
+        }
+        $composed_names[$composed] = $collision_slug;
     }
 
     /*

@@ -3067,6 +3067,42 @@ CHILD;
     }
 
     /**
+     * Round-63 pin (t31-glm63-1..5 — the scanner walk's three
+     * driven defects, all driven at HEAD by both the review and the
+     * driver): the read-extension fold now folds BOTH edges (a
+     * leading-junk ' md' extension having silently skipped a
+     * credential-bearing file where its trailing-junk twin was
+     * read), the marker-family consults fold the same class (a
+     * legitimately-marked 't.ini ' having been denied its family's
+     * ';' grammar while 't.ini' exempted), and a resolving
+     * dir-symlink answers the walk's loud refusal where its subtree
+     * was silently skipped (the no-symlinks doctrine's one
+     * unfenced walk).
+     */
+    public function testTheWalkFoldsBothEdgesAndRefusesLinkedSubtrees(): void
+    {
+        $token = 'AKIA' . 'IOSFODNN7' . 'EXAMPLE';
+        $tempDir = $this->scanScratchRoot('wp-connectors-scan-r63');
+        try {
+            $this->assertTrue(@mkdir($tempDir, 0755, true), "staging: {$tempDir} must create.");
+            $this->assertNotFalse(file_put_contents($tempDir . '/notes. md', "x\n{$token}\n"), 'staging: notes. md must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/t.ini ', "token={$token} ; secrets:allow\n"), 'staging: t.ini must write.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/t.ini', "token={$token} ; secrets:allow\n"), 'staging: t.ini must write.');
+            $findings = wp_connectors_scan_paths(array( $tempDir ));
+            $this->assertTrue(@mkdir($tempDir . '/real'), 'staging: real must create.');
+            $this->assertNotFalse(file_put_contents($tempDir . '/real/c.txt', "{$token}\n"), 'staging: c.txt must write.');
+            $this->assertTrue(@symlink($tempDir . '/real', $tempDir . '/linked'), 'staging: the link must land.');
+            $with_link = wp_connectors_scan_paths(array( $tempDir ));
+        } finally {
+            WpHarness::releaseScratch($tempDir);
+        }
+        $report = implode("\n", $findings);
+        $this->assertStringContainsString('/notes. md:', $report, 'A LEADING-junk extension is read — the fold serves both edges (red at HEAD: silently skipped).');
+        $this->assertStringContainsString('is a symlink', implode("\n", $with_link), 'A resolving dir-symlink answers the loud refusal — never a silent subtree skip (red at HEAD: 0 findings for the linked subtree).');
+        $this->assertStringNotContainsString('/t.ini:', $report, 'The junk-named marked file keeps its family exemption — the marker consult folds the same class (red at HEAD: false-flagged).');
+    }
+
+    /**
      * Round-59 pin (t31-glm59-5 [R59-7+R59-1] — the round-58 head-shape
      * clause was the wrong owner, both legs): a php-HEADED
      * extension-less prose doc (a fenced sample first, prose after)

@@ -1796,7 +1796,15 @@ function check_admin_referer($action = -1, $query_arg = '_wpnonce')
     if (-1 === $action) {
         _doing_it_wrong(__FUNCTION__, 'You should specify an action to be verified by using the first parameter.', '3.2.0');
     }
-    $nonce = isset($_REQUEST[ $query_arg ]) ? (string) wp_unslash($_REQUEST[ $query_arg ]) : '';
+    /*
+     * t31-glm63-10 [R63-10]: an ARRAY-valued nonce cast to string
+     * raises the engine's conversion warning BEFORE the die path,
+     * where core passes the raw value to wp_verify_nonce() (false,
+     * dies cleanly) and the check_ajax_referer() twin handles the
+     * identical shape — the cast dropped (the '?' hostile spelling
+     * reads as a failed verification).
+     */
+    $nonce = isset($_REQUEST[ $query_arg ]) ? wp_unslash($_REQUEST[ $query_arg ]) : '';
     $result = '' !== $nonce ? wp_verify_nonce($nonce, $action) : false;
     do_action('check_admin_referer', $action, $result);
     if (! $result) {
