@@ -6,6 +6,40 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 63)
+
+Forty-ninth claude-glm pass (/code-review max over the full branch
+diff, ledger-read first — the convergence round ordered and answered
+still not zero, four of the eight correctness findings one member
+over the round-62 landings themselves): the link family completed
+(root, LICENSE, dir-symlink subtrees, the screen owner), the walk's
+both-edge fold and the marker-family consults, the collector's
+dots-only member and the channel position consult, the artifact-name
+collision, and the small seats. One class commit t31-glm63-1 plus
+the docs close, the full offline check green. Suite 2001 → 2002
+tests, 49169 → 50775 assertions, 3 skipped unchanged.
+
+- `t31-glm63-1` — a symlinked connectors/ ROOT refuses loudly (an
+  out-of-tree plugin tree no longer read through by build and
+  conventions while the scanner skips it); a linked or dangling
+  repo LICENSE refuses (out-of-tree bytes no longer injected into
+  every zip); a resolving dir-symlink answers the scan walk's
+  finding-line refusal; and the symlink screen rides the
+  slug-screen owner at both seams.
+- `t31-glm63-1` — the read fold serves BOTH extension edges (a
+  leading-junk ' md' file no longer invisible), the marker-family
+  consults fold the same class (a marked 't.ini ' keeps its
+  family's grammar), the collector refuses dots-only segments
+  ('...' one-verdict with the inspector's escape fence), and the
+  channel collector consults the spacing-proof position owner (a
+  function declaration no longer mints the composer violation).
+- `t31-glm63-1` — two connectors composing the same artifact name
+  ('aa'@'1-x' vs 'aa-1'@'x') refuse loudly instead of silently
+  replacing the first release; normalize() owns its chmod/touch
+  returns (the deterministic-checksum premise); assertRedacted
+  probes every window (step 1); the array-nonce and Url
+  verdict-order seats cleaned up.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 62)
 
 Forty-eighth claude-glm pass (/code-review max over the full branch
