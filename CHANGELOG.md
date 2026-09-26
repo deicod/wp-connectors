@@ -6,6 +6,34 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, claude-glm round 64)
+
+Fiftieth claude-glm pass (/code-review max over the full branch
+diff, ledger-read first — the convergence round ordered and
+answered still not zero, both headline defects in the round-63
+landing's own body): the collision pre-pass's dead key, the link
+family's six remaining seats, the channel vocabulary's two members,
+the dots-fold, the backslash member, the composer member-glue, the
+concatenated prefix, and the redaction fragment channel. One class
+commit t31-glm64-1 plus the debt-payment commit and the docs close,
+the full offline check green. Suite 2002 → 2003 tests,
+50778 → 50789 assertions, 3 skipped unchanged.
+
+- `t31-glm64-0` — the R62-F10 pin debt paid (the exactly-one rule
+  pinned firing over a dot-led second main file).
+- `t31-glm64-1` — the artifact-name collision pre-pass fires for
+  the first time (the round-63 landing read the wrong header-key
+  case and never refused); the --slug/--fixture doors, the dist
+  root, the lint declared roots, the shared/src guard, the
+  unused-import walk, and the scan walk's file links all refuse
+  links loudly (six seats of the link family completed); 'file' and
+  the backtick operator join the channel vocabulary; the dots-only
+  screen folds edge junk first and the segment screen carries the
+  backslash member; a benign '$package->composer' no longer mints
+  the composer violation; a two-literal concatenated PSR-4 prefix
+  binds; and redact_url() strips the ';'/'#' parameter channels
+  whole.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 63)
 
 Forty-ninth claude-glm pass (/code-review max over the full branch
