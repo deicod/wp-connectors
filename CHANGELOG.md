@@ -6,6 +6,25 @@ versioning per plugin follows its own header `Version` (no monorepo version).
 
 ## [Unreleased]
 
+### Fixed (shared — M3 Task 3.1, Codex PR #4 — the glm54-2 residual paid)
+
+Single fix, no review loop: the external Codex PR #4 review (P2)
+found the generic per-file channel screen enumerating only the
+loading family's literal names, so a plugin calling through a
+variable callee ('$fn = 'file_get_contents'; $fn(__DIR__ .
+'/vendor/autoload.php');') passed build and inspect — the glm54-2
+recorded residual's driven producer. One fix commit t31-glm65-1
+plus the docs close, the full offline check green. Suite 2003
+tests unchanged, 50789 → 50799 assertions, 3 skipped unchanged.
+
+- `t31-glm65-1` — the variable callee is a channel whatever name
+  it holds: the R45-3 autoloader token arm's text-side spelling at
+  the per-file screen (a '$' callee followed by '(' over the masked
+  view, merged into the keyword arm's own loop — position consult,
+  depth-matched span, and transitive operand resolution), the
+  dynamic-method ('->$fn(') shapes excluded, the '$$fn(' and
+  '${...}(' computed spellings recorded as the next residuals.
+
 ### Fixed (shared — M3 Task 3.1, claude-glm round 64)
 
 Fiftieth claude-glm pass (/code-review max over the full branch
