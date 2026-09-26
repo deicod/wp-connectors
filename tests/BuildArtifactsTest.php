@@ -2078,6 +2078,27 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
             @chmod($unreadable_repo . '/connectors', 0755);
             WpHarness::releaseScratch($unreadable_repo);
         }
+
+        /*
+         * R62-F10's owed pin (the round-62 dot-led main-file census,
+         * driven A/B by the review — '.second.php' answering 0
+         * violations where the visible twin answered 'exactly one is
+         * allowed'; the finder now reads the directory, dot-led
+         * included): the exactly-one rule fires over a dot-led
+         * second header-bearing root file.
+         */
+        $repo2 = $this->makeBuildCliRepo(array( 'dot-demo' => true ));
+        try {
+            $this->assertNotFalse(file_put_contents($repo2 . '/connectors/dot-demo/.second.php', "<?php\n/**\n * Plugin Name: Second\n * Version: 1.0.0\n */\n"), 'staging: the dot-led second header file must write.');
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo2 . '/bin/build.php') . ' 2>&1', $output, $exit);
+            $report = implode("\n", $output);
+            $this->assertSame(1, $exit, "A dot-led second main file must FAIL the build — the exactly-one rule judges it like its visible twin:\n{$report}");
+            $this->assertStringContainsString('exactly one', $report, 'The refusal names the exactly-one rule over the dot-led file (red at round-62 HEAD: exit 0, unjudged).');
+        } finally {
+            WpHarness::releaseScratch($repo2);
+        }
     }
 
     /**
