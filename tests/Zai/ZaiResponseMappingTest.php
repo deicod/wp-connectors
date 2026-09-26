@@ -2897,15 +2897,14 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
 
         $this->queueSdkResponse($status, array('Content-Type' => 'application/json'), $body);
 
-        try {
-            $this->model()->generateTextResult($this->prompt());
-            $this->fail("Status {$status} must throw.");
-        } catch ( \Exception $e ) {
-            $this->assertInstanceOf($expectedClass, $e);
-            $this->assertSame($status, $e->getCode());
-            $this->assertRedacted($e->getMessage(), $secret);
-            $this->assertStringNotContainsString('token expired', $e->getMessage(), 'Upstream error text must not be copied.');
-        }
+        $refusal = $this->refusalOf(
+            fn() => $this->model()->generateTextResult($this->prompt()),
+            "Status {$status} must throw.", \Exception::class
+        );
+        $this->assertInstanceOf($expectedClass, $refusal);
+        $this->assertSame($status, $refusal->getCode());
+        $this->assertRedacted($refusal->getMessage(), $secret);
+        $this->assertStringNotContainsString('token expired', $refusal->getMessage(), 'Upstream error text must not be copied.');
     }
 
     /**
@@ -2929,13 +2928,12 @@ final class ZaiResponseMappingTest extends AbstractZaiSurfaceResponseMappingTest
             delete_option(\Deicod\WpConnectors\Zai\Availability\ZaiProviderAvailability::STATE_OPTION);
             $this->queueSdkResponse($status, array(), HttpResponseFactory::openAiErrorBody('ignored upstream text'));
 
-            try {
-                $this->model()->generateTextResult($this->prompt());
-                $this->fail("Status {$status} must throw.");
-            } catch ( \Exception $e ) {
-                $this->assertStringContainsString($needle, $e->getMessage(), "Status {$status} message must be actionable.");
-                $this->assertStringNotContainsString('ignored upstream text', $e->getMessage());
-            }
+            $refusal = $this->refusalOf(
+                fn() => $this->model()->generateTextResult($this->prompt()),
+                "Status {$status} must throw.", \Exception::class
+            );
+            $this->assertStringContainsString($needle, $refusal->getMessage(), "Status {$status} message must be actionable.");
+            $this->assertStringNotContainsString('ignored upstream text', $refusal->getMessage());
         }
     }
 

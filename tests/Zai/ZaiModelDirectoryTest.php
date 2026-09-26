@@ -460,6 +460,39 @@ final class ZaiModelDirectoryTest extends AbstractZaiModelDirectoryTestCase
         $this->assertCount(2, $this->sdkHttpAttempts());
     }
 
+    /**
+     * glm23-1 (the live caller of the harness's two-row TTL mechanics):
+     * store_ids() re-saves the same discovered ID list with
+     * DISCOVERY_TTL — the availability probe's seed path
+     * (seed_discovery_from_probe()) writes the row WITHOUT reading it,
+     * so a probe inside the window re-saves the standing row's own
+     * value. The harness's unchanged false once left expires_at stale:
+     * reads degraded to cache misses after the FIRST 12h window
+     * however often the probe re-seeded (driven red at HEAD).
+     */
+    public function testAReSeededDiscoveryRowKeepsServingPastTheFirstTtlWindow()
+    {
+        $this->freezeTime(1700000000);
+        $cache_id = PlanRegionSettings::CACHE_PREFIX . md5('zai|coding|intl');
+
+        // The probe seed's own spelling: store_ids() over no row.
+        ZaiDiscoveryCache::store_ids($cache_id, array('glm-5.3'));
+
+        // A probe inside the window re-seeds the SAME list (the
+        // unchanged re-save over a standing row).
+        $this->advanceTime(ZaiDiscoveryCache::DISCOVERY_TTL - 100);
+        ZaiDiscoveryCache::store_ids($cache_id, array('glm-5.3'));
+
+        // Past the FIRST window's end, inside the refreshed one: the row
+        // keeps serving instead of degrading to a cache miss.
+        $this->advanceTime(150);
+        $this->assertSame(
+            array('glm-5.3'),
+            get_transient($cache_id),
+            'The re-seeded row serves past the first window\'s end (red at HEAD: false — the unchanged re-save never refreshed the TTL, and every read after the first window was a miss).'
+        );
+    }
+
     /*
      * glm37-6: testConfiguredPsr16CacheNeverServesOrStoresDiscovery and
      * testSdkCacheKeyIsEndpointScoped moved to the shared

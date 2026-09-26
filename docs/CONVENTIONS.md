@@ -11,7 +11,7 @@ check disagree, fix the check and this document in the same change.
 |------|---------|-------------------|
 | `connectors/<slug>/` | one standalone plugin | `Deicod\WpConnectors\<Ns>` |
 | `connectors/<slug>/src/` | PSR-4 mapped source root | — |
-| `shared/` | source-only shared OAuth/token library | none (copied per-plugin at build time) |
+| `shared/src/` | source-only shared OAuth/token contracts | `Deicod\WpConnectors\Shared` (dev/test only; rewritten per-plugin at build time) |
 | `tests/` | PHPUnit suite + harness | global-namespace WP stubs |
 | `bin/` | build/validation tooling (committed) | — |
 | `tools/`, `vendor/`, `dist/` | gitignored artifacts (composer.phar, deps, zips) | — |
@@ -20,6 +20,15 @@ Namespace-to-path is strict PSR-4: `Deicod\WpConnectors\Zai\Provider\X` lives at
 `connectors/zai/src/Provider/X.php`. The namespace segment after
 `WpConnectors\` is fixed per plugin (`Zai`, `OpenAiOauth`, `XaiOauth`,
 `AnthropicOauth`) and must appear in that plugin's `src/autoload.php` prefix.
+The segment is derived from the slug (segments split on **hyphen or dot** —
+`t31-r5-12`: a dotted slug is legal to the slug grammar and the text-domain
+gate, and both separators derive legal labels, `my.plugin` → `MyPlugin` —
+capitalized per segment, documented acronyms keeping their casing, and folded
+ASCII-only so the spellings never consult the process locale, `t31-r11-6`); a
+**digit-initial slug** (a legal plugin slug, e.g. `3cx-oauth`) derives an
+underscored segment (`_3cxOauth`), because a PHP namespace label may not start
+with a digit — the derivation in `bin/lib/plugin-tools.php` is the one source
+shared by the conventions check, the builder, and the test bootstrap.
 Generated shared copies use `Deicod\WpConnectors\<Ns>\Shared\` (record 0005).
 
 ## Plugin anatomy rules (checked)
@@ -32,8 +41,9 @@ conventions` fails otherwise:
    `Requires PHP: 8.2`, `License: GPL-2.0-or-later`, `Text Domain`.
 2. `Text Domain` equals the plugin directory slug.
 3. The main file defines a version constant named
-   `STRAIGHTENED_SLUG_VERSION` (slug uppercased, `-` → `_`, e.g.
-   `EXAMPLE_CONNECTOR_VERSION`) whose value equals the header `Version`.
+   `STRAIGHTENED_SLUG_VERSION` (slug uppercased, `-` and `.` → `_`, e.g.
+   `EXAMPLE_CONNECTOR_VERSION`, `my.plugin` → `MY_PLUGIN_VERSION`) whose
+   value equals the header `Version`.
 4. `src/autoload.php` exists, registers exactly one PSR-4 autoloader for the
    plugin's `Deicod\WpConnectors\<Ns>\` prefix, and contains no Composer
    reference.

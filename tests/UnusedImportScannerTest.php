@@ -38,16 +38,50 @@ final class UnusedImportScannerTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_link($entry)) {
-                @unlink($entry);
-            } elseif (is_dir($entry)) {
-                @rmdir($entry);
-            } else {
-                @unlink($entry);
-            }
-        }
-        @rmdir($this->root);
+        /*
+         * The release owns the WHOLE tree (OCR round 44, t31-ocr44-4):
+         * the former per-child @rmdir chain was non-recursive — a
+         * non-empty subdirectory (the abort leg's locked/Hidden.php,
+         * its mode restored by the finally but its file never removed)
+         * made both rmdirs fail silently and the whole uniqid-named
+         * tree survived the run, one leak per abort-leg execution. The
+         * guarded release is the one owner (the t31-ocr34-4 doctrine):
+         * recursive through non-empty subtrees, loud on STDERR over an
+         * environmental failure yet never a verdict replacer, and a
+         * symlink inside the tree unlinks as itself (rrmdir's own
+         * no-links-through doctrine) — everything the hand chain did,
+         * without the silent-leak seam.
+         */
+        WpHarness::releaseScratch($this->root);
+    }
+
+    /**
+     * OCR-round-44 pin (t31-ocr44-4): teardown releases a NON-EMPTY
+     * subdirectory tree. The former @rmdir chain was one level deep —
+     * the abort leg's locked/Hidden.php (mode restored, file still
+     * inside) made rmdir(locked/) and rmdir(root) both fail silently,
+     * and the uniqid-named scratch tree survived every run of the leg
+     * (red at HEAD, driven: the tree remained under the temp root
+     * after tearDown). The release owner is recursive by construction;
+     * this pin holds it so, at the same depth the leak once rode.
+     */
+    public function testTeardownReleasesNonEmptySubdirectoryTrees(): void
+    {
+        /*
+         * The staging asserts its own landing (t31-ocr53-9, the
+         * mid-walk leg's own doctrine): a failed mkdir()/write left
+         * tearDown releasing an ALREADY-CLEAN tree and the pin green
+         * over nothing staged — vacuously, the leak it exists to
+         * redden never constructible.
+         */
+        $this->assertTrue(mkdir($this->root . '/locked', 0755, true), 'staging: the locked tree must create — a staging failure fails as staging, never as the release verdict.');
+        $this->assertNotFalse(file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n"), 'staging: the hidden source must write — a staging failure fails as staging, never as the release verdict.');
+
+        $this->tearDown();
+
+        $this->assertDirectoryDoesNotExist($this->root, 'The teardown release owns the whole tree — a non-empty subdirectory never strands the uniqid-named scratch root (red at HEAD: both rmdirs failed silently and the tree survived).');
+        clearstatcache();
+        $this->assertDirectoryDoesNotExist($this->root . '/locked', 'The nested directory is gone with its parent — the release is recursive, never the one-level hand chain.');
     }
 
     /**
@@ -200,6 +234,43 @@ FIXTURE
             ),
             'EOF without a trailing newline flags (glm16-17 delta)' => array(
                 "<?php\nuse Vendor\\Package\\DeadTwo;",
+                1,
+            ),
+            /*
+             * OCR round 46 (t31-ocr46-9 — the r35-1 doctrine's scanner
+             * sibling): the statement patterns spelled use/function/
+             * const/as byte-exact lowercase while the engine — and
+             * the rewriter's own r35-1 census in bin/build.php —
+             * treats every keyword case-insensitively, so `Use …`,
+             * `use FUNCTION …`, and `… AS C;` in connectors/ went
+             * unscanned: a dead case-variant import was invisible to
+             * the gate, the exact silent-false-negative class the
+             * gate exists for (glm20-3's own charge). The keyword
+             * axes ride the scoped case-insensitive census at every
+             * keyword-bearing pattern in the file.
+             */
+            'unused case-variant Use import flags (t31-ocr46-9)' => array(
+                "<?php\nUse Vendor\\Package\\DeadCase;",
+                1,
+            ),
+            'unused case-variant use FUNCTION import flags (t31-ocr46-9)' => array(
+                "<?php\nUSE FUNCTION Vendor\\dead_case_fn;",
+                1,
+            ),
+            'unused case-variant AS alias flags (t31-ocr46-9)' => array(
+                "<?php\nuse Vendor\\Package\\Widget AS UnusedAliasCase;",
+                1,
+            ),
+            'used case-variant import does not flag (t31-ocr46-9)' => array(
+                "<?php\nUse Vendor\\Package\\Widget;\n\$x = new Widget();",
+                0,
+            ),
+            'unused case-variant group member flags (t31-ocr46-9)' => array(
+                "<?php\nUse Vendor\\Package\\{Used, Dead};\n\$x = new Used();",
+                1,
+            ),
+            'unused case-variant group member kind and alias flags (t31-ocr46-9)' => array(
+                "<?php\nuse Vendor\\Pkg\\{CONST FLAG AS F, Widget};\n\$x = new Widget();",
                 1,
             ),
             /*
@@ -410,6 +481,288 @@ FIXTURE
                 "<?php\nuse # hash\n Vendor\\Pkg\\DeadThree;\n",
                 1,
             ),
+            /*
+             * OCR round 59 (t31-ocr59-2): the label byte class rides
+             * the ONE owner. The \w classes are ASCII-only in PCRE's
+             * byte mode while PHP labels admit the high bytes, so a
+             * legal high-byte import failed the class mid-name and was
+             * INVISIBLE to the gate — a dead one silently passing
+             * (red at HEAD: the unused row answered 0), the exact
+             * silent-false-negative class the r46-9 keyword census
+             * closed, one grammar member over.
+             */
+            'unused high-byte import flags (t31-ocr59-2)' => array(
+                "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f;\n",
+                1,
+            ),
+            'used high-byte import does not flag (t31-ocr59-2)' => array(
+                "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f as Gr\xc3\xbcn;\n\$x = new Gr\xc3\xbcn();\n",
+                0,
+            ),
+            /*
+             * OCR round 60 (t31-ocr60-1 — the r59 widening's follow-on
+             * at the mention seam): \b is PCRE's ASCII word boundary,
+             * and a high byte is a NON-word byte in byte mode, so for
+             * a short name carrying one the verdict broke BOTH
+             * directions — 'new Grüß()' found no trailing boundary
+             * between the 0x9F and '(' so the USED import flagged
+             * (red at HEAD: 1), while \bGrüß\b matched inside the
+             * lookalike 'Grüßx' so the DEAD import passed (red at
+             * HEAD: 0). The mention boundary rides the ONE label byte
+             * class now, at the plain form's legs here — the
+             * group-member twin rides the same boundary one commit
+             * over, its high-byte members becoming visible at the
+             * member-NAME shape guard first (t31-ocr60-2).
+             */
+            'used high-byte import mentioned un-aliased does not flag (t31-ocr60-1)' => array(
+                "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f;\n\$x = new Gr\xc3\xbc\xc3\x9f();\n",
+                0,
+            ),
+            'lookalike-only high-byte import flags (t31-ocr60-1)' => array(
+                "<?php\nuse Vendor\\Pkg\\Gr\xc3\xbc\xc3\x9f;\n\$x = new Gr\xc3\xbc\xc3\x9fx();\n",
+                1,
+            ),
+            /*
+             * OCR round 60 (t31-ocr60-2 — the r59 straggler at the
+             * member-NAME shape guard): the guard's ASCII \w class
+             * refused an UN-ALIASED high-byte member after the
+             * widened group opening had matched it, and the silent
+             * continue left the member invisible to the gate (red at
+             * HEAD: 0 — the unused row) while the aliased twin of the
+             * same member flagged — the exact silent-false-negative
+             * class the r59 round claims retired. The guard rides the
+             * ONE label byte class now, and the member flows into the
+             * mention check whose label boundary t31-ocr60-1 landed:
+             * the used member does not flag, the lookalike-only twin
+             * does (both red at HEAD through this hole: 0 and 0).
+             */
+            'unused high-byte group member flags (t31-ocr60-2)' => array(
+                "<?php\nuse Vendor\\Pkg\\{Gr\xc3\xbc\xc3\x9f};\n",
+                1,
+            ),
+            'used high-byte group member does not flag (t31-ocr60-1/2)' => array(
+                "<?php\nuse Vendor\\Pkg\\{Gr\xc3\xbc\xc3\x9f};\n\$x = new Gr\xc3\xbc\xc3\x9f();\n",
+                0,
+            ),
+            'lookalike-only high-byte group member flags (t31-ocr60-1/2)' => array(
+                "<?php\nuse Vendor\\Pkg\\{Gr\xc3\xbc\xc3\x9f};\n\$x = new Gr\xc3\xbc\xc3\x9fx();\n",
+                1,
+            ),
+            /*
+             * OCR round 62 (t31-ocr62-1): the ^-under-/m anchors saw
+             * only column-0 statements and the plain tail required
+             * ';', so three LEGAL spellings were invisible to the
+             * gate — the import INDENTED inside a braced namespace
+             * block, the COMMA-SEPARATED list, and the close-tag
+             * terminator (every one a spelling bin/build.php's own
+             * unownedUseImportSpellingClass() names as a legal input
+             * the rewriter must refuse, so the codebase already
+             * treats them as real). A dead import in any of the
+             * three rode unflagged while its ASCII twin was caught
+             * (red at HEAD: the unused rows answered 0). The anchors
+             * own the leading-whitespace class and the terminator
+             * alternation, the list decomposes to its members, and
+             * the TRAIT fence keeps an indented class-body 'use' off
+             * the import errand — the trait's name is its own only
+             * mention, so the widening would otherwise flag every
+             * legitimately-used trait in the tree (the fence row
+             * stays 0 by judgment now, not by anchor blindness).
+             */
+            'unused import indented in a braced namespace block flags (t31-ocr62-1)' => array(
+                "<?php\nnamespace Vendor\\Package {\n    use Vendor\\Other\\Widget;\n}\n",
+                1,
+            ),
+            'used import indented in a braced namespace block does not flag (t31-ocr62-1)' => array(
+                "<?php\nnamespace Vendor\\Package {\n    use Vendor\\Other\\Widget;\n    \$x = new Widget();\n}\n",
+                0,
+            ),
+            'dead comma-list member flags beside a used one (t31-ocr62-1)' => array(
+                "<?php\nuse Vendor\\Alpha, Vendor\\Package\\Widget;\n\$x = new Alpha();\n",
+                1,
+            ),
+            'comma list with every member used does not flag (t31-ocr62-1)' => array(
+                "<?php\nuse Vendor\\Alpha, Vendor\\Package\\Widget as W;\n\$x = new Alpha();\n\$y = new W();\n",
+                0,
+            ),
+            'dead comma-list member with a per-member alias flags (t31-ocr62-1)' => array(
+                "<?php\nuse Vendor\\Alpha as A, Vendor\\Package\\Widget as Dead;\n\$x = new A();\n",
+                1,
+            ),
+            'close-tag-terminated dead import flags (t31-ocr62-1)' => array(
+                "<?php\nuse Vendor\\Package\\DeadTag ?>\n<html></html>\n",
+                1,
+            ),
+            'indented trait use inside a class does not flag (t31-ocr62-1)' => array(
+                "<?php\nclass Host {\n    use SomeTrait;\n}\n",
+                0,
+            ),
+            'indented trait comma list inside a trait does not flag (t31-ocr62-1)' => array(
+                "<?php\ntrait Host {\n    use TraitA, TraitB;\n}\n",
+                0,
+            ),
+            /*
+             * OCR round 63 (t31-ocr63-1 — the r62 anchor's own
+             * straggler): [ \t]* under /m still saw only
+             * statement-INITIAL lines, so three LEGAL mid-line
+             * spellings stayed invisible — the one-line braced
+             * namespace block ('namespace X { use A\B; }'), the
+             * second statement on a two-statement line, and the use
+             * riding the OPEN TAG's line ('<?php use A\B;') — while
+             * bin/build.php's rewriter (statement-start lookbehind,
+             * no line anchor) handled them fine, the gate drift the
+             * round-62 census claimed closed. The boundary anchor
+             * ('(?<![label byte])', the r49/r60 census's own class)
+             * owns the spelling class now; the trait fence below
+             * owns the judgment — the one-line class-body rows stay
+             * 0 by FENCE now, never by anchor blindness.
+             */
+            'dead mid-line import in a one-line braced namespace block flags (t31-ocr63-1)' => array(
+                "<?php\nnamespace X { use Vendor\\Other\\Widget; }\n",
+                1,
+            ),
+            'used mid-line import in a one-line braced namespace block does not flag (t31-ocr63-1)' => array(
+                "<?php\nnamespace X { use Vendor\\Other\\Widget; \$x = new Widget(); }\n",
+                0,
+            ),
+            'dead second import on a two-statement line flags (t31-ocr63-1)' => array(
+                "<?php\nuse Vendor\\Live; use Vendor\\Package\\DeadThing;\n\$x = new Live();\n",
+                1,
+            ),
+            'both imports on a two-statement line used do not flag (t31-ocr63-1)' => array(
+                "<?php\nuse Vendor\\Live; use Vendor\\Package\\Widget;\n\$x = new Live();\n\$y = new Widget();\n",
+                0,
+            ),
+            'dead import riding the open tag line flags (t31-ocr63-1)' => array(
+                "<?php use Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'used import riding the open tag line does not flag (t31-ocr63-1)' => array(
+                "<?php use Vendor\\Other\\Widget; \$x = new Widget();\n",
+                0,
+            ),
+            'dead mid-line group member in a one-line braced namespace block flags (t31-ocr63-1)' => array(
+                "<?php\nnamespace X { use Vendor\\Pkg\\{DeadThing}; }\n",
+                1,
+            ),
+            'one-line class-body trait use does not flag, fenced not blind (t31-ocr63-1)' => array(
+                "<?php\nclass C { use SomeTrait; }\n",
+                0,
+            ),
+            'one-line trait comma list does not flag, fenced not blind (t31-ocr63-1)' => array(
+                "<?php\ntrait T { use TraitA, TraitB; }\n",
+                0,
+            ),
+            'one-line trait adaptation does not flag, fenced not blind (t31-ocr63-1)' => array(
+                "<?php\nclass C { use SomeTrait { m as x; } }\n",
+                0,
+            ),
+            /*
+             * OCR round 63 (t31-ocr63-2): T_INLINE_HTML keeps its
+             * bytes on the masked view while the fence's brace walk
+             * counted them as CODE braces — a legal php -l-clean
+             * file whose '?>' HTML carries a template placeholder or
+             * inline JS/CSS braces armed an 'other' frame past the
+             * reopen and every use after the HTML was judged a trait
+             * clause and skipped (dead imports escaping, red at HEAD:
+             * 0); the '<?xml' spelling of a leading HTML head rode
+             * the same arm ('?' branch once treated any '<?' as an
+             * open tag); and a column-0 'use …;' written IN the HTML
+             * flagged as an import (red at HEAD: 1 — inline text,
+             * never a statement). The walk owns the inline-HTML arm
+             * now: braces and ';' in HTML never touch the frame
+             * stack, only '<?php'/'<?=' open PHP mode (the engine's
+             * INI-independent spellings — '<?xml' stays HTML under
+             * the production-default short_open_tag=Off, and the
+             * walk must not inherit the host's INI), and a match
+             * landing in HTML is never an import. The pop direction
+             * — a stray HTML '}' popping a frame the code still owes
+             * — is verdict-neutral on every lint-clean shape by
+             * construction (a close tag inside a class body is a
+             * parse error, verified), so the stray-'}' row pins the
+             * code braces judged correctly through it, not a flip.
+             */
+            'dead import after unbalanced inline-HTML braces flags (t31-ocr63-2)' => array(
+                "<?php\n?> <div>{placeholder</div> <?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'dead import after balanced inline-HTML braces still flags (t31-ocr63-2)' => array(
+                "<?php\n?> <div>{placeholder}</div> <?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'used import after inline-HTML braces does not flag (t31-ocr63-2)' => array(
+                "<?php\n?> <div>{placeholder}</div> <?php\nuse Vendor\\Other\\Widget;\n\$x = new Widget();\n",
+                0,
+            ),
+            'dead import past an xml-led HTML head with a brace flags (t31-ocr63-2)' => array(
+                "<?xml version=\"1.0\"?>\n<div>{x\n<?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'dead import past a clean xml-led HTML head still flags (t31-ocr63-2)' => array(
+                "<?xml version=\"1.0\"?>\n<?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'stray inline-HTML close brace does not fence the import after it (t31-ocr63-2)' => array(
+                "<?php\nnamespace X {\n?> <div>}</div> <?php\nuse Vendor\\Dead\\Thing;\n}\n",
+                1,
+            ),
+            'a use statement written in inline HTML is never an import (t31-ocr63-2)' => array(
+                "<?php\n?>\nuse Vendor\\HtmlText;\n",
+                0,
+            ),
+            /*
+             * OCR round 64 (t31-ocr64-1): the r63-2 open-tag candidate
+             * flipped to PHP mode on ANY '<?php' byte pair, but the
+             * engine lexes T_OPEN_TAG only when the tag is followed by
+             * whitespace or end of input — '<?phpecho'/'<?phpinfo()'
+             * are INLINE HTML under the production-default
+             * short_open_tag=Off, so an HTML region carrying a glued
+             * spelling then 'use …' text flipped the walk at a tag the
+             * engine never opened and raised a phantom over markup
+             * (red at HEAD: 1 on the glued row, 2 on the past-glue
+             * row — the second use counted beside the phantom). The
+             * follower is the engine's own class ([ \t\r\n] or end of
+             * input; '<?php\x0B' is HTML too), '<?=' stays an opener
+             * unconditionally, and every other '<?' spelling stays a
+             * non-opener — the r63-2 census's INI-independence kept.
+             */
+            'glued "<?phpecho" HTML keeps the use-text HTML, no phantom (t31-ocr64-1)' => array(
+                "<?php\n?>\n<?phpecho use Vendor\\Glued\\Widget;\n",
+                0,
+            ),
+            'dead import past a glued "<?phpecho" HTML region flags, the glue itself silent (t31-ocr64-1)' => array(
+                "<?php\n?>\n<?phpecho use Vendor\\Glued\\Gadget;\n<?php\nuse Vendor\\Other\\Widget;\n",
+                1,
+            ),
+            'comment glued to the open tag keeps the file HTML, no phantom (t31-ocr64-1)' => array(
+                "<?php//note\nuse Vendor\\Glued\\Widget;\n",
+                0,
+            ),
+            /*
+             * OCR round 64 (t31-ocr64-2): the r63-1 lookbehind guarded
+             * label bytes only, but the shared statement-start anchor
+             * these patterns' census comments claim to ride (build.
+             * php's own spelling since t31-ocr49-3, the byte class
+             * the LABEL_BYTES owner derived at t31-ocr60-3) includes
+             * the namespace separator — 'use Foo\use Bar;' matched at
+             * the SECOND use (a backslash precedes it) and raised a
+             * phantom for Bar (red at HEAD: 1 plain, 2 comma — both
+             * members unrolled from the phantom opening — 1 group).
+             * All three statement patterns ride the FULL shared class
+             * now — the premise the r63-1 comment already stated,
+             * made true.
+             */
+            'glued "use Foo\\use Bar;" names no import, no phantom (t31-ocr64-2)' => array(
+                "<?php\nuse Vendor\\Live\\use Bar;\n",
+                0,
+            ),
+            'glued comma-list "use Foo\\use Bar, Baz;" names no import (t31-ocr64-2)' => array(
+                "<?php\nuse Vendor\\Live\\use Bar, Baz;\n",
+                0,
+            ),
+            'glued group "use Foo\\use Bar\\{X};" names no import (t31-ocr64-2)' => array(
+                "<?php\nuse Vendor\\Live\\use Bar\\{X};\n",
+                0,
+            ),
         );
     }
 
@@ -423,9 +776,29 @@ FIXTURE
      */
     public function testTheTrailingCommentFlagMessagePrintsTheCleanQualifiedName(): void
     {
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this child-process consumer): the STDERR
+         * channel is captured through a spawned engine, and on a
+         * disable_functions host the first spawn was an
+         * undefined-function \Error instead of the visible skip.
+         */
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the STDERR-channel message leg cannot run (the clean-name verdict rides a child process).');
+        }
+
         file_put_contents($this->root . '/fixture.php', "<?php\nuse Vendor\\Pkg\\DeadThing /* note */;\n");
 
-        $script = 'require ' . var_export(realpath(__DIR__ . '/../bin/check-conventions.php'), true) . ';'
+        /*
+         * The gate path is asserted resolved BEFORE the embed (t31-ocr25
+         * rd-1, the ocr25-8 class census): a realpath() false once
+         * embedded `require false;` into the child — the fatal then
+         * read as the gate's own defect, an environment problem
+         * wearing the pin's subject.
+         */
+        $gateScript = realpath(__DIR__ . '/../bin/check-conventions.php');
+        $this->assertNotFalse($gateScript, 'The conventions-gate path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the gate defect the child would fatal as.');
+        $script = 'require ' . var_export($gateScript, true) . ';'
             . ' wp_connectors_unused_import_violations(' . var_export($this->root, true) . ');';
         exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
         $message = implode("\n", $output);
@@ -441,6 +814,171 @@ FIXTURE
             $message,
             'The flag message must not carry the trailing comment bytes.'
         );
+    }
+
+    /**
+     * OCR-round-67 pin (t31-ocr67-5 — the comma arm's display parity):
+     * the comma-list handler unrolls its members through the group
+     * unroller under an EMPTY prefix, and that composition prepends
+     * one artifact separator to every member — the print site once
+     * ltrim'd ALL leading separators, so a fully-qualified member
+     * ('use \A\B, \C\D;') printed as 'C\D', losing the marker the
+     * single arm prints for 'use \C\D;' (driven red at HEAD through
+     * the real STDERR channel). The display strips exactly the one
+     * artifact separator now; the FAIL vocabulary agrees across all
+     * three arms (display-only — the verdict rides the short name).
+     */
+    public function testTheFullyQualifiedCommaMemberFlagPrintsTheSingleArmMarker(): void
+    {
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this child-process consumer): the STDERR
+         * channel is captured through a spawned engine, and on a
+         * disable_functions host the first spawn was an
+         * undefined-function \Error instead of the visible skip.
+         */
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the STDERR-channel message leg cannot run (the marker-parity verdict rides a child process).');
+        }
+
+        file_put_contents($this->root . '/fixture.php', "<?php\nuse \\Vendor\\Alpha, \\Vendor\\Pkg\\DeadThing;\n\$x = new Alpha();\n");
+        file_put_contents($this->root . '/solo.php', "<?php\nuse \\Vendor\\Pkg\\DeadSolo;\n");
+
+        /*
+         * The gate path is asserted resolved BEFORE the embed (t31-ocr25
+         * rd-1, the ocr25-8 class census): a realpath() false once
+         * embedded `require false;` into the child — the fatal then
+         * read as the gate's own defect, an environment problem
+         * wearing the pin's subject.
+         */
+        $gateScript = realpath(__DIR__ . '/../bin/check-conventions.php');
+        $this->assertNotFalse($gateScript, 'The conventions-gate path must resolve before the child embed — a realpath() false is an environment problem (a broken checkout, an open_basedir wall), never the gate defect the child would fatal as.');
+        $script = 'require ' . var_export($gateScript, true) . ';'
+            . ' wp_connectors_unused_import_violations(' . var_export($this->root, true) . ');';
+        exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+        $message = implode("\n", $output);
+
+        $this->assertSame(0, $exit, 'The scanner helper must not exit non-zero; the CLI gate owns the exit code.');
+        $this->assertSame(2, wp_connectors_unused_import_violations($this->root), 'Both dead imports flag — the dead comma member beside the dead single-arm control.');
+        $this->assertStringContainsString(
+            "unused import '\\Vendor\\Pkg\\DeadThing' (comma-list member)",
+            $message,
+            'The fully-qualified comma member prints WITH its leading separator — the same marker the single arm prints (red at HEAD: the ltrim printed Vendor\\Pkg\\DeadThing).'
+        );
+        $this->assertStringContainsString(
+            "unused import '\\Vendor\\Pkg\\DeadSolo'",
+            $message,
+            'The single-arm control keeps its own fully-qualified marker — the parity the round pins.'
+        );
+    }
+
+    /**
+     * Fix-round pin (t31-r9-7): the conventions gate's unused-import
+     * scan covered only connectors/, so a dead import in shared/src
+     * passed every gate and then shipped into EVERY embedding plugin —
+     * the phantom-dependency drift the gate exists to kill, one tree
+     * further out. Pinned through the CLI itself against a scratch
+     * repo (the gate computes its roots from its own location, so the
+     * wiring — not just the scanner helper — is what's under test):
+     * a planted dead `use RuntimeException;` in the scratch shared
+     * tree fails the run naming the file, and the same repo without
+     * it stays green.
+     */
+    public function testTheConventionsGateScansTheSharedSourceTree(): void
+    {
+        /*
+         * The exec-capability guard (t31-ocr18-2, the t31-ocr16-12
+         * doctrine over this child-process consumer): both gate runs
+         * (clean control and planted dead import) spawn the scratch
+         * repo's check-conventions.php through a child process, and
+         * on a disable_functions host the first spawn was an
+         * undefined-function \Error instead of the visible skip.
+         */
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the scratch-repo gate legs cannot run (both verdicts ride child processes).');
+        }
+
+        $repo = sys_get_temp_dir() . '/wp-connectors-conventions-shared-' . uniqid('', true);
+
+        /*
+         * Staging lives INSIDE the try (t31-ocr18-3, the t31-ocr16-14
+         * scratch-staging class): the whole scratch repo was staged
+         * before the try/finally owned it, so a failed copy/copyTree
+         * leaked the partial tree on disk — creation-to-cleanup under
+         * the one finally (rrmdir no-ops the never-created spelling,
+         * so a first-line failure unwinds clean).
+         */
+        try {
+            /*
+             * Staging success is ASSERTED at each site (OCR round 26,
+             * t31-ocr26-12, the misattribution doctrine): a failed
+             * mkdir()/copy() once surfaced only through the child
+             * run — the clean-control leg failed as 'must pass the
+             * gate: PHP Warning: require_once … Failed to open
+             * stream', a staging problem wearing the gate's own
+             * defect as its verdict. Staging failures fail as
+             * staging now, before any child is spawned. copyTree()
+             * (below) is the loud pair's own — it throws.
+             */
+            $this->assertTrue(mkdir($repo . '/bin/lib', 0755, true), 'staging: the scratch bin/lib must create — a staging failure fails as staging, never as the gate.');
+            $this->assertTrue(mkdir($repo . '/shared/src/Clock', 0755, true), 'staging: the scratch shared/src/Clock must create — a staging failure fails as staging, never as the gate.');
+            $this->assertTrue(mkdir($repo . '/connectors', 0755, true), 'staging: the scratch connectors tree must create — a staging failure fails as staging, never as the gate.');
+            $this->assertTrue(copy(dirname(__DIR__) . '/bin/check-conventions.php', $repo . '/bin/check-conventions.php'), 'staging: the gate script must copy — a staging failure fails as staging, never as the gate.');
+            $this->assertTrue(copy(dirname(__DIR__) . '/bin/lib/plugin-tools.php', $repo . '/bin/lib/plugin-tools.php'), 'staging: the gate library must copy — a staging failure fails as staging, never as the gate.');
+            // The gate's repo-level checks need a CHANGELOG at the root.
+            $this->assertNotFalse(file_put_contents($repo . '/CHANGELOG.md', "# scratch\n"), 'staging: the scratch CHANGELOG must write — a staging failure fails as staging, never as the gate.');
+            // A valid plugin so ONLY the unused-import verdict can fail the run.
+            // The scratch-tree helpers are the harness's ONE pair (t31-ocr1-9).
+            WpHarness::copyTree(__DIR__ . '/fixtures/plugins/example-connector', $repo . '/connectors/example-connector');
+
+            // Control: the clean shared tree is invisible to the gate.
+            $this->assertNotFalse(
+                file_put_contents(
+                    $repo . '/shared/src/Clock/ClockInterface.php',
+                    "<?php\nnamespace Shared\\Clock;\ninterface ClockInterface {}\n"
+                ),
+                'staging: the clean-control shared source must write — a staging failure fails as staging, never as the gate.'
+            );
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/check-conventions.php') . ' 2>&1', $cleanOutput, $cleanExit);
+            $this->assertSame(0, $cleanExit, "The clean scratch repo must pass the gate: " . implode("\n", $cleanOutput));
+
+            // The planted dead import in shared/src fails the run —
+            // asserted like every other staging site (t31-ocr29-8):
+            // a silent false re-runs the CLEAN tree, the gate exits
+            // 0, and the planted-verdict leg passes vacuously.
+            $this->assertNotFalse(
+                file_put_contents(
+                    $repo . '/shared/src/Clock/DeadImport.php',
+                    "<?php\nnamespace Shared\\Clock;\nuse RuntimeException;\ninterface DeadImport {}\n"
+                ),
+                'staging: the dead-import source must write — a staging failure fails as staging, never as the gate\'s verdict.'
+            );
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($repo . '/bin/check-conventions.php') . ' 2>&1', $plantedOutput, $plantedExit);
+            $message = implode("\n", $plantedOutput);
+
+            $this->assertSame(1, $plantedExit, 'A dead import in shared/src must fail the conventions gate.');
+            $this->assertStringContainsString("unused import 'RuntimeException'", $message, 'The failure must be the unused-import vocabulary.');
+            // The expected fragment spells its separator the way the
+            // producer does (t31-ocr21-5): check-conventions names the
+            // file through substr(getPathname(), strlen($root) + 1) —
+            // the iterator's DIRECTORY_SEPARATOR joins, never a
+            // hardcoded '/'.
+            $this->assertStringContainsString('Clock' . DIRECTORY_SEPARATOR . 'DeadImport.php', $message, 'The failure must name the shared source file.');
+            /*
+             * t31-ocr5-2: the summary attributes every count to its own
+             * tree. The pooled line read "1 plugin dir(s) checked, 1
+             * violation(s)" on this exact fixture — a shared/src-only
+             * red run whose plugin dirs (never scanned for the
+             * violation) carried the count.
+             */
+            $this->assertStringContainsString(
+                '1 plugin dir(s) checked, 0 plugin-tree violation(s), 1 shared/src violation(s), 0 repo violation(s)',
+                $message,
+                'A shared/src-only red run must not attribute its violations to the plugin dirs.'
+            );
+        } finally {
+            WpHarness::releaseScratch($repo);
+        }
     }
 
     public function testADirectoryNamedPhpIsSkipped(): void
@@ -460,7 +998,14 @@ FIXTURE
         }
         file_put_contents($this->root . '/real.php', "<?php\nuse Vendor\\Package\\Used;\n\$x = new Used();\n");
 
-        $this->assertSame(0, wp_connectors_unused_import_violations($this->root));
+        /*
+         * SUPERSEDED at t31-glm64-3 (R64-6): the round-64 link
+         * fence replaces the isDir() silent skip this pin certified
+         * — a resolving dir-symlink answers the FAIL line now, the
+         * lint gate's own doctrine at the walk (the silent skip was
+         * the omission-not-absence shape the fence family closes).
+         */
+        $this->assertSame(1, wp_connectors_unused_import_violations($this->root));
     }
 
     public function testADanglingSymlinkNamedPhpFailsLoudly(): void
@@ -479,6 +1024,213 @@ FIXTURE
         }
 
         $this->assertSame(1, wp_connectors_unused_import_violations($this->root));
+    }
+
+    /**
+     * OCR-round-43 pin (t31-ocr43-8): the collector answers its
+     * PARTIAL count under the mid-walk abort. The function prints
+     * every FAIL as it is found but once returned its count only at
+     * the END, so the gate's abort conversion (glm17-17) silently
+     * dropped every violation counted before the refusal — the tally
+     * losing exactly the FAIL lines it had already printed. The
+     * by-ref count syncs in a finally around the walk now (the abort
+     * flying through untouched, the gate folding the partial in
+     * beside its own FAIL), driven here through the child shape the
+     * trailing-comment pin rides.
+     *
+     * The staging is YIELD-ORDER-INDEPENDENT (OCR round 44,
+     * t31-ocr44-5): the leg once created its dead-import source AFTER
+     * the locked tree and asserted the source walked first — a
+     * premise load-bearing on THIS build's readdir order (entries
+     * materialized inverted from creation order), so a
+     * creation-order filesystem descended into locked/ before the
+     * source ever walked and the assertion failed as an
+     * environment-looking defect. Two dead sources now BRACKET the
+     * locked tree (one created before it, one after), and the
+     * expectation derives from the OBSERVED yield order (scandir over
+     * the same directory the iterator reads — the same readdir
+     * stream): whichever sources sit before locked/ in that order are
+     * exactly the ones whose FAILs print before the descent aborts,
+     * on every filesystem; only an order that yields locked/ before
+     * BOTH sources cannot drive the partial-count subject at all, and
+     * skips naming that premise (the permission-probe doctrine: never
+     * a vacuous green).
+     */
+    public function testTheMidWalkAbortAnswersThePartialCountToo(): void
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host has exec/escapeshellarg in disable_functions — the child-process abort leg cannot run (the t31-ocr16-12 doctrine).');
+        }
+
+        // The bracket (the yield-order-independent staging): one dead
+        // source created BEFORE the locked tree, one AFTER — whichever
+        // half this filesystem's readdir yields ahead of locked/ is
+        // walked before the descent, whatever rule orders the entries.
+        /*
+         * Every IO return before the guarded region is OWNED (OCR
+         * round 49, t31-ocr49-10 — the maker's own ocr26-12 staging
+         * doctrine, this leg): a silent write/mkdir false once fed
+         * the derivation a half-staged bracket — the yield-order
+         * arithmetic then wearing the staging failure it never
+         * named, and a chmod false answering the probe's skip as an
+         * environment premise that never was. Each site asserts at
+         * itself, naming its own path.
+         */
+        $this->assertNotFalse(file_put_contents($this->root . '/dead-first.php', "<?php\nuse Vendor\\Pkg\\DeadThing;\nuse Vendor\\Pkg\\AlsoDead;\n"), 'staging: the dead-first bracket source must write — a staging failure fails as staging, never as the partial-count verdict.');
+        $this->assertTrue(mkdir($this->root . '/locked', 0755, true), 'staging: the locked tree must create — a staging failure fails as staging, never as the partial-count verdict.');
+        $this->assertNotFalse(file_put_contents($this->root . '/locked/Hidden.php', "<?php\n// unreachable through the lock\n"), 'staging: the locked tree\'s hidden source must write — a staging failure fails as staging, never as the partial-count verdict.');
+        $this->assertNotFalse(file_put_contents($this->root . '/dead-last.php', "<?php\nuse Vendor\\Pkg\\ThirdDead;\nuse Vendor\\Pkg\\FourthDead;\n"), 'staging: the dead-last bracket source must write — a staging failure fails as staging, never as the partial-count verdict.');
+
+        /*
+         * The OBSERVED yield order (t31-ocr44-5): SCANDIR_SORT_NONE
+         * reads the same readdir stream the child's
+         * RecursiveDirectoryIterator walks (the DEFAULT scandir sort
+         * is alphabetical — a third order neither consumer rides, and
+         * the probe that made this leg's first derivation redden over
+         * its own premise), so the positions below ARE the walk's own
+         * — the expectation is derived from what this filesystem
+         * actually yields, never from a creation-order rule. Each
+         * bracket source carries two dead imports, so every source
+         * positioned before locked/ answers exactly two FAIL lines;
+         * the descent aborts at locked/'s own position, and nothing
+         * after it walks.
+         */
+        /*
+         * The derivation answers BEFORE the lock takes (OCR round 50,
+         * t31-ocr50-9): the chmod-0000 once lands before this block,
+         * and every assertion between it and the restore-finally —
+         * the yield-position pin, the gate-path realpath pin — left
+         * locked/ stranded at mode 0000 on its own failure, a tree
+         * the tearDown's release then could not walk either. The
+         * whole derivation is mode-independent (scandir lists the
+         * PARENT), so it rides above the chmod; the region between
+         * the lock and the try now carries only the probe's own
+         * restore-on-skip, and the finally owns every mode-0000
+         * spelling alone.
+         */
+        $yield = array_values(array_diff(scandir($this->root, SCANDIR_SORT_NONE) ?: array(), array('..', '.')));
+        $locked_at = array_search('locked', $yield, true);
+        $this->assertNotFalse($locked_at, 'The locked tree is staged under the fixture root — its yield position is the derivation the assertions ride.');
+        $expected_fail_lines = 0;
+        foreach ($yield as $position => $entry) {
+            if ($position < $locked_at && 1 === preg_match('/\Adead-(?:first|last)\.php\z/', $entry)) {
+                $expected_fail_lines += 2;
+            }
+        }
+        if (0 === $expected_fail_lines) {
+            $this->markTestSkipped('This filesystem yields the locked tree before both bracket sources (' . implode(', ', $yield) . ') — the walk aborts before any FAIL prints, so the partial-count subject is unconstructible in this order (the permission-probe doctrine: never a vacuous green).');
+        }
+
+        /*
+         * The gate path is asserted resolved BEFORE the embed (the
+         * ocr25-8 class census this file's own trailing-comment pin
+         * rides) — and before the lock takes (t31-ocr50-9): a
+         * realpath() false here once stranded the locked tree below.
+         */
+        $gateScript = realpath(__DIR__ . '/../bin/check-conventions.php');
+        $this->assertNotFalse($gateScript, 'The conventions-gate path must resolve before the child embed — a realpath() false is an environment problem, never the gate defect the child would fatal as.');
+
+        // The permission-denial probe (the capability this leg
+        // premises, in the lint gate's own shape): a process the
+        // permissions cannot deny can never drive the abort — skip,
+        // naming the premise, never a vacuous green. glm24-9: the
+        // lock+probe+restore choreography rides the ONE owner (a
+        // failed chmod answers the probe honestly — the directory
+        // stays openable, the skip fires).
+        if (! WpHarness::lockForDenialProbe($this->root . '/locked')) {
+            $this->markTestSkipped('This process walks a chmod-0000 directory open (permissions cannot deny it — root-shaped), so the mid-walk abort is unconstructible here.');
+        }
+
+        try {
+            $script = 'require ' . var_export($gateScript, true) . ';'
+                . ' $counted = 0;'
+                . ' try { wp_connectors_unused_import_violations(' . var_export($this->root, true) . ', $counted); echo "done counted={$counted}\\n"; }'
+                . ' catch (UnexpectedValueException $e) { echo "aborted counted={$counted}\\n"; }';
+            $output = array();
+            $exit = 0;
+            exec(escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg($script) . ' 2>&1', $output, $exit);
+            $message = implode("\n", $output);
+
+            $this->assertSame(0, $exit, "The child owns its own exit — the abort is caught and the partial count printed, never an uncaught fatal: {$message}");
+            $this->assertStringContainsString('aborted counted=', $message, 'The locked tree aborts the walk mid-recursion (the glm17-17 shape) — a green walk here means the leg never drove its subject.');
+            $fail_lines = substr_count($message, 'conventions: FAIL');
+            $this->assertSame($expected_fail_lines, $fail_lines, "Exactly the dead sources the OBSERVED yield order positions before locked/ print their FAIL lines ({$expected_fail_lines} expected from the scandir positions) — the leg judges the contract per observed sequence, never a host's readdir rule: {$message}");
+            $this->assertSame(1, preg_match('/aborted counted=(\d+)/', $message, $m) ? 1 : 0, 'The abort line carries its count.');
+            $this->assertSame($fail_lines, (int) $m[1], "The by-ref count answers EXACTLY the violations whose FAIL lines already printed — the abort never drops a counted offense (red at HEAD: the FAILs printed while the count stayed 0): {$message}");
+        } finally {
+            /*
+             * The restore is @chmod (OCR round 64, t31-ocr64-4, the
+             * t31-ocr42-8 class): a bare chmod() here converts a
+             * failed restore (NFS/quota/AV lock, vanished tree) to a
+             * Warning exception under the suite's
+             * convertWarningsToExceptions and REPLACES the in-flight
+             * verdict — the suppress the sibling batteries ride at
+             * this identical seam (BuildSeamPropertyTest::runState,
+             * ToolchainSmokeTest's locked leg). A file-wide sweep
+             * found no other bare chmod-in-finally straggler: the
+             * probe-skip restores (both legs' skip branches) ride
+             * their own skip channel, pre-verdict, where a loud
+             * failure is the staging verdict the skip doctrine
+             * already owns.
+             */
+            @chmod($this->root . '/locked', 0755);
+        }
+    }
+
+    /*
+     * OCR-round-45 pin (t31-ocr45-7): the by-ref $counted sync answers
+     * the CONSTRUCTOR's refusal too. The RecursiveDirectoryIterator
+     * construction sat OUTSIDE the try/finally that owns the sync, so
+     * an unopenable scan root threw UnexpectedValueException from the
+     * constructor BEFORE the try — the finally never ran, $counted was
+     * never assigned, and the docblock's own "@param-out ... always"
+     * contract was falsified (red at HEAD: the by-ref variable stayed
+     * null under the abort). The construction rides inside the guarded
+     * region now; this leg drives the collector IN-PROCESS over a
+     * chmod-0000 root (the refusal prints nothing — no child needed,
+     * unlike the mid-walk leg whose FAIL lines the child isolates) and
+     * holds count === 0 under the refusal.
+     */
+    public function testAnUnopenableRootAnswersTheRefusalWithTheCountSynced(): void
+    {
+        if (! WpHarness::isPosixHost()) {
+            $this->markTestSkipped('The unopenable-root leg premises POSIX permission bits — chmod(0000) must deny the opendir, never read through a read-only attribute.');
+        }
+        $locked = $this->root . '/locked-root';
+        /*
+         * The staging asserts its own landing (t31-ocr53-9, the
+         * mid-walk leg's own doctrine): a failed mkdir() left the
+         * probe reading opendir() false over a NONEXISTENT root — a
+         * denial it never proved — and the leg green VACUOUSLY
+         * (counted=0 through the finally over a root that never was);
+         * a silent chmod failure is the probe's premise gone quiet.
+         */
+        $this->assertTrue(mkdir($locked, 0755, true), 'staging: the locked root must create — a staging failure fails as staging, never as the refusal verdict (the vacuous channel: opendir() reads false over a nonexistent root too).');
+        // The permission-denial probe (the capability this leg
+        // premises, the mid-walk leg's own shape): a process the
+        // permissions cannot deny can never drive the constructor's
+        // refusal — skip, naming the premise, never a vacuous green.
+        // glm24-9: the lock+probe+restore choreography rides the ONE
+        // owner (the chmod's failure the probe's own honest answer).
+        if (! WpHarness::lockForDenialProbe($locked)) {
+            $this->markTestSkipped('This process opens a chmod-0000 directory (permissions cannot deny it — root-shaped), so the constructor refusal is unconstructible here.');
+        }
+
+        try {
+            $counted = null;
+            try {
+                wp_connectors_unused_import_violations($locked, $counted);
+                $this->fail('An unopenable scan root must answer the constructor\'s UnexpectedValueException, never walk green.');
+            } catch (UnexpectedValueException $e) {
+                $this->assertStringContainsString($locked, $e->getMessage(), 'The refusal names the unopenable root.');
+            }
+            $this->assertSame(0, $counted, 'The by-ref count answers 0 under the constructor\'s own refusal — the finally owns the sync for every abort shape (red at HEAD: the count stayed null, the construction sitting outside the guarded region).');
+        } finally {
+            // The same @chmod restore (t31-ocr64-4): the constructor
+            // refusal this leg drives is the in-flight verdict a bare
+            // restore's Warning would replace.
+            @chmod($locked, 0755);
+        }
     }
 
     public function testStrippedCommentsKeepTheirLineTerminator(): void
@@ -555,5 +1307,51 @@ FIXTURE
 
         $tools = (string) file_get_contents(dirname(__DIR__) . '/bin/lib/plugin-tools.php');
         $this->assertStringContainsString('$views = wp_connectors_file_code_views($path);', $tools, 'The self-containment driver reads the shared views.');
+    }
+
+    public function testTheSharedViewProviderRetentionIsBounded(): void
+    {
+        /*
+         * glm14-6: the memo never evicted, retaining three full copies
+         * of every PHP byte read for the process lifetime — and the
+         * artifact inspector rides this provider over EXTRACTED
+         * (hostile-controlled) trees, so a zip shipping ~40 MB of
+         * .php entries retained ~120 MB against the 128M default and
+         * the inspector died at exit 255 with NO verdict (the review's
+         * measured shape). Retention is FIFO-bounded at 24 MB of view
+         * bytes — above this repository's whole PHP tree (~5.3 MB of
+         * sources), so the repo-wide single-tokenize-per-file purpose
+         * survives; an over-bound walk evicts oldest-first and
+         * re-tokenizes on re-consult (red at HEAD: the reflection
+         * read below answered ~3x the fed bytes, no bound at all).
+         */
+        $payload = '<?php' . "\n" . '/*' . str_repeat('x ', 512 * 1024) . "*/\n\$y = 1;\n";
+        $first_path = null;
+        $first_views = null;
+        $file_count = 30; // ~31 MB of sources — past the 24 MB bound.
+        for ($i = 0; $i < $file_count; ++$i) {
+            $path = $this->root . '/retention-' . $i . '.php';
+            file_put_contents($path, $payload);
+            $views = wp_connectors_file_code_views($path);
+            $this->assertIsArray($views, "Every fed file yields its triple, eviction or not (file {$i}).");
+            $this->assertSame($payload, $views['source'], "The served source is the file's own content, eviction or not (file {$i}).");
+            if (0 === $i) {
+                $first_path = $path;
+                $first_views = $views;
+            }
+        }
+
+        // The memo's own retained-bytes counter is bounded at the cap plus at most one entry.
+        $statics = (new ReflectionFunction('wp_connectors_file_code_views'))->getStaticVariables();
+        $this->assertArrayHasKey('retained', $statics, 'The provider carries its retention counter.');
+        $one_entry = 3 * strlen($payload);
+        $this->assertLessThanOrEqual(
+            24 * 1024 * 1024 + $one_entry,
+            $statics['retained'],
+            'Retention stays at the bound plus at most one in-flight entry — never the process-lifetime accumulation.'
+        );
+
+        // A re-consult past eviction re-tokenizes and answers the identical values.
+        $this->assertSame($first_views, wp_connectors_file_code_views($first_path), 'An evicted entry re-serves the same triple values on re-consult.');
     }
 }

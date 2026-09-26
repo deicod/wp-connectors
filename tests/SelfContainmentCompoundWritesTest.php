@@ -41,12 +41,12 @@ final class SelfContainmentCompoundWritesTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_file($entry)) {
-                @unlink($entry);
-            }
-        }
-        @rmdir($this->root);
+        // t31-glm42-6 [R42-15, the regrowing-hand-copy re-open condition
+        // fired — the glm39-13 class]: the hand-rolled flat walk unlinked
+        // only top-level files, stranding the root over any nested or
+        // locked fixture; the ONE scratch-release owner the six sibling
+        // SelfContainment suites ride owns every exit.
+        WpHarness::releaseScratch($this->root);
     }
 
     public function testAnArrayUnionMergeAfterTheLiteralFlags(): void
@@ -397,5 +397,123 @@ final class SelfContainmentCompoundWritesTest extends TestCase
         );
 
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'Reads through the map and other-variable destructuring stay clean.');
+    }
+
+    /**
+     * OCR round 11 (t31-ocr11-14): the optional $scanRoot held its
+     * docblock invariant — absolute and inside $pluginDir — only by
+     * caller discipline: a planted OUTSIDE root walked foreign
+     * territory under the plugin anchor and answered zero violations
+     * (driven red at HEAD), and a relative spelling walked the CWD.
+     * Both refuse at the function boundary now, naming both paths —
+     * the invariant is enforced, never assumed.
+     */
+    public function testAnOutsideOrRelativeScanRootRefusesAtTheBoundary(): void
+    {
+        /*
+         * The staging writes OWN THEIR RETURNS (OCR round 52,
+         * t31-ocr52-5 — the ocr27-9 staging doctrine): the boundary
+         * refuses a MISSING scan root with the SAME RuntimeException
+         * class and message vocabulary as an outside root, so an
+         * unchecked mkdir()/file_put_contents() failure (a read-only
+         * temp, a full disk) surfaced as the EXPECTED refusal and the
+         * leg passed without testing anything — a reachable vacuous
+         * pass over the very refusal the test exists to drive. A
+         * staging failure now fails the test AS a staging failure
+         * naming its path.
+         */
+        // A SIBLING of the plugin root — outside must not sit inside it.
+        $outside = sys_get_temp_dir() . '/wpct-scanroot-outside-' . uniqid('', true);
+        /*
+         * The staging-inside-try completion (t31-ocr54-2 — the
+         * t31-ocr16-14/t31-ocr18-3 leak class this file's changeset
+         * siblings already closed): $outside's staging sat BEFORE the
+         * try whose finally releases it, so a failed staging assert
+         * (the r52-5 asserts above) stranded the half-built
+         * 'wpct-scanroot-outside-*' tree — a uniqid stem no pid sweep
+         * vocabulary ever names — in system temp. Staging rides
+         * inside the try now: the finally owns every exit from the
+         * mkdir on.
+         */
+        try {
+            $this->assertTrue(mkdir($outside . '/sub', 0755, true), 'staging: the outside scan root must create — a staging failure fails as staging, never as the boundary verdict.');
+            $this->assertNotFalse(file_put_contents($outside . '/sub/spy.php', "<?php\n\$f = dirname(__DIR__, 2) . '/../escape.php';\nrequire \$f;\n"), 'staging: the outside-root fixture must write — a staging failure fails as staging, never as the boundary verdict.');
+            // The verdicts ride the ONE refusal owner (t31-ocr15-7,
+            // WpHarness::refusalOf()): this suite extends the bare
+            // TestCase, so the hand-rolled $caught=null/try/catch/
+            // fail-if-null shapes were verbatim twins of the owner's
+            // body — the family each original catch declared rides the
+            // third parameter. The family is RuntimeException (OCR
+            // round 23, t31-ocr23-3): the boundary once threw
+            // InvalidArgumentException, a LogicException that escapes
+            // build's `catch (RuntimeException)` — the failure channel
+            // the glm31-4 sibling comment deliberately preserves — so
+            // a firing boundary was an uncaught fatal exiting 255
+            // where every other refusal of this owner reaches the
+            // build's named exit-1 verdict.
+            $caught = WpHarness::refusalOf(
+                fn() => wp_connectors_self_containment_violations($this->root, $outside),
+                'An outside scan root must refuse at the boundary — it once walked foreign territory under the plugin anchor silently.',
+                \RuntimeException::class
+            );
+            $this->assertStringContainsString('scan root', $caught->getMessage(), 'The refusal names the invariant.');
+            $this->assertStringContainsString($outside, $caught->getMessage(), 'The refusal names the scan root.');
+            $this->assertStringContainsString($this->root, $caught->getMessage(), 'The refusal names the plugin directory.');
+
+            /*
+             * The relative arm pins BOTH named paths (OCR round 22,
+             * t31-ocr22-3): unlike its siblings it judged only the
+             * exception family, so a guard refusing without the
+             * docblock's "names both paths" verdict passed invisible
+             * here — the outside arm's both-paths contract holds for
+             * every boundary shape.
+             */
+            $caught = WpHarness::refusalOf(
+                fn() => wp_connectors_self_containment_violations($this->root, 'relative/scan'),
+                'A relative scan root must refuse at the boundary — it once walked the working directory.',
+                \RuntimeException::class
+            );
+            $this->assertStringContainsString('relative/scan', $caught->getMessage(), 'The refusal names the scan root — the relative arm carries the same both-paths contract as the outside arm.');
+            $this->assertStringContainsString($this->root, $caught->getMessage(), 'The refusal names the plugin directory.');
+
+            /*
+             * (t31-ocr11-26, the verifier lens): a FILE inside the
+             * plugin passed the containment check and died in the
+             * iterator constructor's UnexpectedValueException — the
+             * engine's vocabulary on a boundary the guard owns. A
+             * non-directory root refuses with the policy class now
+             * (RuntimeException, the channel pin above).
+             */
+            $fileRoot = $this->root . '/plain.txt';
+            $this->assertNotFalse(file_put_contents($fileRoot, 'a file, not a walk root'), 'staging: the file-root fixture must write — a staging failure fails as staging (a missing root answers the same refusal vocabulary), never as the boundary verdict.');
+            $caught = WpHarness::refusalOf(
+                fn() => wp_connectors_self_containment_violations($this->root, $fileRoot),
+                'A FILE scan root must refuse at the boundary — it once died in the iterator constructor\'s engine vocabulary.',
+                \RuntimeException::class
+            );
+            /*
+             * The class pin is EXACT, never the family (OCR round 31,
+             * t31-ocr31-8): refusalOf() judges instanceof, so the
+             * family parameter alone accepts ANY RuntimeException
+             * subclass — the iterator's UnexpectedValueException the
+             * arm's own comment names included — and a guard-clause
+             * regression had a passing channel through the family
+             * match alone. The driven adjudication: the walk's
+             * glm31-4/ocr24-2 fence converts the constructor abort to
+             * a returned violation BEFORE any throw can escape, so
+             * the planted regression (the !is_dir() clause removed)
+             * answers refusalOf()'s no-throw verdict one seam earlier
+             * — driven red, the family hole unreachable through this
+             * consumer today — and the exact-class assertion closes
+             * it against the day the fence or the guard re-shapes:
+             * the refusal is the boundary guard's own
+             * RuntimeException, by name.
+             */
+            $this->assertSame(\RuntimeException::class, get_class($caught), 'The non-directory refusal is the boundary guard\'s own RuntimeException exactly — an UnexpectedValueException wearing the family would mean the guard clause regressed and the iterator answered a boundary the guard owns.');
+            $this->assertStringContainsString($fileRoot, $caught->getMessage(), 'The non-directory refusal names the scan root.');
+            unlink($fileRoot);
+        } finally {
+            WpHarness::releaseScratch($outside);
+        }
     }
 }

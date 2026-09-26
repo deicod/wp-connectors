@@ -135,18 +135,17 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
          * binding-failure family, message fixed and key-free.
          */
         foreach (array("good-key,bad-half", "good-key\r\nX-Injected: 1", "with\ttab", "with\x00nul", "with\x7Fdel") as $uncarriable) {
-            try {
-                (new ZaiAnthropicRequestAuthentication($uncarriable))->authenticateRequest(
+            $refusal = $this->refusalOf(
+                fn() => (new ZaiAnthropicRequestAuthentication($uncarriable))->authenticateRequest(
                     new SdkRequest(HttpMethodEnum::POST(), 'https://api.z.ai/api/anthropic/v1/messages')
-                );
-                $this->fail('Uncarriable credential material must be refused before the header is built.');
-            } catch (RuntimeException $e) {
-                $this->assertSame(
-                    'The ' . ZaiAnthropicProviderAvailability::REFUSAL_LABEL . ' provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.',
-                    $e->getMessage()
-                );
-                $this->assertStringNotContainsString($uncarriable, $e->getMessage(), 'The key never appears in the rejection.');
-            }
+                ),
+                'Uncarriable credential material must be refused before the header is built.', RuntimeException::class
+            );
+            $this->assertSame(
+                'The ' . ZaiAnthropicProviderAvailability::REFUSAL_LABEL . ' provider refuses credential material containing control characters or commas: the Authorization header cannot carry it.',
+                $refusal->getMessage()
+            );
+            $this->assertStringNotContainsString($uncarriable, $refusal->getMessage(), 'The key never appears in the rejection.');
         }
 
         // glm13-1 tolerance: an EMPTY key authenticates nothing and its
@@ -161,12 +160,11 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
 
         // The generation path: a comma key wired on the model rejects
         // before any transport attempt, in the binding-failure family.
-        try {
-            $this->model('key-part-one,key-part-two')->generateTextResult($this->prompt());
-            $this->fail('Generation with uncarriable credential material must fail pre-transport.');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('cannot carry it', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => $this->model('key-part-one,key-part-two')->generateTextResult($this->prompt()),
+            'Generation with uncarriable credential material must fail pre-transport.', RuntimeException::class
+        );
+        $this->assertStringContainsString('cannot carry it', $refusal->getMessage());
         $this->assertNoHttpRequests();
 
         // The probe's fallback path rejects the same way (glm26-1,
@@ -332,15 +330,14 @@ final class ZaiAnthropicAuthHeadersTest extends WpConnectorsTestCase
             }
         };
 
-        try {
-            ZaiAnthropicRequestAuthentication::wrap( $subclass );
-            $this->fail( 'An API-key authentication subclass must be refused typed, never silently rebuilt.' );
-        } catch ( RuntimeException $e ) {
-            $this->assertSame(
-                'The ' . ZaiAnthropicProviderAvailability::REFUSAL_LABEL . ' provider refuses an API-key authentication subclass: its overridden behavior cannot ride this surface.',
-                $e->getMessage()
-            );
-        }
+        $refusal = $this->refusalOf(
+            fn() => ZaiAnthropicRequestAuthentication::wrap( $subclass ),
+            'An API-key authentication subclass must be refused typed, never silently rebuilt.', RuntimeException::class
+        );
+        $this->assertSame(
+            'The ' . ZaiAnthropicProviderAvailability::REFUSAL_LABEL . ' provider refuses an API-key authentication subclass: its overridden behavior cannot ride this surface.',
+            $refusal->getMessage()
+        );
 
         // The plain instance keeps its byte-identical rebuild (the
         // registry's own shape — the pass-through pin sits above).

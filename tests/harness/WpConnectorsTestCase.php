@@ -161,8 +161,89 @@ abstract class WpConnectorsTestCase extends TestCase
         }
 
         if ($leaks !== array()) {
+            /*
+             * glm27-8: the encode is GUARDED — wp_json_encode() answers
+             * false for an unencodable attempt row (a resource the SDK
+             * transport recorded, invalid UTF-8 in a URL), and the
+             * unguarded concat silently dropped the whole leak detail
+             * into '' — the warning naming nothing it promised to name.
+             */
+            $encoded = wp_json_encode($leaks);
             $this->addWarning(
-                'Test made unmocked HTTP attempts (wp_remote_* or SDK transport): ' . wp_json_encode($leaks)
+                'Test made unmocked HTTP attempts (wp_remote_* or SDK transport): '
+                . (false !== $encoded ? $encoded : sprintf('[%d unmocked attempts; the JSON encode of the leak rows itself failed]', count($leaks)))
+            );
+        }
+    }
+
+    /**
+     * Whether the test process runs as root (uid 0) — the root CI
+     * container shape under which every chmod-0000 permission leg flips
+     * (OCR round 4, t31-ocr4-1, the class sweep): uid 0 reads through
+     * mode 0000, so the expected refusal never fires and the leg fails
+     * as a false silent-third alarm instead. The functional twin of
+     * this guard is the opendir capability probe
+     * (WpHarness::canDenyDirectoryOpen(), glm23-14's ONE owner), which
+     * serves its own skips; the uid spelling serves the legs whose
+     * refusal cannot be probed without driving the whole leg.
+     *
+     * @return bool True when the process cannot be denied by permission bits.
+     */
+    protected static function runningAsRootRunner(): bool
+    {
+        return function_exists('posix_getuid') && 0 === posix_getuid();
+    }
+
+    /**
+     * Whether this host can create symlinks — the thin wrapper over
+     * the ONE capability probe (t31-ocr11-9 hoisted the body to
+     * WpHarness::canSymlink(), the shared owner the direct harness
+     * tests reach too; the private twin there deleted): capability,
+     * never function_exists (t31-ocr10-14); random-suffixed probe
+     * name, unplantable (t31-ocr10-18); function_exists-guarded
+     * inside the owner, so disable_functions(symlink) answers false
+     * instead of fataling — link-bearing legs and rows skip on the
+     * probe's answer, never fatal the battery.
+     *
+     * @return bool True when a probe link can be created and removed.
+     */
+    protected static function canSymlink(): bool
+    {
+        return WpHarness::canSymlink();
+    }
+
+    /**
+     * Whether this host can spawn child processes through the shell
+     * vocabulary — the thin wrapper over the ONE capability owner
+     * (t31-ocr21-4, the canSymlink t31-ocr11-9 shape): the pair
+     * (exec, escapeshellarg) plus any spawn function a consumer
+     * rides beyond it names its own variadic extra, and the
+     * plain-TestCase suites (ToolchainSmokeTest,
+     * UnusedImportScannerTest, HarnessCopyTreeTest) reach the same
+     * owner directly through WpHarness::canSpawnChildren(). Skip
+     * messages stay at the call sites, naming their own subjects.
+     *
+     * @param string ...$functions Extra spawn-function names the consumer rides beyond the pair (e.g. 'proc_open').
+     * @return bool True when exec, escapeshellarg, and every named extra exist.
+     */
+    protected static function canSpawnChildren(string ...$functions): bool
+    {
+        return WpHarness::canSpawnChildren(...$functions);
+    }
+
+    /**
+     * The shared skip for one chmod-0000 leg (t31-ocr4-1) — consume at
+     * the leg. On a mid-test leg the skip aborts the rest of the test,
+     * so place it at the FIRST chmod-0000 leg of the test.
+     *
+     * @param string $leg The leg's name (the skip's named reason).
+     * @return void
+     */
+    protected function skipChmod0000LegOnRootRunner(string $leg): void
+    {
+        if (self::runningAsRootRunner()) {
+            $this->markTestSkipped(
+                "{$leg}: chmod-0000 does not block reads for uid 0 — the permission-bit refusal cannot fire in a root container (t31-ocr4-1)."
             );
         }
     }
@@ -651,6 +732,137 @@ abstract class WpConnectorsTestCase extends TestCase
 
     /*
      * ---------------------------------------------------------------
+     * Refusal verdicts (t31-ocr8-1, the fail()-masking class sweep).
+     * ---------------------------------------------------------------
+     */
+
+    /**
+     * Runs one guarded call that must refuse, and returns the collected
+     * exception for the caller's fragment assertions.
+     *
+     * A thin delegate (t31-ocr15-7): the ONE implementation is
+     * WpHarness::refusalOf(), hoisted there over this wrapper's private
+     * copy so the plain-TestCase suites (HarnessCopyTreeTest,
+     * SelfContainmentCompoundWritesTest) ride the same owner instead of
+     * hand-rolling the $caught=null/try/catch/fail-if-null twins — the
+     * canSymlink t31-ocr11-9 hoist shape. The contract, the FAMILY pin
+     * (t31-ocr9-3 — each site passes the family its ORIGINAL catch
+     * declared; \Throwable::class pins nothing and is legitimate only
+     * where the original catch was itself \Throwable), and the REQUIRED
+     * family parameter (t31-ocr10-6 — a \Throwable::class default
+     * pinned nothing, and the omission was invisible at the call site)
+     * are all stated at the owner; every $this->refusalOf() call site
+     * in the wrapper's subclasses is untouched.
+     *
+     * @param callable $attempt     The guarded call, expected to throw.
+     * @param string   $expectation The failure message for the no-throw case.
+     * @param string   $family      The exception family the site pins — the class its original catch declared; \Throwable::class pins nothing and is legitimate only where the original catch was itself \Throwable.
+     * @return \Throwable The collected refusal.
+     */
+    protected function refusalOf(callable $attempt, string $expectation, string $family): \Throwable
+    {
+        return WpHarness::refusalOf($attempt, $expectation, $family);
+    }
+
+    /*
+     * ---------------------------------------------------------------
+     * Artifact helpers.
+     */
+
+    /**
+     * The entry names of a zip, in zip order.
+     *
+     * t31-r3-12 owned the numFiles loop's one helper; t31-ocr8-10
+     * hoists it — the helper had settled into a verbatim twin copy in
+     * two suites (BuildArtifactsTest, BuildSeamPropertyTest), and a
+     * fix to the open/read/close shape (or the loud open failure)
+     * landing on one twin silently left the other suite reading zips
+     * through the old shape. One owner here; both consumers ride it.
+     *
+     * The open gate is `=== true` (t31-ocr10-5): ZipArchive::open()
+     * returns a TRUTHY ER_* int on failure (ER_NOZIP=19 driven on a
+     * corrupt zip — pre-fix assertTrue() passed it and the helper
+     * handed back [] over numFiles=0, every entry assertion vacuously
+     * green); a failure fails loudly naming the ER_* code (the common
+     * ones mapped, the raw int for the rest).
+     *
+     * The open carries ZipArchive::RDONLY through the GUARDED
+     * spelling (t31-ocr21-1 over t31-ocr19-1; the round's floor
+     * premise REFUTED by the verifier pass, both lenses
+     * independently — the r19 irony inverted): the finding claimed
+     * an 8.3-cycle-only registration ("never backported, php.net
+     * carries the 8.3.0 chip"), but the vendor record reads the
+     * opposite — RDONLY is available as of PHP 7.4.3 / PECL zip
+     * 1.17.1 when the zip extension is built against libzip
+     * >= 1.0.0, the php-src PHP-8.2 stub registers it identically
+     * (under ZIP_RDONLY), and the repo's own r19 record already
+     * read "available since 7.4.3, inside the floor" and DROVE the
+     * bare-constant reader on a real 8.2.33 engine to ER_NOENT,
+     * never \Error — no 8.2 engine in the floor fatals. What the
+     * guard actually owns is the build corner the vendor record
+     * does name: a zip extension built against libzip < 1.0.0
+     * (the extension's own build floor is 0.11) compiles no
+     * RDONLY — the flag rides where the engine defines it, 0 on
+     * that corner, BOTH stylistic intent per the r19 refutation
+     * (omitted flags never create-on-open on any support-range
+     * engine), both loud through the strict gate, and the
+     * missing-archive pin holds the loud contract.
+     *
+     * @param string $zipPath Absolute zip path.
+     * @return list<string> Entry names.
+     */
+    protected function zipEntryNames(string $zipPath): array
+    {
+        $zip = new ZipArchive();
+        $opened = $zip->open($zipPath, defined('ZipArchive::RDONLY') ? ZipArchive::RDONLY : 0);
+        $er_names = array(
+            ZipArchive::ER_EXISTS => 'ER_EXISTS',
+            ZipArchive::ER_INCONS => 'ER_INCONS',
+            ZipArchive::ER_INVAL => 'ER_INVAL',
+            ZipArchive::ER_MEMORY => 'ER_MEMORY',
+            ZipArchive::ER_NOENT => 'ER_NOENT',
+            ZipArchive::ER_NOZIP => 'ER_NOZIP',
+            ZipArchive::ER_OPEN => 'ER_OPEN',
+            ZipArchive::ER_READ => 'ER_READ',
+            ZipArchive::ER_SEEK => 'ER_SEEK',
+        );
+        // The gate compares STRICTLY (the expression, not the raw
+        // return): assertTrue($opened) would pass the truthy ER_* int.
+        $this->assertTrue(
+            true === $opened,
+            sprintf(
+                'The zip must open: %s (ZipArchive::open() returned %s — a corrupt or absent archive, never a zip with zero entries).',
+                $zipPath,
+                isset($er_names[$opened]) ? $er_names[$opened] : var_export($opened, true)
+            )
+        );
+        $names = array();
+        /*
+         * Every name read is GATED (OCR round 11, t31-ocr11-10):
+         * getNameIndex() returns string|false — a malformed central
+         * directory hands back false, which violated the list<string>
+         * contract and coerced/dropped silently downstream. A false
+         * FAILS loudly naming the index and the file count (the raw
+         * return the engine can explain on this build —
+         * ZipArchive::lastErrorCode() is not compiled here, the
+         * ocr10-16 finding), never a coerced list.
+         */
+        $count = (int) $zip->numFiles;
+        for ($i = 0; $i < $count; ++$i) {
+            $name = $zip->getNameIndex($i);
+            if (false === $name) {
+                $zip->close();
+                $this->fail(sprintf('The zip must name every entry: getNameIndex(%1$d) returned false over %2$d file(s) — a malformed central directory, never a coerced list<string> (t31-ocr11-10).', $i, $count));
+            }
+            $names[] = $name;
+        }
+        $zip->close();
+
+        return $names;
+    }
+
+    /*
+     * ---------------------------------------------------------------
      * Directory-suite helpers (glm15-19: the selectEndpoint()/idList()
      * twins lived privately in both directory suites, one settings class
      * apart, with docblocks already drifted from their assertions).
@@ -808,7 +1020,18 @@ abstract class WpConnectorsTestCase extends TestCase
     protected function assertOptionNotPlaintext($option, $secret, $message = '')
     {
         $this->assertNotSame(false, get_option($option, false), sprintf('Option "%s" is not set.', $option));
+        /*
+         * glm27-8: the encode is GUARDED — wp_json_encode() answers
+         * false for an unencodable stored value (NAN, a resource,
+         * recursion, invalid UTF-8), and the false feeding the
+         * natively string-typed assert under strict_types answered a
+         * TypeError instead of a verdict — the harness's own failure
+         * vocabulary, never the assertion's. The failed encode is a
+         * NAMED failure of its own: an unencodable stored row is
+         * itself a finding the caller must read, never a crash.
+         */
         $stored = wp_json_encode(get_option($option));
+        $this->assertNotFalse($stored, sprintf('Option "%s" could not be JSON-encoded for the plaintext scan — the stored value carries an unencodable shape (NAN, resource, recursion, invalid UTF-8) that is itself a finding; name the shape before judging the secret.', $option));
         $this->assertStringNotContainsString($secret, $stored, $message !== '' ? $message : sprintf('Option "%s" contains the plaintext secret.', $option));
     }
 
@@ -828,6 +1051,28 @@ abstract class WpConnectorsTestCase extends TestCase
         if (strlen($secret) > 12) {
             $this->assertStringNotContainsString(substr($secret, 0, 8), $haystack);
             $this->assertStringNotContainsString(substr($secret, -8), $haystack);
+            /*
+             * t31-glm55-12 [R55-12, driven — the middle window was
+             * unpinned]: the first-8/last-8 pair left the interior
+             * free — a haystack carrying substr($secret, 12, 20) of a
+             * 40-char secret passed all three checks while twenty
+             * consecutive secret bytes leaked, the partial-echo class
+             * the method exists to catch (glm29-7's record notes a
+             * hex fragment once leaking 'through all three checks').
+             * Every 8-byte window of the interior is probed now — a
+             * str_replace([head, tail], …) redactor ships red across
+             * the 26 call sites pinning the Zai surfaces.
+             */
+            /*
+             * t31-glm63-9 [R63-9, driven]: the R55-12 comment claims
+             * 'Every 8-byte window of the interior is probed' — the
+             * step-8 loop probed only the ALIGNED windows, a
+             * misaligned 8-byte interior echo passing the whole
+             * pin. Step 1, the comment's own word.
+             */
+            for ($at = 8; $at + 8 <= strlen($secret) - 8; $at += 1) {
+                $this->assertStringNotContainsString(substr($secret, $at, 8), $haystack, sprintf('A middle window of the secret (bytes %d-%d) leaks through the redaction.', $at, $at + 7));
+            }
         }
     }
 
@@ -975,21 +1220,55 @@ abstract class WpConnectorsTestCase extends TestCase
         $snapshot = array('url' => $url, 'body' => $body);
 
         if (!is_file($path)) {
+            /*
+             * t31-glm39-6 [R39-7, driven false-green — the WRITE side of
+             * glm14-8's read doctrine]: the creation path did not own
+             * json_encode()'s FALSE — an unencodable capture (invalid
+             * UTF-8 in a recorded URL, the channel glm27-8's own guard
+             * text names) committed a bare 1-byte newline snapshot and
+             * skipped green, the verify re-run then misreporting the
+             * defect as 'Snapshot is corrupt' — an
+             * operator-hunting-a-hand-edited-snapshot message for an
+             * unencodable capture (driven through the repo's phpunit).
+             * The encode is asserted NOT-FALSE first, the failure naming
+             * the capture — glm27-8's sibling guards on the same write.
+             */
             @mkdir(dirname($path), 0755, true);
-            file_put_contents($path, json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+            $encoded = json_encode($snapshot, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            $this->assertNotFalse($encoded, "Snapshot {$name} cannot be encoded — the captured request carries bytes json_encode refuses (invalid UTF-8 in the URL or body?), never a snapshot to create.");
+            file_put_contents($path, $encoded . "\n");
             $this->markTestSkipped("Snapshot {$name} created; re-run to verify.");
+        }
+
+        /*
+         * glm14-8: the read and the decode OWN their failure (the
+         * laundering-read class fixed at every sibling) — the old
+         * (string) file_get_contents() + json_decode() cast pair
+         * turned an unreadable snapshot into '' and a corrupt one into
+         * null -> [], so BOTH misreported as 'Captured request drifted
+         * from snapshot' and sent the operator hunting a request-drift
+         * regression that does not exist. One read, one decode: the
+         * credential-invariant asserts below ride the same bytes.
+         */
+        $raw = @file_get_contents($path);
+        if (false === $raw) {
+            $this->fail("Snapshot {$name} is unreadable — the comparison cannot run ({$path}).");
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || json_last_error() !== JSON_ERROR_NONE) {
+            $this->fail(sprintf('Snapshot %s is corrupt (json: %s) — the comparison cannot run (%s).', $name, json_last_error_msg(), $path));
         }
 
         $this->assertSame(
             $snapshot,
-            (array) json_decode((string) file_get_contents($path), true),
+            $decoded,
             "Captured request drifted from snapshot {$name}."
         );
 
         // Snapshots never contain credentials (headers are excluded by
         // construction; assert the invariant anyway).
-        $this->assertStringNotContainsString('Bearer', (string) file_get_contents($path));
-        $this->assertStringNotContainsString('Authorization', (string) file_get_contents($path));
+        $this->assertStringNotContainsString('Bearer', $raw);
+        $this->assertStringNotContainsString('Authorization', $raw);
     }
 
     /**

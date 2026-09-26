@@ -6,7 +6,11 @@
  * Detects live-credential shapes (API keys, OAuth tokens, JWTs, private
  * keys) in files. Exemptions are structured, never a bare word on the line:
  * a line is skipped only when it carries the strict "secrets:allow" marker
- * in an actual comment — never as string-literal contents — and a match is
+ * in an actual comment — never as string-literal contents, and never in
+ * any string-data region (glm16-1: the marker judge reads the ONE
+ * token-masked view, wp_connectors_mask_string_contents(), which owns
+ * every region class — quoted interiors, heredoc/nowdoc bodies however
+ * nested, halt-compiler tails, ?>-bounded inline HTML) — and a match is
  * skipped only when the matched VALUE itself is recognizable as a fake
  * (placeholder shapes, well-known dummy segments) — see
  * wp_connectors_allow_marker_pattern() and
@@ -15,11 +19,109 @@
  * Findings deliberately never include the matched text — only file, line,
  * and pattern — so the scanner itself can never leak a secret into logs.
  *
+ * SELF-CONTAINED LOAD PATH (OCR round 3, t31-ocr3-5): the repo-walk
+ * prune judges segments through the ONE fold mechanic
+ * (wp_connectors_segment_is_named(), t31-ocr1-5), which lives in this
+ * library's sibling — the vocabulary owner — and the dependency is
+ * declared HERE, by require_once, so requiring THIS file alone yields
+ * a working scanner (tests/SecureFixturesTest.php requires exactly
+ * this one file; pre-round that load pattern worked only when the
+ * test bootstrap had happened to load plugin-tools first, and a
+ * consumer requiring only the scanner fataled mid-scan on the first
+ * walked entry). The direction is one-way by construction:
+ * plugin-tools.php requires nothing from this library and stays
+ * dependency-free; a consumer requiring both, in either order, is
+ * unaffected (require_once both ways).
+ *
  * @package wp-connectors
  */
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/plugin-tools.php';
+
+/**
+ * The placeholder DICTIONARY (t31-glm51-1, R51-1 — the ONE owner):
+ * the words a segment (or a word-split region) must spell to count
+ * as placeholder material. The list lived hand-spelled at three
+ * seats (the segment walker, the all-fake tail pass, and the
+ * head/tail word split) — and the round-50 'api'/'key'/'here'
+ * addition landed at TWO of them only, the word-split seat keeping
+ * the base list — so 'api' cost 0 bytes at the walker while the
+ * split still anchored on a LATER word, keeping the entropy on the
+ * head side of the budget: the chunked-entropy laundering class
+ * glm49-2 closed reopened through the split (driven through the
+ * real CLI, a 16-byte chunked entropy tail shipping fake where the
+ * pre-round-50 tree flagged). Every seat composes from this owner;
+ * a future word lands everywhere or nowhere.
+ *
+ * The hyphenated words ('not-a-real', 'test-value') are WINDOW
+ * spellings at the word split (their pieces split on the same
+ * delimiters) and whole-segment spellings at the walker — both
+ * consumers derive from the one list.
+ *
+ * @return list<string> The dictionary words, longest-first for the alternation.
+ */
+function wp_connectors_fake_secret_dictionary_words()
+{
+    return array( 'not-a-real', 'notareal', 'test-value', 'placeholder', 'example', 'fixture', 'redacted', 'sample', 'dummy', 'fake', 'your', 'test', 'wpct', 'api', 'key', 'here' );
+}
+
+/**
+ * The dictionary ALTERNATION, once per process (t31-glm57-3
+ * [R57-3, measured]): the '|' string of the one word list, memoized
+ * beside the owner it derives from. R52-15 imploded once per CALL;
+ * the spans walker answers up to three calls per candidate value
+ * (the head pass, the tail pass, the value-level all-fake pass)
+ * beside the value-level word consult's own implode — a dense
+ * hostile payload (the extracted-zip shape the artifact scan rides,
+ * inside the walk's own 2 MB cap) rebuilt the sixteen-word string
+ * per segment-battery pass (measured A/B: 2061ms vs 891ms over one
+ * dense 2 MB payload, findings md5-identical both sides — a 2.31x
+ * cut, ~1.17s per capped file). Pure function of the constant list:
+ * verdict-identical by construction, the twice-landed static idiom
+ * (t31-glm47-3's isset table, t31-ocr52-6's byte-class static).
+ *
+ * @return string The imploded alternation, longest-first per the word list.
+ */
+function wp_connectors_fake_secret_dictionary_alternation()
+{
+    static $alternation = null;
+    if ( null === $alternation ) {
+        $alternation = implode( '|', wp_connectors_fake_secret_dictionary_words() );
+    }
+
+    return $alternation;
+}
+
+/**
+ * The fake-secret SEGMENT SPLIT — the ONE owner of the separator
+ * vocabulary (t31-glm54-8, R54-15): the R53-9 fix delegated the
+ * per-segment PREDICATE to the walker but left the SPLIT spelled at
+ * the three seats inside the one-value judgment (the head before the
+ * dictionary word, the tail after it, the value-level all-placeholder
+ * pass) — a future separator widening (admitting '.' for token
+ * bodies) landing at some of the three splits one value differently
+ * per arm, the exact one-value-two-verdicts-by-separator-spelling
+ * class R53-8 drove red and R53-9 fixed for the predicate, reborn at
+ * the split. One spelling beside the dictionary owner both derive
+ * from; the head/tail/final arms can no longer disagree.
+ *
+ * @param string $value The value (or side) whose segments the walker judges.
+ * @return list<string|false> The split segments, the preg_split product as ever.
+ */
+function wp_connectors_fake_secret_segments($value)
+{
+    return preg_split('/[-_\s]+/', (string) $value);
+}
+
+/*
+ * t31-glm52-12 [R52-11 — the stranded docblock, the R48-14 class at
+ * the round-51 insertion's own neighbor]: the round-51 dictionary
+ * owner landed BETWEEN this docblock and its function, stranding it
+ * above the owner's own (only the LAST docblock attaches — the
+ * patterns gate shipping bare). Relocated to its function.
+ */
 /**
  * Returns the secret patterns this repository guards against.
  *
@@ -44,6 +146,78 @@ function wp_connectors_secret_patterns()
 }
 
 /**
+ * Whether a byte span of a payload sits inside a COMMENT token
+ * (t31-glm60-6 [R60-2, the token verdict for the star arm]): the
+ * engine's own lexing decides comment-ness — a line-initial '*'
+ * inside a T_COMMENT/T_DOC_COMMENT span is a docblock continuation;
+ * inside code, heredoc, or inline-HTML bytes it is an operator or
+ * data, and no grammar can tell them apart. The tokenize follows
+ * the t31-glm48-7 compile-warning capture doctrine (hostile bytes
+ * must never leak a raw engine Warning); the token map is cached
+ * per payload content (the marker consult is rare, but a hostile
+ * many-star file must not re-tokenize per line).
+ *
+ * @param string $contents The payload's raw bytes.
+ * @param int    $start    Absolute start of the span.
+ * @param int    $end      Absolute end of the span (inclusive).
+ * @return bool True when any comment token overlaps the span.
+ */
+function wp_connectors_span_sits_in_comment($contents, $start, $end)
+{
+    static $token_cache = array();
+    /*
+     * t31-glm61-1 [R61-2, driven — crc32 is linearly patchable, a
+     * crafted last-4-byte collision making one payload's cached
+     * comment map answer ANOTHER payload's marker consult (the
+     * two-file scan drive laundering the second file's live token
+     * through the first's map; inspect-artifact scans every archive
+     * entry in one process, attacker-controlled order against this
+     * cache)]: the key rides md5 — the house cache-key idiom
+     * (glm25-8's path+md5) — not linearly patchable at any
+     * realistic cost.
+     */
+    $key = md5($contents);
+    if (! isset($token_cache[$key])) {
+        ob_start();
+        $tokens = token_get_all($contents);
+        ob_end_clean();
+        $comments = array();
+        $offset = 0;
+        foreach ($tokens as $token) {
+            $text = is_array($token) ? $token[1] : $token;
+            $id = is_array($token) ? $token[0] : null;
+            if (T_COMMENT === $id || T_DOC_COMMENT === $id) {
+                $comments[] = array( $offset, $offset + strlen($text) - 1 );
+            }
+            $offset += strlen($text);
+        }
+        $token_cache[$key] = $comments;
+        if (count($token_cache) > 4) {
+            unset($token_cache[array_key_first($token_cache)]);
+        }
+    }
+    foreach ($token_cache[$key] as $span) {
+        if ($start <= $span[1] && $end >= $span[0]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * The line-initial MARKER-RUN + STAR opener arm (t31-glm53-8's
+ * anchor, extracted at t31-glm60-6): the docblock-continuation
+ * grammar the prose consult serves directly — and the CODE consult
+ * serves only on the TOKEN VERDICT (R60-2: in code bytes a
+ * line-initial '*' can be a multiplication continuation, so the
+ * arm's match alone proves nothing about comment-ness; the pinned
+ * docblock rows keep exempting through the verdict, the operator
+ * shape refuses).
+ */
+const WP_CONNECTORS_MARKER_STAR_ARM = '^(?:[-*+> \t]|\d+\.)*\*';
+
+/**
  * The strict line-exemption marker for deliberate fixture/example secrets.
  *
  * A line is exempt ONLY when the marker appears inside a comment on that
@@ -54,34 +228,445 @@ function wp_connectors_secret_patterns()
  * credential sitting on a line that merely mentions "fixture" must still
  * be flagged.
  *
+ * glm21-4: the grammar knows the HTML COMMENT enclosure too —
+ * `<!-- secrets:allow -->` — one more enclosure in the marker's own
+ * vocabulary, consistent across every walk-allowlisted markup
+ * extension (.svg, .xml) and a CLI-named .html alike: an HTML or XML
+ * comment is the only comment syntax those payloads carry, and a
+ * marked fixture in them honored NO marker at all while a markdown
+ * HEADING (`# secrets:allow` — markdown has no comment syntax at all)
+ * rode the `#` arm green (driven red at HEAD: the svg comment form
+ * flagged). The heading spelling's status is re-derived and pinned
+ * DELIBERATELY: the `#` arm speaks every hash-prefixed comment
+ * spelling (shell, ruby, yaml) and the markdown heading is the
+ * prose-level enclosure a marked .md fixture rides — honored in both
+ * arms on purpose, never by accident.
+ *
+ * glm22-3: the comment-form arm carries its OWN left-boundary class
+ * — the enclosure once rode the shared `(?:^|\s)` guard, right for
+ * the ///# line-comment spellings but wrong for markup, where a
+ * comment characteristically follows its element with NO separator:
+ * idiomatic compact markup (`</text><!-- secrets:allow -->`, an
+ * `<svg>` opener) is not a marker while the spaced spelling is, so a
+ * legitimately marked .svg false-found (driven). The markup boundary
+ * class is start, whitespace, the tag-closer `>`, and the
+ * quote-closers (' and ") — the honest markup edge a comment opens
+ * at (CORRECTED at glm23-7 below: the class admits every markup
+ * edge, text adjacency included); the line-comment spellings keep
+ * the whitespace guard (a glued
+ * `key// secrets:allow` in code is not a comment the grammar owes).
+ *
+ * glm23-6: the glue-broadened '<!--' boundary is the MARKUP family's
+ * ALONE — an HTML comment is a comment form markup payloads
+ * genuinely carry (.html/.svg/.xml/.md, the family the premise
+ * above holds over); in .env/.json/.txt and every non-markup
+ * extension it is not, and the glued boundary class there LAUNDERED
+ * keys: `api_key="<live-key>"<!-- secrets:allow -->` answered zero
+ * findings in a .env while the unmarked control flagged (driven) —
+ * the exact laundering the 'markers count only in REAL comments'
+ * doctrine (glm19-2) refuses. In non-markup extensions the '<!--'
+ * spelling joins the line-comment arm's own boundary (start or
+ * whitespace, never a glued edge); the SPACED spelling exempts
+ * everywhere it did.
+ *
+ * glm23-7: the markup arm's left boundary is UNIFIED for the family
+ * — the premise a comment follows its element with no separator
+ * holds for TEXT content exactly as it held for the tag/quote
+ * closers glm22-3 named, so the class admits any markup edge: direct
+ * text adjacency included (`key<!-- secrets:allow -->` exempted at
+ * last, driven red at HEAD where it flagged beside the exempting
+ * spaced spelling). The line-comment spellings keep the whitespace
+ * guard in both families.
+ *
+ * glm24-1: the family's ENUMERATION is completed — php/phtml ride
+ * the markup arm beside html/svg/xml/md, and the short spellings
+ * htm/xhtml join their long twins. A .php template IS a payload
+ * whose comment grammar includes HTML comments (the template
+ * spellings carry HTML bytes the line-local arm judges exactly as
+ * a .html twin judges its own), so a glued `<!-- secrets:allow -->`
+ * in a .php template laundered at the old enumeration exactly as
+ * the glued .env shape glm23-6 refused to (driven red at HEAD);
+ * and a .htm flagged while .html exempted — the family is the
+ * payload's comment GRAMMAR, never a hand-list of extensions one
+ * spelling short. The non-markup refusal keeps every member
+ * (.env/.json/.txt and the rest) exactly as glm23-6 pinned it.
+ *
+ * @param string $extension The payload's lowercased extension ('' when none).
  * @return string PCRE pattern matching the marker inside a comment.
  */
-function wp_connectors_allow_marker_pattern()
+function wp_connectors_allow_marker_pattern($extension = '', $with_markup_arm = true)
 {
-    return '/(?:^|\s)(?:\/\/|#|\/\*|\*)\s*secrets:allow\b/';
+    /*
+     * glm24-11: the line-comment opener class is ONE fragment — the
+     * two pattern arms once hand-copied it, the drift class the
+     * one-owner doctrine exists to close (a new opener spelling
+     * added to one arm alone would split the grammar's own
+     * vocabulary between the families).
+     *
+     * t31-glm51-7 [R51-3, driven fail-open — the markup arm on
+     * CODE bytes]: the $with_markup_arm flag drops the '<!--' arm
+     * for the CODE-view consult alone — on a masked code view
+     * '<!--' is PHP OPERATORS ('1 <!-- x --> + 2' lexes '<','!',
+     * T_DEC, kept verbatim by the masker), never an HTML comment
+     * (inline HTML — where the marker is real — blanks to spaces
+     * there, glm16-1), so the markup arm firing on code bytes is
+     * 'markers count only in REAL comments' (glm19-2) defeated at
+     * the one seat judging code; '$z = 1 <!-- secrets:allow --> +
+     * 2;' exempted a live credential beside it (driven through the
+     * real CLI, the token-driven proof showing the splice lexing
+     * as code tokens) with NO lint gate behind it in a .md payload
+     * — the scan-before-lint threat model. The prose consult keeps
+     * the markup arm: a payload whose whole comment grammar is HTML
+     * (the pure-HTML .php template of glm24-1, every .html) IS
+     * prose, its '<!--' a real comment there.
+     */
+    /*
+     * t31-glm52-7 [R52-3, driven fail-open — the bare '\*' arm fired
+     * on MID-LINE multiplication]: the docblock-continuation opener
+     * rode the shared '(?:^|\s)' guard like the ///# spellings, but
+     * its '*' needs only WHITESPACE before it there — '1 * secrets:
+     * allow' in a prose payload exempted a live credential on the
+     * line (driven: the .txt shape answered exempt where the
+     * no-marker control flags) while a real docblock continuation is
+     * always LINE-INITIAL. The bare '\*' arm carries its own line
+     * anchor — never a mid-line operator.
+     *
+     * t31-glm53-8 [R53-6, driven false refusal — the anchor's BULLET
+     * collateral]: '^\s*\*' refused the line-initial LIST MARKERS a
+     * marked bullet legitimately carries ('- * secrets:allow …',
+     * '1. * …', '> * …' — all exempt at master, all false-flagged by
+     * the round-52 anchor, driven). The anchor admits a run of
+     * marker bytes and whitespace between the line start and the
+     * star — the list/quote/ordered vocabulary ('-', '+', '>', the
+     * bullet star itself, '\d+.'), never a plain label byte: 'note 1
+     * * secrets:allow' keeps its mid-line flag (the '1' carries no
+     * dot and 'note' is no marker).
+     */
+    $line_comment_openers = '\/\/|#|\/\*|' . WP_CONNECTORS_MARKER_STAR_ARM;
+    /*
+     * t31-glm58-7 [R58-8, driven at the real CLI by both the review
+     * and the driver — the INI family's own comment character one
+     * enclosure short, the glm21-4 completion class]: php.ini and
+     * git-config spell comments with ';' — a marked fixture line in
+     * a .ini/.conf/.config payload false-flagged where the
+     * byte-identical '#' spelling exempted. ';' joins the openers
+     * for the INI-grammar family ALONE — the enclosure vocabulary
+     * is a property of the payload's comment grammar (glm23-6):
+     * toml/properties/env keep '#' (their own grammars — ';' is a
+     * value byte in a dotenv value, not a comment there).
+     *
+     * t31-glm60-4 [R60-1, driven — the PROSE consult's arm reached
+     * the CODE consult ungated]: ';' is a statement terminator in
+     * PHP code bytes, never a comment, so a marker spelled after a
+     * statement inside an embedded sample laundered a live
+     * credential in .ini/.conf/.config payloads while the
+     * byte-identical .txt/.php twins flagged — the R51-3 'the code
+     * consult rides the line-comment arms alone' doctrine one
+     * vocabulary member over, in the round-58 commit's own
+     * machinery. ';' serves the PROSE consult alone
+     * ($with_markup_arm true); the code consult's arm set never
+     * carries it.
+     */
+    if (true === $with_markup_arm && in_array($extension, array( 'ini', 'conf', 'config' ), true)) {
+        $line_comment_openers .= '|;';
+    }
+    if (! $with_markup_arm) {
+        return '/(?:^|\s)(?:' . $line_comment_openers . ')\s*secrets:allow\b/';
+    }
+    if (! in_array($extension, array( 'html', 'htm', 'xhtml', 'svg', 'xml', 'md', 'php', 'phtml' ), true)) {
+        return '/(?:^|\s)(?:' . $line_comment_openers . '|<!--)\s*secrets:allow\b/';
+    }
+
+    return '/(?:^|\s)(?:' . $line_comment_openers . ')\s*secrets:allow\b|<!--\s*secrets:allow\b/';
 }
 
 /**
- * Removes PHP string-literal CONTENTS from a source line.
+ * Whether the line's quote pairing is AMBIGUOUS to a line-local lens
+ * (t31-glm54-6): an ODD count of unescaped quote bytes in either class
+ * leaves the leftmost-first pairing arbitrary — "don't say 'x // marker
+ * y' key" pairs the prose apostrophe with the string's own opener, so
+ * the marker rides OUTSIDE every blanked pair and reads as code (driven:
+ * the line exempted a live credential while the apostrophe-free control
+ * flags). A tokenizer lens could settle the pairing, but the prose arm's
+ * charter is exactly the payloads that lex no PHP tokens (glm15-1); the
+ * honest answer there is that a marker whose line's pairing is ambiguous
+ * cannot prove it sits in a real comment — the exemption refuses (the
+ * fail-safe direction: a legitimately-marked line with an odd quote
+ * count flags and forces a rephrase, the glm18-3 trade). Escape pairs
+ * are shed before the count ('It\'s' pairs cleanly; a doubled
+ * backslash before a quote leaves the quote counted).
+ *
+ * @param string $line One source line.
+ * @return bool True when either quote class counts an odd unescaped run.
+ */
+function wp_connectors_line_quote_pairing_is_ambiguous($line)
+{
+    $unescaped = (string) preg_replace('/\\\\./s', '', $line);
+
+    return 1 === substr_count($unescaped, "'") % 2 || 1 === substr_count($unescaped, '"') % 2;
+}
+
+/**
+ * Removes PHP string-literal CONTENTS from a source line — the NON-PHP
+ * payload arm of the marker judge (glm16-1).
  *
  * Single- and double-quoted literals (escape-aware within the line) are
  * replaced by empty shells, so comment-marker detection can never honor a
  * marker that is itself string content — `$v = 'sk-…' . '// secrets:allow';`
  * carries a live value plus a lookalike marker and must stay flaggable.
- * Deliberately line-based (no tokenizer): an unterminated multi-line
- * string on this line simply keeps its contents, the same limitation the
- * scanner already accepts elsewhere.
+ * Deliberately line-based (no tokenizer): a payload carrying no '<?'
+ * anywhere can lex no PHP tokens at all (every open-tag spelling starts
+ * with it), so the whole-file masked view has nothing to see and the
+ * documented tolerance stands — markers in prose payloads (.txt/.md
+ * fixtures) stay honored exactly as the line-local grammar always read
+ * them (the pinned glm15-1 doctrine: non-PHP payloads, no tokens, no
+ * behavior change). Every PHP-BEARING payload rides
+ * wp_connectors_mask_string_contents() instead — the ONE owner that sees
+ * the multi-line region classes (nested heredoc bodies, multi-line
+ * quoted interiors, halt-compiler tails, ?>-bounded inline HTML) a
+ * line-local lens cannot.
  *
  * @param string $line One line of source.
  * @return string The line with string contents blanked out.
  */
 function wp_connectors_line_without_string_literals($line)
 {
+    // glm15-2: the ONE house grammar owner — never an inline copy (the
+    // four copies had drifted into three variants).
     return (string) preg_replace(
-        '/\'(?:\\\\.|[^\'\\\\])*\'|"(?:\\\\.|[^"\\\\])*"/',
+        wp_connectors_quoted_literal_grammar(),
         "''",
         $line
     );
+}
+
+/*
+ * t31-glm52-12 [R52-11 — the stranded docblocks, the R48-14 class at
+ * this file's own budget-walker insertions]: the fake-value summary
+ * and the spans walker's own docblock once stacked HERE above the
+ * filler's (only the LAST docblock attaches — both functions shipping
+ * bare). Relocated to their functions.
+ */
+/**
+ * Whether a segment is SEQUENTIAL FILLER (t31-glm50-4): the 16-char
+ * hex run '0123456789abcdef' whole, or a run ('0123456789',
+ * 'abcdefgh') whose remaining bytes are DIGITS or letters CONTINUING
+ * the alphabet from where the run ended ('abcdefgh1234' the pure
+ * digit flank, 'abcdefghij' the alphabet continuation the pinned
+ * 'sk-proj-abcdefghij_test_klmnopqrstuvwxyz01' body rides) — never
+ * non-sequential entropy around the run ('abcdefgh9f3kq2mz4n' is
+ * ENTROPY, the R48-3 contract's own words).
+ *
+ * t31-glm55-1 [R55-1, driven fail-open — the head side of the
+ * contract was never enforced]: the tail rules judged only the
+ * bytes AFTER the run, so any live credential inside one segment
+ * became exempt filler by SUFFIXING the run — entropy bytes with
+ * an empty tail after the alphabet run answered filler whole
+ * (driven through the real CLI: a slack-shaped body with the run
+ * suffixed scanned clean where the control twin flags, twenty junk
+ * head bytes laundering identically), the exact mirror of the
+ * R48-3 example 'k0123456789z' the tail side already refuses. The
+ * HEAD before the run must be empty or the pure digit flank
+ * ('1230123456789' the mirrored flank) — never non-sequential
+ * bytes ('zk0123456789' counts, its tail-side twin always did).
+ *
+ * @param string $folded The ascii-folded segment.
+ * @return bool True when the segment is filler whole.
+ */
+function wp_connectors_segment_is_sequential_filler($folded)
+{
+    /*
+     * t31-glm62-2 [R62-3, driven at the real CLI by both the review
+     * and the driver — the R50-9 contains class left in the 16-run
+     * member]: an unanchored strpos exempted any segment merely
+     * EMBEDDING the run (a slack-shaped body with the run riding
+     * mid-segment between entropy flanks scanning clean where the
+     * 10-run control flagged), the exact
+     * class t31-glm50-4 drove red and removed for the shorter runs
+     * — the 16-run member is the segment WHOLE, its own docblock's
+     * word.
+     */
+    if ('0123456789abcdef' === $folded) {
+        return true;
+    }
+    foreach (array('0123456789', 'abcdefgh') as $run) {
+        $at = strpos($folded, $run);
+        if (false === $at) {
+            continue;
+        }
+        // t31-glm55-1: the head side gates every tail rule below —
+        // entropy AROUND the run is entropy on either side.
+        $head = (string) substr($folded, 0, $at);
+        if ('' !== $head && 1 !== preg_match('/^[0-9]+$/', $head)) {
+            continue;
+        }
+        $tail = (string) substr($folded, $at + strlen($run));
+        if ('' === $tail || 1 === preg_match('/^[0-9]+$/', $tail)) {
+            return true;
+        }
+        // The alphabet continuation: each byte is the previous byte + 1,
+        // the first continuing from the run's own last byte.
+        $expected = ord($run[ strlen($run) - 1 ]) + 1;
+        $continues = true;
+        foreach (str_split($tail) as $byte) {
+            if (ord($byte) !== $expected) {
+                $continues = false;
+                break;
+            }
+            ++$expected;
+        }
+        if ($continues) {
+            return true;
+        }
+    }
+    /*
+     * A long ASCENDING SLICE of the alphabet, optionally digit-suffixed
+     * — the pinned 'klmnopqrstuvwxyz01' tail of the sequential-filler
+     * body ('sk-proj-abcdefghij_test_klmnopqrstuvwxyz01'): no anchor
+     * run inside it, its fakeness once riding only the unanchored
+     * value-level catch of the HEAD's run. Eight ascending bytes
+     * minimum (no real credential is an alphabet slice), the suffix
+     * digits alone — 'abcdefgh9f3k' fails the suffix test and stays
+     * entropy.
+     */
+    $run_length = 1;
+    $length = strlen($folded);
+    for ($at = 1; $at < $length; ++$at) {
+        if (ord($folded[ $at ]) === ord($folded[ $at - 1 ]) + 1) {
+            ++$run_length;
+        } else {
+            break;
+        }
+    }
+    if ($run_length >= 8) {
+        $suffix = (string) substr($folded, $run_length);
+
+        return '' === $suffix || 1 === preg_match('/^[0-9]+$/', $suffix);
+    }
+
+    return false;
+}
+
+/**
+ * The entropy byte-count of a side's segments, the ONE budget walker
+ * (t31-glm49-2): every segment counts unless it is a dictionary WORD
+ * — the HYPHENATED dictionary words honored as consecutive-segment
+ * windows, 'not-a-real' and 'test-value' splitting into 'not'/'a'/
+ * 'real' and 'test'/'value' pieces no single-segment judge ever saw —
+ * or the sequential filler (the 16-char run anywhere, the pure
+ * digit-flanked run). Empty segments carry nothing.
+ *
+ * @param list<string> $segments The side's dash/underscore/whitespace-split segments.
+ * @return list<int> Per counted segment, its byte length (empty segments omitted).
+ */
+function wp_connectors_fake_secret_placeholder_spans(array $segments)
+{
+    $spans = array();
+    $count = count($segments);
+    /*
+     * t31-glm52-8 [R52-9+R52-15, the fourth seat's closure — the
+     * R44-9 two-arm-copy class at the round-51 owner's own
+     * neighbor]: the hyphenated dictionary words ('not-a-real',
+     * 'test-value') were window-spelled HERE by hand — two
+     * hard-coded piece triples the owner's own list had to agree
+     * with, a future hyphenated word landing in the owner and not
+     * at this seat the exact split the owner exists to close. The
+     * windows DERIVE from the owner now: every dictionary word
+     * carrying a hyphen contributes its piece sequence, matched
+     * against consecutive folded segments. The dictionary
+     * alternation is imploded ONCE per call (the R52-15 fold: the
+     * implode rode inside the per-segment loop, re-stringing the
+     * sixteen words for every segment of every side of every
+     * candidate value).
+     */
+    /*
+     * t31-glm57-3 [R57-3, measured]: the alternation rides the
+     * once-per-process owner (both battery spellings below consult
+     * it) and the window table memoizes beside it — the prelude was
+     * ~9.8µs of every ~15.9µs spans call, paid up to three times
+     * per candidate value (the dense-payload cut above the helper).
+     */
+    $dictionary_alternation = wp_connectors_fake_secret_dictionary_alternation();
+    /*
+     * t31-glm55-14 [R55-14, verdict-identical hoist — the windows
+     * spelled their own separator vocabulary one seat over from the
+     * R54-15 split owner]: strpos('-')/explode('-') derived the
+     * hyphenated windows beside the ONE separator owner — a future
+     * separator widening (admitting '.' for 'not.a.real' token
+     * bodies) landing at the split owner with the dictionary gaining
+     * the word would find the window derivation still probing '-'
+     * only, the exempt fixture false-flagging — the
+     * one-value-two-verdicts-by-separator-spelling class R53-8
+     * drove red and R54-15 closed, reborn in the new owner's own
+     * neighbor. The pieces derive through the owner; a word
+     * contributes a window exactly when it carries a separator.
+     */
+    static $hyphenated_windows = null;
+    if ( null === $hyphenated_windows ) {
+        $hyphenated_windows = array();
+        foreach (wp_connectors_fake_secret_dictionary_words() as $word) {
+            $pieces = array_values(array_filter(wp_connectors_fake_secret_segments($word), static function ($piece) {
+                return '' !== $piece;
+            }));
+            if (count($pieces) > 1) {
+                $hyphenated_windows[] = array_map('wp_connectors_ascii_lower', $pieces);
+            }
+        }
+    }
+    for ($i = 0; $i < $count; ++$i) {
+        $folded = wp_connectors_ascii_lower((string) $segments[ $i ]);
+        if ('' === $folded) {
+            continue;
+        }
+        $window_hit = false;
+        foreach ($hyphenated_windows as $window) {
+            $window_len = count($window);
+            if ($i + $window_len > $count) {
+                continue;
+            }
+            $j = 0;
+            for (; $j < $window_len; ++$j) {
+                if (wp_connectors_ascii_lower((string) $segments[ $i + $j ]) !== $window[ $j ]) {
+                    break;
+                }
+            }
+            if ($j === $window_len) {
+                $i += $window_len - 1;
+                $window_hit = true;
+                break;
+            }
+        }
+        if ($window_hit) {
+            continue;
+        }
+        /*
+         * t31-glm50-4 [R50-9+R50-14, both driven through the real
+         * CLI]: (1) the UNANCHORED '0123456789abcdef|abcdefgh'
+         * contains-match exempted any segment merely CONTAINING the
+         * run — 'abcdefgh9f3kq2mz4n' shipping as recognizably fake
+         * while the pinned-live digit-run twin 'k0123456789z' flags,
+         * the exact opposite of the recorded contract ('non-
+         * sequential bytes around the run are entropy') — the
+         * exemption is the SEQUENTIAL-CONTINUATION arm below it
+         * (the run plus a tail of digits or alphabet-continuing
+         * letters, the walker's own docblock spelling) and the
+         * dictionary word list alone. (2) The dictionary gains the
+         * ordinary placeholder words 'api'/'key'/'here' — the
+         * canonical multi-word placeholder tail 'your-api-key-here'
+         * (3+3+3+4) newly read as a live credential by the unified
+         * budget, a false-FAIL regression versus the pre-round-49
+         * walker (driven A/B); the pinned corpus pins
+         * YOUR_API_KEY and the <your-token-here> wrapper only, the
+         * three-word tail unpinned until now.
+         */
+        if (1 === preg_match('/^(?:' . $dictionary_alternation . ')$/i', $segments[ $i ])
+            || wp_connectors_segment_is_sequential_filler($folded)) {
+            continue;
+        }
+        $spans[] = strlen((string) $segments[ $i ]);
+    }
+
+    return $spans;
 }
 
 /**
@@ -103,39 +688,1200 @@ function wp_connectors_is_recognizably_fake_secret($value)
     if (preg_match('/^\$\{[^}]+\}$/', $value) || preg_match('/^<[^>]+>$/', $value)) {
         return true;
     }
-    if (preg_match('/(?:^|[-_\s])(?:not-a-real|notareal|test-value|test|example|dummy|sample|fixture|placeholder|your|fake|redacted|wpct)(?:[-_\s]|$)/i', $value)) {
-        return true;
+    /*
+     * t31-glm43-4 [R43-8, driven under-refusal — the dictionary word
+     * matched ANYWHERE inside an already-matched value]: a live
+     * credential whose own body carries '-test-' or '_test_'
+     * (realistic staging tokens: a Slack-shaped body carrying the
+     * word between two entropy runs, a bearer body, an
+     * api03-keyed body — the driven shapes) was exempted
+     * WHOLESALE and shipped undetected (driven through the real CLI:
+     * 0 findings where the '-tesx-' twin flags). The word exempts
+     * only when the value's HEAD before it is placeholder material
+     * itself — empty, vendor markers and short type segments (at
+     * most 4 bytes), other dictionary words, or the sequential
+     * filler — never high-entropy credential bytes ('sk-proj-TEST-…'
+     * still fake, the documented vendor-example shape; 'xoxb-7f3k9q2m-
+     * test-…' live, the entropy ahead of the word naming it). The
+     * first occurrence owns the minimal head; every later one only
+     * grows it.
+     */
+    $word_match = array();
+    $head_is_placeholder = false;
+    if (preg_match('/(?:^|[-_\s])(' . wp_connectors_fake_secret_dictionary_alternation() . ')(?:[-_\s]|$)/i', $value, $word_match, PREG_OFFSET_CAPTURE)) {
+        /*
+         * t31-glm49-2 [R49-2, driven through the real CLI — the
+         * chunked-entropy laundering, BOTH sides]: the head loop
+         * carried NO aggregate budget at all (any count of ≤4-byte
+         * segments passing free) and glm48-3's tail aggregate
+         * skipped the ≤4-byte segments from its total — so a live
+         * credential chunked into 4-byte dash-separated pieces
+         * shipped as recognizably fake (a Slack-shaped prefix and a
+         * dictionary word, all entropy between them in four-byte
+         * chunks, answering '0 finding(s)' exit 0 where the same
+         * entropy bytes contiguous flag), defeating the
+         * glm45-4/glm48-3 contract's own 'never high-entropy
+         * credential bytes on EITHER side of the word'. BOTH sides
+         * ride ONE unified budget now: every non-dictionary,
+         * non-filler segment counts toward its side's aggregate —
+         * dictionary words and the sequential-filler spellings
+         * (the 16-char run anywhere, the pure digit-flanked run)
+         * stay exempt — and the bound is 9, the pinned fake
+         * fixtures' own maximum ('test-key-abc123' the boundary:
+         * key 3 + abc123 6), one number derived from the corpus
+         * the way glm48-3 derived its 6.
+         */
+        $head_segments = wp_connectors_fake_secret_segments(substr($value, 0, $word_match[1][1]));
+        $head_is_placeholder = true;
+        $head_total = 0;
+        foreach (wp_connectors_fake_secret_placeholder_spans($head_segments) as $head_span) {
+            $head_total += $head_span;
+        }
+        if ($head_total > 9) {
+            $head_is_placeholder = false;
+        }
+        if ($head_is_placeholder) {
+            /*
+             * t31-glm45-4 [R45-2, driven end-to-end — glm43-4's rule
+             * never inspected the bytes AFTER the word]: a
+             * short-prefix + word + trailing-entropy live token
+             * (the Slack-shaped short-prefix body with its entropy
+             * tail — the head loop
+             * passing 'xoxb'=4 and 'eu1'=3) shipped as fake where
+             * moving the SAME entropy ahead of the word flags —
+             * the unexamined mirror half of glm43-4's own threat
+             * model. The TAIL after the word must be placeholder
+             * material too: empty, short vendor/type segments (at
+             * most 4 bytes), other dictionary words, or the
+             * sequential filler — never high-entropy credential
+             * bytes on EITHER side of the word. Every pinned fake
+             * fixture keeps its exemption (their tails are
+             * placeholder or filler by construction: 'sk-proj-TEST-
+             * abc123' the sequential filler, 'test-key-abc123' the
+             * leading-word shape whose tail is one 6-byte segment
+             * beside the word, 'wpct_fixture_9f3a2b' the fixture
+             * prefix whose 6-byte hex tail rides the same bound).
+             */
+            $tail = (string) substr($value, $word_match[1][1] + strlen($word_match[1][0]));
+            $tail_segments = wp_connectors_fake_secret_segments($tail);
+            /*
+             * t31-glm48-3 [R48-3, driven — the tail's entropy budget
+             * is AGGREGATE, never per segment]: the per-segment
+             * at-most-6 slack admitted ANY COUNT of short entropy
+             * segments — six 5-byte segments (35 chunked bytes)
+             * shipped as fake where the SAME bytes contiguous flag
+             * (driven through the real CLI), a live credential
+             * chunked into dash-separated pieces sailing past the
+             * glm45-4 contract's own 'never high-entropy credential
+             * bytes on EITHER side of the word'. The filler anchor
+             * tightens to the head's own spelling beside it: the
+             * 16-char run anywhere, or a PURE sequential segment
+             * ('0123456789', 'abcdefgh1234' — the run digit-flanked,
+             * the pinned filler shapes whole) — a segment carrying
+             * non-sequential bytes AROUND the run ('k0123456789z')
+             * is entropy and counts, the mirrored-head laundering
+             * shape driven beside it.
+             */
+            $tail_total = 0;
+            foreach (wp_connectors_fake_secret_placeholder_spans($tail_segments) as $tail_span) {
+                $tail_total += $tail_span;
+            }
+            if ($tail_total > 9) {
+                /*
+                 * Neither exempt nor refused here: the trailing
+                 * sequential-filler check below owns this value (the
+                 * 'sk-proj-abcdefghij_test_klmnopqrstuvwxyz01' fixture
+                 * — a pinned fake whose tail is filler, not entropy).
+                 */
+                $head_is_placeholder = false;
+            }
+        }
+        if ($head_is_placeholder) {
+            return true;
+        }
     }
 
-    return (bool) preg_match('/0123456789abcdef|abcdefgh/i', $value);
+    /*
+     * t31-glm50-4 [R50-9's value-level twin]: the trailing
+     * sequential-filler check exempts a value whose EVERY segment is
+     * dictionary material or sequential filler (the walker's own
+     * predicates) — the unanchored contains-match once exempted any
+     * value merely containing a run, entropy around it and all
+     * (an entropy-bearing body around the run shipping fake, driven
+     * through the real CLI). The pinned 'sk-proj-abcdefghij_test_
+     * klmnopqrstuvwxyz01' body rides the walker's
+     * alphabet-continuation arm ('abcdefgh' + 'ij' continuing).
+     */
+    /*
+     * The value-level twin's own alternation hoist (R52-15): the
+     * implode rode inside the per-segment loop here too — one
+     * stringing per segment, the same fold the spans walker took.
+     *
+     * t31-glm53-9 [R53-8, driven inconsistency — the twin re-derived
+     * the per-segment predicate WITHOUT the windows]: this loop
+     * judged dictionary word and sequential filler per segment while
+     * the spans walker (round 52's derived windows) honored the
+     * hyphenated dictionary words as consecutive-segment spellings —
+     * 'not_a_real' answered LIVE here (each piece outside the
+     * single-segment dictionary) while 'not-a-real' answered fake
+     * and the head/tail budget arms rode the walker: one value, two
+     * verdicts by separator spelling. The final pass delegates to
+     * the walker — its empty-span answer IS the all-placeholder
+     * verdict, one predicate everywhere.
+     */
+    return array() === wp_connectors_fake_secret_placeholder_spans(wp_connectors_fake_secret_segments($value));
+}
+
+/**
+ * Parses one memory_limit spelling to its byte count, WIDTH-AWARE
+ * (glm17-13).
+ *
+ * The scale is computed in float and SATURATED at PHP_INT_MAX: an
+ * integer multiply of a limit whose scaled bytes exceed the host's
+ * integer width answered garbage through the cast ('4G' on a 32-bit
+ * build — a wrapped count driving the headroom to 0 and EVERY scan
+ * into the loud refusal; any >8EiB spelling likewise on 64-bit),
+ * where the honest reading of a limit larger than the process can
+ * address is the bound-off class: it can never fatal the token pass.
+ * The same saturation path answers an unparseable spelling — the
+ * bound is off, never misjudged. In-width values stay exact. The
+ * GRAMMAR itself is the engine's own ini_parse_quantity() since
+ * t31-glm48-4 (the composer floor guarantees it, 8.2+) — the census
+ * and the enforced limit can no longer disagree about what a
+ * spelling means.
+ *
+ * @param string $limit The raw ini spelling (e.g. '128M', '2G', '-1').
+ * @return int The byte count; PHP_INT_MAX when over-width, unlimited, or unparseable.
+ */
+function wp_connectors_memory_limit_to_bytes($limit)
+{
+    /*
+     * t31-glm48-4 [R48-4, driven — the hand grammar and the engine's
+     * own diverge UNSAFELY]: the hand-rolled regex admitted a 'b'
+     * multiplier tail and embedded spaces the ENGINE rejects — so
+     * '128Mb' parsed to 134217728 by hand and to 128 BYTES by the
+     * engine (driven: 'unknown multiplier "b", interpreting as
+     * "128"'), the census overstating the real limit ~1,000,000x on
+     * such hosts and passing payloads the enforced limit fatals —
+     * the exact fatal-without-verdict class the census exists to
+     * close (the drift already fired once as glm43-5's fractional
+     * clamp). The composer floor's own ini_parse_quantity() (8.2+)
+     * owns the grammar now — ONE owner, the engine's enforcement
+     * itself — with the glm17-13 saturation arms unchanged: false,
+     * zero, negative (the '-1' unlimited spelling AND the over-width
+     * wrap, '9999999999G' answering a negative count at the engine)
+     * all answer the bound-off PHP_INT_MAX, never a misjudged count.
+     * The '128Mb' PIN at the unit battery is SUPERSEDED with this
+     * seat: the old contract ('the optional b folds into the unit')
+     * described the hand spelling, not the engine's, and the engine
+     * is the oracle the census must agree with.
+     */
+    $parsed = @ini_parse_quantity(trim((string) $limit));
+    if ($parsed <= 0) {
+        return PHP_INT_MAX;
+    }
+
+    return $parsed;
+}
+
+/**
+ * The byte headroom a token pass may spend before the process's own
+ * memory limit would fatal it (glm16-2).
+ *
+ * token_get_all() materializes the whole stream at once: measured on
+ * this engine (PHP 8.5), a dense ~1.9 MB source needs ~98x its own
+ * bytes in token arrays — ~186 MB against the 128M default limit — the
+ * fatal-without-a-verdict class glm14-3/glm14-6 closed for the LINE
+ * scan, reopened by the glm16-1 mask ride. The headroom is the parsed
+ * memory_limit minus live usage; an unlimited (-1/empty) limit answers
+ * PHP_INT_MAX, and the parse itself is width-aware (glm17-13, the
+ * helper above) — the bound is off, never misjudged.
+ *
+ * @return int Bytes available before the limit.
+ */
+function wp_connectors_scan_token_memory_headroom()
+{
+    $limit = (string) ini_get('memory_limit');
+    if ('' === $limit || '-1' === $limit) {
+        return PHP_INT_MAX;
+    }
+
+    return max(0, wp_connectors_memory_limit_to_bytes($limit) - memory_get_usage());
+}
+
+/**
+ * Whether a payload carries a sample open at BYTE level (glm19-1,
+ * the pre-screen gating a text-family payload's token passes) — the
+ * ENGINE-AWARE spelling set of t31-glm59-5: '<?=' and '<?php' with
+ * core's follower class under every INI, plus every '<?' spelling on
+ * a host whose own engine opens short tags (the probe arm — on the
+ * production-default host the engine refuses the bare spelling
+ * itself and the boolean answers exactly the INI-independent set
+ * glm19-1 defined; on a short_open_tag host the pre-screen follows
+ * the engine, the same admission the region walk below rides).
+ *
+ * @param string $contents File contents.
+ * @return bool True when an open spelling THIS ENGINE would lex exists.
+ */
+function wp_connectors_payload_has_sample_open($contents)
+{
+    /*
+     * t31-glm59-5 [R59-1, driven — the pre-screen's INI-independent
+     * bare-'<?' refusal gated the whole text path before the
+     * host-aware machinery behind it ever ran]: on a
+     * short_open_tag host the engine lexes every '<?' spelling as a
+     * real open tag, and the round-58 routing moved extension-less
+     * payloads onto the text path — so a bare-'<?'-headed payload
+     * never reached a token pass and a marker riding heredoc string
+     * data behind it laundered a live key where the pre-round-58
+     * code arm (the real tokenizer) caught it (driven under
+     * -d short_open_tag=1, engine-token proof in the ledger). The
+     * probe arm admits the payload where THIS engine opens short
+     * spellings; the production-default host answers false and the
+     * INI-independent spellings below stand exactly as glm17-3/glm63-2
+     * hold them there.
+     */
+    if (wp_connectors_engine_opener_lexing()['bare']) {
+        return false !== strpos($contents, '<?');
+    }
+    $at = 0;
+    while (false !== ($open = strpos($contents, '<?', $at))) {
+        $after = $open + 2;
+        if ('=' === ($contents[ $after ] ?? '')) {
+            return true;
+        }
+        if ('php' === wp_connectors_ascii_lower((string) substr($contents, $after, 3))) {
+            $follower = $contents[ $after + 3 ] ?? '';
+            if ('' === $follower || str_contains(" \t\r\n", $follower)) {
+                return true;
+            }
+        }
+        $at = $after;
+    }
+
+    return false;
+}
+
+/**
+ * Splits a payload into lines over the TOKENIZER'S exact three
+ * terminators — \r\n, \r, \n — never "\n" alone (t31-glm29-1).
+ *
+ * explode("\n") collapses a CR-only payload to ONE line, so a
+ * line-local `secrets:allow` marker exempted a live secret sitting on
+ * a DIFFERENT CR-line (driven: the artifact accepted at exit 0 where
+ * the byte-identical LF twin was rejected). The class is the one the
+ * text lens spells exactly (plugin-tools.php's line-of derivation;
+ * never PCRE's broader \R — \v/\f/\x85 never end a line here), and the
+ * walk is a HAND byte loop over the payload, never a preg_split
+ * alternation: a PCRE split carries an abort surface the glm28-1
+ * floor pin would fire on candidate-free payloads too, and the loop
+ * answers each line's true byte start directly (the two-byte \r\n
+ * member defeats the strlen+1 advance arithmetic).
+ *
+ * @param string $text Payload bytes.
+ * @return list<array{string, int}> [line text, byte offset] pairs — one
+ *         entry per line, offsets into $text, the final entry the tail
+ *         after the last terminator (empty when the payload ends on
+ *         one — explode()'s own trailing-member shape).
+ */
+function wp_connectors_line_split($text)
+{
+    /*
+     * t31-glm43-10 [R42-8, the driver-ordered pre-measured claim —
+     * the round-40→41→43 mechanic]: the HAND byte loop walked every
+     * payload byte in PHP (the scan's largest remaining single cost
+     * after round 41's cuts, measured by round 42's review at 5.08x
+     * broad / 5.60x scan-realistic). ONE native strcspn scan per line
+     * replaces the per-byte walk — the same terminator semantics by
+     * construction: CRLF ONE terminator (the two-byte arithmetic the
+     * loop spelled), the final tail ALWAYS appended (explode()'s own
+     * trailing-member shape, the empty ('', strlen) pair when the
+     * payload ends on a terminator), and the loop guard bounding the
+     * strcspn offset (a start past the end answers 0, never a
+     * negative span). BYTE-IDENTICAL — the round-42 differential
+     * (24 terminator edge shapes, 3000 seeded fuzz, 4359 repository
+     * files, ~79.9 MB) and this round's re-drive below.
+     */
+    $lines = array();
+    $length = strlen($text);
+    $start = 0;
+    while ($start < $length) {
+        $span = strcspn($text, "\r\n", $start);
+        $end = $start + $span;
+        if ($end >= $length) {
+            break;
+        }
+        $lines[] = array( (string) substr($text, $start, $span), $start );
+        if ("\r" === $text[ $end ] && "\n" === ($text[ $end + 1 ] ?? '')) {
+            // The two-byte member: CRLF is ONE terminator, never two —
+            // consume the LF half with it.
+            $start = $end + 2;
+        } else {
+            $start = $end + 1;
+        }
+    }
+    $lines[] = array( (string) substr($text, $start), $start );
+
+    return $lines;
+}
+
+/**
+ * The PHP sample REGIONS of a text-family payload (glm18-1/glm18-11).
+ *
+ * The open spellings are the engine's INI-independent ones — '<?=' and
+ * '<?php' with core's own follower class ([ \t\r\n] or end of input; a
+ * glued '<?phpecho' is inline HTML under the production-default INI,
+ * the t31-ocr64-1 doctrine). The close rides the TOKENIZER, the
+ * masker's own pass (glm19-1): the engine's lexer is the one owner of
+ * where PHP mode ends, so a '?>' spelled inside a quoted or heredoc
+ * interior does not close the region — the byte-level scan this
+ * replaces split it there and the code after the in-string close fell
+ * to the line-local arm, reopening the glm18-1 laundering class
+ * through the region walk. Every matched open-close pair is a region;
+ * an open with no close names the unclosed TAIL (open→EOF) the engine
+ * lexes as code — the tail region glm18-1 routed onto the masked
+ * view. Admission is by the ENGINE'S OWN token verdict
+ * (t31-glm59-5): a bare '<?' or glued opener opens exactly where
+ * this host's engine mints T_OPEN_TAG — prose on the
+ * production-default host (the glm18-11/ocr64-1 doctrine stands
+ * there), a real region on a short_open_tag host (the walk agrees
+ * with the tokenizer it already pays for, glm17-1's standing ON-host
+ * corner closed for this walk).
+ *
+ * @param string $contents File contents.
+ * @return list<array{int, int}> The sorted inclusive [start, end] byte spans.
+ */
+function wp_connectors_php_sample_regions($contents)
+{
+    $regions = array();
+    // t31-glm48-7: the un-handleable compile warning capture rides every hostile-byte tokenize seat.
+    ob_start();
+    $tokens = token_get_all($contents);
+    ob_end_clean();
+    $at = 0;
+    for ($i = 0, $n = count($tokens); $i < $n; ++$i) {
+        $token = $tokens[ $i ];
+        $text = is_array($token) ? $token[1] : $token;
+        $id = is_array($token) ? $token[0] : null;
+        /*
+         * t31-glm59-5 [R59-1]: admission by the ENGINE'S OWN verdict
+         * — the token id IS this host's probed lexing. On the
+         * production-default host the engine never mints T_OPEN_TAG
+         * for a bare '<?' or a glued '<?phpecho', so those spellings
+         * stay prose exactly as the glm17-3/glm18-11 doctrine holds
+         * there (verdict-identical by construction on the default);
+         * on a short_open_tag host the engine says code and the walk
+         * now agrees — the text-based override once refused the
+         * host's own openings, treating engine-lexed code as prose
+         * (the ON-host half of glm17-1's standing corner, closed
+         * here for the scanner's region walk; glm63-2's
+         * INI-independence is the FENCE walk's doctrine,
+         * check-conventions' own, untouched).
+         */
+        $opens = T_OPEN_TAG_WITH_ECHO === $id || T_OPEN_TAG === $id;
+        if (! $opens) {
+            $at += strlen($text);
+            continue;
+        }
+        // The region closes at the next close TAG the engine lexes —
+        // never at an in-string close spelling — or runs to EOF.
+        $pos = $at + strlen($text);
+        $end = strlen($contents) - 1;
+        $close = $n;
+        for ($j = $i + 1; $j < $n; ++$j) {
+            $inner = $tokens[ $j ];
+            if (T_CLOSE_TAG === (is_array($inner) ? $inner[0] : null)) {
+                $end = $pos + 1; // Inclusive through the '>' byte.
+                $close = $j;
+                break;
+            }
+            $pos += strlen(is_array($inner) ? $inner[1] : $inner);
+        }
+        $regions[] = array( $at, $end );
+        if ($n === $close) {
+            break; // The unclosed tail runs to EOF.
+        }
+        $i = $close;
+        $at = $pos + strlen(is_array($tokens[ $close ]) ? $tokens[ $close ][1] : $tokens[ $close ]);
+    }
+
+    return $regions;
+}
+
+/**
+ * One line's PER-ARM views under PAIR-BOUNDED routing (glm18-11,
+ * glm19-2): the bytes inside a sample region read the token-masked
+ * view (string data blanked, the marker judge's honest lens for CODE
+ * bytes), the bytes outside keep the line-local arm — a prose marker
+ * beside a mentioned sample stays a real prose marker.
+ *
+ * The arms answer separately, never composed: the line-skip does not
+ * cross a region boundary — a marker in the prose bytes exempts only
+ * prose matches, a marker in the region's code view (a real comment
+ * the masker never blanks) exempts only the region's bytes.
+ *
+ * glm19-11: the walk rides a by-ref REGION CURSOR — the regions are
+ * sorted and the line starts are monotonic, so a region closed on an
+ * earlier line is dead for every later line and the cursor consumes
+ * it for good, each line's walk starting where the last line stopped:
+ * O(lines + regions) over the whole payload, never the O(lines ×
+ * regions) re-walk from index 0 that answered a 23,000-pair payload
+ * in ~13.9 s (measured twice independently).
+ *
+ * The masked view is same-length by construction, so its bytes slice
+ * 1:1 against the line's, and each served span is the line-relative
+ * inclusive byte range that rode the masked view.
+ *
+ * @param string                $line          One source line.
+ * @param int                   $line_start    The line's byte offset in the payload.
+ * @param list<array{int, int}> $regions       Sorted inclusive sample spans.
+ * @param string                $masked        The payload's token-masked view.
+ * @param int                   $region_cursor The shared walk cursor (first
+ *                                            region not yet consumed; advanced in place).
+ * @return array{prose: string, code: string, spans: list<array{int, int}>}
+ *         The line-local view of the outside bytes, the masked view of
+ *         the region bytes, and the line-relative region spans.
+ */
+function wp_connectors_sample_region_line_view($line, $line_start, array $regions, $masked, &$region_cursor)
+{
+    $len = strlen($line);
+    $prose = '';
+    /*
+     * t31-glm54-3 [R54-3, driven fail-open — the slice boundary
+     * honored the round-53 LINE anchor]: the compositor's prose view
+     * is a SLICE, and a slice beginning where a sample region ENDED
+     * starts the view at its own byte 0 — mid-line in the source —
+     * so the marker grammar's '^'-anchored arms read the slice head
+     * as line-initial ('<?php $x=1; ?> - * secrets:allow ghp_…'
+     * exempted the credential at HEAD, the R52-3 mid-line-multiplica-
+     * tion laundering reopened by the round-53 anchor's own marker-run
+     * arm; the '>' and ordered-list runs the same, and a '//' glued
+     * straight to '?>' rode the (?:^|\s) guard's ^ arm). The view
+     * carries a SENTINEL label byte before a head that does not
+     * begin at the line's own byte 0: no '^'-anchored arm can fire
+     * on a mid-line head, the whitespace-delimited arms judge the
+     * slice exactly as before, and a genuinely line-initial prose
+     * head (no region before it on the line) carries no sentinel —
+     * the marked bullet stays exempt. The sentinel is a plain 'x':
+     * inert to quote pairing (blank_quoted_strings at the consult)
+     * and outside every marker-run class.
+     *
+     * t31-glm55-3 [R55-5, driven fail-open — the sentinel guarded
+     * only empty-prose HEADS, never JOIN SEAMS]: the round-54
+     * sentinel prefixed a view whose head followed a region, but a
+     * NON-empty prose view followed by a region followed by more
+     * prose concatenated the slices bare — the join re-supplied
+     * adjacency the source never had ('x <?php $x=1; ?>// secrets:
+     * allow ghp_…' built the view 'x // secrets:allow …', the head
+     * slice's trailing whitespace riding the (?:^|\s) guard's \s
+     * arm ACROSS the dropped region, the glued '//' honored and the
+     * credential exempted — while the region-first spelling flagged
+     * through the round-54 sentinel and the no-whitespace-head
+     * control through the grammar, the exemption turning exactly on
+     * the manufactured adjacency; a mid-slice seam laundered
+     * identically). Every contribution whose cursor a region
+     * advanced takes the sentinel now — each join seam sits where a
+     * region's bytes were dropped, so the manufactured adjacency is
+     * always spurious — while the genuinely line-initial head
+     * (cursor 0, nothing dropped before it) still carries none and
+     * a marker after a region preceded by its OWN real whitespace
+     * keeps the (?:^|\s) arm's honest spelling.
+     */
+    $code = '';
+    $spans = array();
+    $cursor = 0;
+    $count = count($regions);
+    while ($region_cursor < $count) {
+        $region = $regions[ $region_cursor ];
+        $start = $region[0] - $line_start;
+        if ($start >= $len) {
+            break; // The region begins on a later line — every later one too (sorted).
+        }
+        $end = $region[1] - $line_start; // Inclusive, line-relative.
+        if ($end < $cursor) {
+            // The region closed before this line's walk position —
+            // dead for every later line too: consumed for good.
+            ++$region_cursor;
+            continue;
+        }
+        if ($start > $cursor) {
+            // t31-glm55-3: $cursor > 0 means a region was served
+            // before this gap — the seam drops its bytes.
+            $prose .= ($cursor > 0 ? 'x' : '') . wp_connectors_line_without_string_literals((string) substr($line, $cursor, $start - $cursor));
+        }
+        $from = max($start, $cursor);
+        $through = min($end, $len - 1);
+        $code .= (string) substr($masked, $line_start + $from, $through - $from + 1);
+        $spans[] = array( $from, $through );
+        $cursor = $through + 1;
+        if ($cursor >= $len) {
+            return array( 'prose' => $prose, 'code' => $code, 'spans' => $spans );
+        }
+        // The region closed inside this line — dead for every later one.
+        // (A region reaching the line's last byte stays at the cursor:
+        // the next line's dead-region arm consumes it, and one that
+        // SPANS past the line must be served again there.)
+        ++$region_cursor;
+    }
+
+    return array(
+        // t31-glm54-3: the tail append takes the same sentinel — a
+        // prose view whose head follows a consumed region is mid-line.
+        // t31-glm55-3: and so does EVERY seam — $cursor > 0 means a
+        // region's bytes were dropped before this tail (the empty-
+        // prose condition was the round-54 half of the rule).
+        'prose' => $prose . ($cursor > 0 ? 'x' : '') . wp_connectors_line_without_string_literals((string) substr($line, $cursor)),
+        'code' => $code,
+        'spans' => $spans,
+    );
+}
+
+/**
+ * Whether a payload's HEAD opens PHP — a directly-named file's content
+ * shape (glm18-2).
+ *
+ * The operator naming one file on the command line owns that choice
+ * (the glm14-3 no-cap doctrine's own premise), so the file-root arm
+ * judges the bytes, not the extension: a payload whose head (after
+ * leading whitespace) is an INI-independent open tag — '<?=' or '<?php'
+ * with core's follower class — is a PHP script whatever its name
+ * spells. The INI-dependent spellings (a bare '<?', a glued
+ * '<?phpecho') stay the recorded lexer-refused-opener corner, never a
+ * new class here.
+ *
+ * @param string $contents File contents.
+ * @return bool True when the payload's head opens PHP.
+ */
+function wp_connectors_head_opens_php($contents)
+{
+    $at = strspn((string) $contents, " \t\r\n");
+    if ('<?' !== substr((string) $contents, $at, 2)) {
+        return false;
+    }
+    $after = $at + 2;
+    if ('=' === ($contents[ $after ] ?? '')) {
+        return true;
+    }
+    if ('php' !== wp_connectors_ascii_lower((string) substr((string) $contents, $after, 3))) {
+        return false;
+    }
+    $follower = $contents[ $after + 3 ] ?? '';
+
+    return '' === $follower || str_contains(" \t\r\n", $follower);
+}
+
+/**
+ * The HOST engine's actual open-tag lexing, probed once (glm18-4).
+ *
+ * Whether a bare '<?' opens PHP mode is the short_open_tag INI — ON on
+ * dev boxes, OFF on the production default — and the token-memory
+ * census must charge only the spans THIS engine would really tokenize:
+ * 23k '<?xml-stylesheet …?>' processing instructions in a 1.84 MB
+ * document lex as ONE inline-HTML run on a default host (measured
+ * token cost ~1x, ~1.8 MB) but were charged the dense ~98x factor as
+ * 'spans', answering the loud refusal over bytes the tokenizer never
+ * opens. The probe is the engine's own answer — two tiny
+ * token_get_all() calls, cached for the process — never an INI-string
+ * re-derivation; '<?php' with core's follower class is INI-independent
+ * and never rides the probe.
+ *
+ * @return array{bare: bool, echo: bool} Whether the engine opens a
+ *         bare '<?' spelling, and whether it opens '<?='.
+ */
+function wp_connectors_engine_opener_lexing()
+{
+    static $probe = null;
+    if (null === $probe) {
+        $probe = array( 'bare' => false, 'echo' => false );
+        foreach (token_get_all('<?x') as $token) {
+            if (T_OPEN_TAG === (is_array($token) ? $token[0] : null)) {
+                $probe['bare'] = true;
+                break;
+            }
+        }
+        foreach (token_get_all('<?=') as $token) {
+            if (T_OPEN_TAG_WITH_ECHO === (is_array($token) ? $token[0] : null)) {
+                $probe['echo'] = true;
+                break;
+            }
+        }
+    }
+
+    return $probe;
 }
 
 /**
  * Scans one file's contents for secret patterns.
  *
- * @param string $contents File contents.
- * @param string $label    File label for findings (path or zip entry).
+ * @param string $contents     File contents.
+ * @param string $label        File label for findings (path or zip entry).
+ * @param bool   $named_target True when the caller named this one file
+ *                             directly (the scan_paths file-root arm) —
+ *                             a php-headed payload then rides the CODE
+ *                             routing whatever its extension spells
+ *                             (glm18-2). The walk never sets it.
  * @return list<string> Findings ("<label>:<line> <name> (<description>)").
  */
-function wp_connectors_scan_string($contents, $label)
+function wp_connectors_scan_string($contents, $label, $named_target = false)
 {
     $findings = array();
-    $allowMarker = wp_connectors_allow_marker_pattern();
-    $lines = explode("\n", $contents);
-    foreach ($lines as $index => $line) {
-        // Markers count only in REAL comments: blank out string-literal
-        // contents first, so a marker that is itself string data cannot
-        // exempt the live secret sitting next to it on the same line.
-        if (preg_match($allowMarker, wp_connectors_line_without_string_literals($line)) === 1) {
-            continue;
-        }
-        foreach (wp_connectors_secret_patterns() as $name => $pattern) {
-            if (preg_match_all($pattern[0], $line, $matches) === 0) {
+    /*
+     * glm16-2: the ride owns its memory bound. The same strpos gate is
+     * the pre-gate (every non-PHP payload never reaches the tokenizer
+     * at all — the census the glm15-1 fix would have gated on '<<<'
+     * is gone, and the mask cares about quotes, not heredocs); for a
+     * PHP-bearing source the COST the token pass can spend is driven
+     * by the PHP-MODE SPANS — a prose run between tags is one
+     * T_INLINE_HTML token, so a markdown ledger carrying small code
+     * samples tokenizes at its samples' cost, not its megabytes. The
+     * span walk is byte-honest (measured dense-worst-case factor:
+     * ~98x the span); a span set whose estimate would not fit the
+     * parsed limit answers the LOUD refusal in the glm14-2 vocabulary,
+     * the 2-MB loud-skip doctrine's own shape — never a silent fatal
+     * mid-scan, never a verdict reading clean over bytes the scan
+     * could not tokenize. The walk's one ceiling: a '?>' spelled
+     * INSIDE a string or comment splits a span the lexer keeps whole,
+     * so a file deliberately WOVEN with in-string close tags could
+     * under-refuse — the exact pre-round fatal class, and a shape no
+     * honest producer ships.
+     *
+     * glm17-2: the bound rides the SUM of the spans, never the largest
+     * alone — token_get_all() materializes the WHOLE token stream at
+     * once, so 24 dense ~100 KB spans (~2.4 MB, every one of them
+     * under any per-span bound) paid the SUM (~235 MB) against the
+     * default 128M limit and FATALED with no verdict (driven in a
+     * child process at HEAD); the largest-span spelling passed the
+     * gate on exactly the shape the gate exists to refuse.
+     */
+    /*
+     * glm17-3: the pre-gate is extension- and shape-aware. The bare
+     * '<?' probe routed every text-family payload carrying an '<?xml'
+     * declaration or a fenced, unclosed php sample onto the masked
+     * view — where the masker blanks the prose as inline HTML and a
+     * legitimately marked fixture's marker vanished (driven: a marked
+     * .md answered 1 finding at HEAD, 0 before the mask ride; the
+     * >1.3 MB unclosed-sample .md answered the token-memory refusal
+     * where the line scan always ran clean). The masked view is for
+     * CODE payloads — a .php/.phtml label, or an extension-less label
+     * (the in-process spellings) — which keep the bare '<?' probe
+     * exactly as before. A TEXT-family extension (anything else the
+     * walk allowlists: .md/.txt/.svg/.xml/...) reaches the tokenizer
+     * only for a genuine embedded sample — a '<?php' open WITH a
+     * matching '?>' close after it, the one shape that can carry real
+     * multi-line string regions to launder; bare '<?xml' declarations,
+     * '<?=' short-echo samples, and fence-delimited unclosed samples
+     * keep the line-local tolerance arm exactly as the pre-diff
+     * behavior read them (a matched-close sample's marker-in-data
+     * still launders correctly through the mask — pinned below).
+     *
+     * glm18-1 CORRECTS the unclosed-sample half of that claim: a text
+     * family payload whose unclosed '<?php'/'<?=' sample carries a
+     * marker inside a multi-line string interior LAUNDERED through the
+     * line-local arm — the interior line carries no quote bytes, so
+     * the line-local lens honored the marker and a live key beside it
+     * scanned to zero findings (driven at HEAD; 1 at base, where the
+     * bare '<?' probe routed the whole payload onto the masked view).
+     * The unclosed tail IS code the engine lexes, so it rides the
+     * masked view from its open tag's line onward while the prose
+     * above keeps the line-local arm — and because the masker now
+     * tokenizes the tail, the tail rides the token-memory census like
+     * every matched sample (the >1.3 MB unclosed .md leg's clean
+     * verdict was purchased by never tokenizing the tail; the honest
+     * worst-case bound on a tokenized tail is the loud refusal,
+     * glm17-2's own recorded 'no honest factor passes 1.4 MB while
+     * refusing 2.4 MB' premise).
+     *
+     * glm18-11 completes the routing to PAIR-BOUNDED for the matched
+     * class too, closing the recorded-residual false positive: prose
+     * MERELY MENTIONING a complete '<?php … ?>' pair routed the WHOLE
+     * file onto the masked view, where the mention's surrounding prose
+     * blanked as inline HTML and a legitimately marked fixture's
+     * marker vanished (identical at base, pre-existing, unrecorded —
+     * the marked-fixture false positive survived for this spelling).
+     * The region walk (wp_connectors_php_sample_regions()) owns the
+     * routing for every text-family shape now: the sample regions —
+     * matched pairs AND the unclosed tail — ride the masked view, the
+     * bytes outside them keep the line-local arm.
+     */
+    /*
+     * t31-glm56-4 [R56-F8 — the fourth fold straggler, the census
+     * of record falsified]: this seat (branch-introduced with the
+     * glm17-3 extension-aware marker grammar) spelled the engine
+     * strtolower while the whole file folds through the ONE owner
+     * (wp_connectors_ascii_lower, the ocr13-1 tree) — an
+     * unrecorded fourth member beside the ocr15-3 census's three,
+     * each its own recorded future finding (the extension gate,
+     * the two plugin-header name-key twins). Byte-identical on the
+     * 8.2 floor (the marker family's extensions are pure ASCII —
+     * no capital-I hazard, no locale divergence); the census's
+     * 'everything else is prose' claim is true again.
+     */
+    $label_ext = wp_connectors_ascii_lower((string) pathinfo($label, PATHINFO_EXTENSION));
+    // glm23-6: the marker grammar is extension-aware — the '<!--'
+    // enclosure's glue-broadened boundary is the markup family's alone
+    // (the owner's own split, stated in its docblock).
+    /*
+     * t31-glm59-6 [R59-9, driven — R58-8's class one compound
+     * spelling short]: '.ini.dist' is the ini-DISTRIBUTION
+     * convention (the phpunit.xml.dist family) and the walk READS it
+     * (the allowlist admits 'dist') — the marker family consult
+     * re-derives beneath the trailing meta extension so the payload
+     * keeps its base grammar's comment vocabulary ('.ini.dist' →
+     * 'ini', ';' honored; '.env.dist' → 'env', '#' only — the
+     * boundary preserved).
+     */
+    /*
+     * t31-glm63-4 [R63-8, driven at both seats — the marker-family
+     * consults judged byte-exactly one seat over the round-62 read
+     * fold]: a legitimately-marked file whose name carries edge
+     * junk was READ by the walk but denied its family's comment
+     * grammar ('t.ini ' failing where 't.ini' exempted). The label
+     * extension folds the same class (minus the dot) before the
+     * family derivation; every clean-named file identical.
+     */
+    $label_ext = trim($label_ext, str_replace('.', '', wp_connectors_path_edge_junk()));
+    $marker_family_ext = $label_ext;
+    if ('dist' === $label_ext) {
+        /*
+         * t31-glm62-7 [R62-13 — the fold+pathinfo composition
+         * hand-spelled at the two adjacent PATHINFO seats]: strip
+         * ONE trailing meta extension; the label's own derivation
+         * fifteen lines above spells the same composition (the
+         * file's only two) — this local keeps the marker-family
+         * seat self-contained beside it.
+         */
+        $marker_family_ext = wp_connectors_ascii_lower((string) pathinfo(pathinfo($label, PATHINFO_FILENAME), PATHINFO_EXTENSION));
+    }
+    $allowMarker = wp_connectors_allow_marker_pattern($marker_family_ext);
+    /*
+     * glm18-2: a DIRECTLY-NAMED file is judged by content shape, not
+     * extension — 'scan-secrets.php config.inc' over pure-PHP bytes
+     * fed an extension-aware gate (the glm17-3 text-family routing)
+     * that never saw '<?php'-without-'?>' spellings honestly: the
+     * short-echo-headed script laundered its string interiors through
+     * the line-local arm (driven). Explicitly named = operator intent;
+     * the php-headed payload rides the CODE arm whatever its name
+     * spells, while text content keeps glm17-3's benign extension
+     * routing exactly.
+     *
+     * t31-glm58-6 [R58-7, driven at HEAD by both the review and the
+     * driver — the extension-less WALKED file one routing arm over]:
+     * the bare ''=== arm sent EVERY extension-less payload the walk
+     * admits (README, NOTICE, LICENSE) onto the whole-file masked
+     * view with no regions, so all prose blanks as inline HTML and a
+     * legitimately-marked 'secrets:allow' marker could never exempt
+     * — the byte-identical .md twin exempted through the
+     * region-bounded routing (driven: README flagged, README.md
+     * clean). The extension-less payload now rides the CODE arm only
+     * when its HEAD opens PHP (the glm18-2 content-shape owner —
+     * operator intent, the CLI-script spelling the '' arm was built
+     * for); everything else keeps glm17-3's text-family routing with
+     * the matched-pair gate exactly.
+     */
+    $php_family = ('' === $label_ext && wp_connectors_head_opens_php($contents)) || 'php' === $label_ext || 'phtml' === $label_ext
+        || ($named_target && wp_connectors_head_opens_php($contents));
+    /*
+     * glm19-1: the region walk rides the tokenizer now, so the census
+     * judges BEFORE it — a text-family payload reaches any token pass
+     * only through the byte-level INI-independent open pre-screen
+     * (wp_connectors_payload_has_sample_open(), the old walk's open
+     * classification as a boolean), and the census rides ahead of the
+     * walk exactly as it rides ahead of the mask. A payload the
+     * pre-screen refuses never tokenizes at all — the pre-screening
+     * shape the byte walk itself gave.
+     */
+    $has_php = false;
+    if ($php_family) {
+        $has_php = false !== strpos($contents, '<?');
+    } elseif (wp_connectors_payload_has_sample_open($contents)) {
+        $has_php = true;
+    }
+    if ($has_php) {
+        /*
+         * glm18-4: every span the census charges must be a span THIS
+         * engine would really tokenize — the walk classifies each '<?'
+         * spelling against the host's probed open-tag lexing
+         * (wp_connectors_engine_opener_lexing(), short_open_tag-aware):
+         * '<?php' with core's follower class opens under every INI, a
+         * bare '<?' (an '<?xml' processing instruction included) and a
+         * glued '<?phpecho' only where the engine's probe says the
+         * short spelling opens. A non-opener's bytes — and its '?>',
+         * prose on a default host — never enter the total.
+         */
+        $opener = wp_connectors_engine_opener_lexing();
+        $span_total = 0;
+        $at = 0;
+        while (false !== ($open = strpos($contents, '<?', $at))) {
+            $after = $open + 2;
+            if ('=' === ($contents[ $after ] ?? '')) {
+                $opens = $opener['bare'] || $opener['echo'];
+            } elseif ('php' === wp_connectors_ascii_lower((string) substr($contents, $after, 3))) {
+                $follower = $contents[ $after + 3 ] ?? '';
+                $opens = '' === $follower || str_contains(" \t\r\n", $follower) || $opener['bare'];
+            } else {
+                $opens = $opener['bare'];
+            }
+            if (! $opens) {
+                $at = $after;
                 continue;
             }
-            foreach ($matches[0] as $matched) {
-                if (wp_connectors_is_recognizably_fake_secret($matched)) {
+            $close = strpos($contents, '?>', $after);
+            $end = false === $close ? strlen($contents) : $close;
+            $span_total += $end - $open;
+            $at = false === $close ? strlen($contents) : $close + 2;
+        }
+        if ($span_total * 98 > wp_connectors_scan_token_memory_headroom()) {
+            return array( sprintf('%s: over the secret-scan token-memory bound — the secret scan cannot run', $label) );
+        }
+    }
+    /*
+     * glm16-1: the marker judge reads the ONE token-masked view —
+     * wp_connectors_mask_string_contents() owns every string-data
+     * region class in a single length-preserving pass: quoted-literal
+     * interiors (multi-line included), heredoc/nowdoc bodies however
+     * NESTED through {$...} interpolation, __halt_compiler() tails, and
+     * ?>-bounded inline HTML. The glm15-1 heredoc census this replaces
+     * failed open four ways (driven): a NESTED heredoc clobbered its
+     * single-boolean state machine (only the inner body marked — live
+     * keys on outer body lines answered zero findings through the CLI
+     * gate); every other token-visible data region laundered; the EOF
+     * branch was off by one (an unterminated heredoc without a trailing
+     * newline marked ZERO body lines — byte-identical contents ± one
+     * newline flipped the verdict); and a lexer-refused opener
+     * ('<?phpecho') read as pure prose. The masker is offset-based and
+     * nesting-aware by construction — none of those classes reach it —
+     * and the fail-closed direction survives: an unterminated heredoc
+     * blanks through EOF whatever the trailing byte.
+     *
+     * glm17-1: the mask is LINE-PRESERVING (interior newlines stay
+     * newlines through the blanking), so the source split below
+     * answers each line's own code view as the masked bytes AT that
+     * line's [start, start+len) slice — the mask once swallowed
+     * interior newlines into
+     * spaces, leaving fewer view lines than $lines, so every line past
+     * the first multi-line region shifted UP into an earlier line's
+     * view and a code marker lines BELOW a live key exempted it
+     * (driven: a multi-line string plus a marker three lines down
+     * scanned to zero findings).
+     *
+     * A payload carrying no '<?' anywhere can lex no PHP tokens at all
+     * (every open-tag spelling starts with those two bytes), so it
+     * keeps the line-local tolerance arm instead — the pinned glm15-1
+     * doctrine that non-PHP payloads (.txt/.md fixtures) answer no
+     * tokens and no behavior change. glm17-3 widens that arm to the
+     * text-family shapes with no matched '<?php'...'?>' sample — the
+     * pre-gate above owns the routing, glm18-1 splits the
+     * unclosed-sample class out of it, and glm18-11 completes the
+     * split for the matched class: the SAMPLE REGIONS' lines ride the
+     * masked view, the bytes outside them keep the line-local arm (a
+     * marker in REAL code beside a sample stays honored in both —
+     * comments are not string data, the masker never blanks them).
+     */
+    $masked_view = null;
+    $regions = null;
+    if ($has_php) {
+        // glm19-1: the region walk tokenizes, so it rides AFTER the
+        // census refusal above — never a fatal where the bound answers
+        // the loud refusal.
+        if (! $php_family) {
+            $regions = wp_connectors_php_sample_regions($contents);
+        }
+        $masked_view = wp_connectors_mask_string_contents($contents);
+    }
+    /*
+     * t31-glm29-1 [R29-1, security:high, driven fail-open]: the split
+     * owns the TOKENIZER'S exact three terminators — \r\n, \r, \n, the
+     * class the text lens already spells exactly (plugin-tools.php's
+     * line-of derivation; never PCRE's broader \R) — never "\n" alone.
+     * explode("\n") collapsed a CR-only payload to ONE line, so the
+     * line-local `secrets:allow` marker exempted a live secret sitting
+     * on a DIFFERENT CR-line (driven: the CR marker+key payload
+     * answered zero findings and the artifact was ACCEPTED at exit 0
+     * where the byte-identical LF twin was rejected) — the glm19-2
+     * per-arm doctrine (the line-skip never crosses a boundary in
+     * either direction) violated at the CR-line boundary, the
+     * exact-three-terminators doctrine (t31-ocr35-6) never swept from
+     * the detector's diagnostics to this split. The walk is a HAND
+     * byte loop, never a preg_split alternation: a PCRE split carries
+     * an abort surface the glm28-1 floor pin would fire on
+     * candidate-free payloads too (the clean-control leg's own
+     * premise), and the loop answers each line's true byte start
+     * directly — the retired strlen+1 advance assumed a one-byte
+     * terminator, and the class spells a two-byte \r\n.
+     */
+    $lines = wp_connectors_line_split($contents);
+    // glm19-11: the by-ref region cursor — each line's compositor walk
+    // starts where the last line stopped (O(lines + regions) over the
+    // whole payload, never the per-line re-walk from index 0).
+    $region_cursor = 0;
+    /*
+     * glm21-13: the pattern table is built ONCE per payload — the
+     * call once sat INSIDE the line loop, rebuilding the array for
+     * every line of every file (~32% of a full repo scan, measured:
+     * 1.31 s vs 0.89 s stripped of the rebuild on this host; the
+     * scanner's single other cost line is the per-line marker probes
+     * below, gated behind the first candidate since the same fix).
+     */
+    $patterns = wp_connectors_secret_patterns();
+    foreach ($lines as $index => $line_entry) {
+        $line = $line_entry[0];
+        // t31-glm29-1: the line's byte start comes from the split's own
+        // offsets — the terminator class spells one- AND two-byte
+        // members, so the manual strlen+1 advance no longer holds.
+        $line_start = $line_entry[1];
+        /*
+         * Markers count only in REAL comments: the judge reads the
+         * masked view of the code bytes, so a marker that is itself
+         * string data — quoted contents, a heredoc body, an HTML
+         * region — cannot exempt the live secret sitting next to it;
+         * the marker must sit in CODE.
+         *
+         * glm19-2: the exemption is PER-ARM — the composed view fed
+         * the WHOLE line to the marker judge, so a prose marker
+         * OUTSIDE a region exempted a key INSIDE it on a mixed line
+         * (driven): the line-skip crossed the region boundary. A
+         * match inside a region's bytes is exempt only by a marker in
+         * the REGION's code view; a match in the prose bytes keeps
+         * the line-local arm's own marker — never crossed in either
+         * direction.
+         */
+        if (null !== $masked_view && null === $regions) {
+            /*
+             * t31-glm41-5 [R41-EFF-a, the deferred double split — one
+             * split, masked slices]: the code view once cost a SECOND
+             * full-payload line_split over the masked view, its
+             * per-line array handed to the loop by index. The mask is
+             * length-preserving and terminator-preserving (glm29-1's
+             * own alignment premise), so the masked line $index IS the
+             * masked bytes at the SOURCE line's own [start, start+len)
+             * slice — the source split below answers both views, the
+             * second split deleted (~283ms of a ~1.97s repo scan,
+             * measured at HEAD; the slice spelling byte-identical by
+             * construction, never a different line's bytes).
+             */
+            $prose_view = '';
+            $code_view = substr($masked_view, $line_start, strlen($line));
+            $spans = '' === $line ? array() : array( array( 0, strlen($line) - 1 ) );
+        } elseif (null !== $regions) {
+            $arm = wp_connectors_sample_region_line_view($line, $line_start, $regions, $masked_view, $region_cursor);
+            $prose_view = $arm['prose'];
+            $code_view = $arm['code'];
+            $spans = $arm['spans'];
+        } else {
+            // t31-glm41-5 [R41-EFF-b, the eager blank deferred]: the
+            // quote-stripped prose view was computed for EVERY line of
+            // every non-PHP payload but consumed only at the first
+            // marker consult below — most lines carry no non-fake
+            // candidate at all. Computed at the consult now (glm21-13's
+            // own lazy-marker doctrine applied to the view it reads).
+            $prose_view = null;
+            $code_view = '';
+            $spans = array();
+        }
+        /*
+         * glm21-13: the marker probes ride BEHIND the first candidate
+         * — most lines of most payloads match no pattern at all, and
+         * the two preg_match calls once ran unconditionally for every
+         * line. The null-cursor lazy spelling answers each arm's
+         * marker exactly once per line, only on the line that carries
+         * a non-fake candidate.
+         */
+        $prose_marker = null;
+        $code_marker = null;
+        /*
+         * t31-glm45-1 [R44-7, the driver-ordered pre-measured claim
+         * — the round-44 review's 4.1x measurement]: the ten-pattern
+         * battery fired preg_match_all for EVERY line of every
+         * walked payload though ~98% of lines carry no candidate
+         * (the repo scan: 1.5M PCRE invocations, 6 hit lines
+         * repo-wide). The native PRESCREEN is a strict SUPERSET: a
+         * pattern whose literal anchor is absent from the line
+         * cannot match, so the battery runs only when one of the
+         * anchors fires — case-sensitive strpos for the nine
+         * case-locked literals (the patterns carry no /i), one
+         * stripos for the bearer arm (it does), and the dot for the
+         * zai hex-pair shape (conservative: any dot re-arms the
+         * battery, over-broad only in cost, never in verdict). The
+         * ABORT PIN survives by construction — its floor fixture's
+         * line carries the 'sk-' literal, the battery still runs
+         * and still aborts (glm28-1's own pinned-limit idiom).
+         */
+        if (false === strpos($line, 'gh')
+            && false === strpos($line, 'sk-')
+            && false === strpos($line, 'xai-')
+            && false === strpos($line, 'AKIA')
+            && false === strpos($line, 'AIza')
+            && false === strpos($line, 'xox')
+            && false === strpos($line, 'eyJ')
+            && false === strpos($line, '-----')
+            && false === strpos($line, '.')
+            && false === stripos($line, 'bearer')) {
+            continue;
+        }
+        foreach ($patterns as $name => $pattern) {
+            /*
+             * glm28-1: an abort is never clean. `=== 0` let a FALSE
+             * return (a PCRE abort — backtrack/match limit exhausted)
+             * fall into the match loop over an EMPTY $matches and
+             * answer zero findings for the pattern — the abort-as-
+             * reject straggler this walk's siblings already close
+             * (plugin-tools.php:2031's lens guard, the glm36-8 rule).
+             * The abort converts to the LOUD refusal in the walk's
+             * own vocabulary: the whole payload refuses, never a
+             * verdict reading clean over bytes the walk could not
+             * test. (Derivation note, recorded at the driven pin:
+             * the ten flat patterns auto-possessify on this PCRE2
+             * engine — no craftable line was found that aborts at
+             * any realistic limit — so the regression rides the
+             * pinned-limit idiom the suite's abort pins already
+             * ride, the floor where ANY match attempt aborts.)
+             */
+            $hits = preg_match_all($pattern[0], $line, $matches, PREG_OFFSET_CAPTURE);
+            if (false === $hits) {
+                return array( sprintf('%s: the secret-pattern walk aborted (PCRE: %s) — the secret scan cannot run', $label, preg_last_error_msg()) );
+            }
+            if (0 === $hits) {
+                continue;
+            }
+            foreach ($matches[0] as $match) {
+                if (wp_connectors_is_recognizably_fake_secret($match[0])) {
                     continue;
+                }
+                $in_code = false;
+                foreach ($spans as $span) {
+                    if ($match[1] >= $span[0] && $match[1] <= $span[1]) {
+                        $in_code = true;
+                        break;
+                    }
+                }
+                if ($in_code) {
+                    if (null === $code_marker) {
+                        $code_marker_pattern = wp_connectors_allow_marker_pattern($marker_family_ext, false);
+                        $code_marker = 1 === preg_match($code_marker_pattern, $code_view, $marker_match, PREG_OFFSET_CAPTURE);
+                        /*
+                         * t31-glm60-6 [R60-2, driven — the star arm
+                         * served the code consult ungated]: in code
+                         * bytes a line-initial '*' can be a
+                         * multiplication continuation ('<?php $r = 1
+                         * * secrets:allow; $k = …;' — engine-legal),
+                         * so the arm's match alone launders (driven:
+                         * star.md clean where the one-byte-different
+                         * xmark.md flagged). When the star arm is the
+                         * only carrier (the marker match dies with
+                         * the star-led prefix stripped), the TOKEN
+                         * VERDICT decides: a real T_COMMENT/
+                         * T_DOC_COMMENT span keeps the exemption
+                         * (the pinned docblock rows), code or string
+                         * data refuses.
+                         */
+                        if ($code_marker) {
+                            $star_stripped = preg_replace('/' . WP_CONNECTORS_MARKER_STAR_ARM . '[ \t]*/', ' ', $code_view, 1);
+                            /*
+                             * t31-glm61-1 [R61-1, driven x4 — the
+                             * round-60 verdict judged the WHOLE
+                             * LINE's span]: ANY comment token
+                             * overlapping any byte of the line — a
+                             * trailing '// c' or '# c' AFTER the
+                             * credential, a docblock later on the
+                             * line, an unclosed '/* c' — kept a
+                             * code-bytes line-initial '*' marker
+                             * exempt and laundered the live
+                             * credential (star.md with an unrelated
+                             * tail note answering 0 findings where
+                             * the byte-identical comment-free control
+                             * flagged). The verdict judges the
+                             * MARKER'S OWN SPAN — the matched opener
+                             * through 'secrets:allow' — so only a
+                             * comment covering the marker itself
+                             * exempts (the pinned docblock row keeps
+                             * its exemption: the marker sits INSIDE
+                             * the comment there).
+                             */
+                            $marker_span_start = $line_start + (int) $marker_match[0][1];
+                            $marker_span_end = $marker_span_start + strlen($marker_match[0][0]) - 1;
+                            if (1 !== preg_match($code_marker_pattern, $star_stripped)
+                                && ! wp_connectors_span_sits_in_comment($contents, $marker_span_start, $marker_span_end)) {
+                                $code_marker = false;
+                            }
+                        }
+                    }
+                    if ($code_marker) {
+                        continue;
+                    }
+                } else {
+                    if (null === $prose_marker) {
+                        if (null === $prose_view) {
+                            $prose_view = wp_connectors_line_without_string_literals($line);
+                        }
+                        /*
+                         * t31-glm54-6 [R54-6, driven fail-open — the
+                         * ambiguous pairing]: an ODD count of
+                         * unescaped quote bytes leaves the leftmost-
+                         * first pairing arbitrary, so a marker that
+                         * rides outside every blanked pair under the
+                         * arbitrary reading ('don't say 'x // marker
+                         * y' key' — the prose apostrophe pairing with
+                         * the string's own opener) read as CODE and
+                         * exempted the credential. The ambiguity
+                         * refuses the exemption: the marker cannot
+                         * prove comment-hood on a line whose pairing
+                         * no line-local lens can settle (the masked
+                         * view could — but the prose arm's charter is
+                         * the payloads that lex no PHP tokens, the
+                         * glm15-1 doctrine).
+                         */
+                        /*
+                         * t31-glm39-1 [R39-1, security:medium, driven
+                         * fail-open — the marker honored inside STRING
+                         * DATA at the sample-straddling boundary]: a
+                         * quote pair STRADDLING an embedded '<?php …
+                         * ?>' sample never pairs in the per-slice
+                         * prose view (the region compositor blanks
+                         * the sample bytes between them), so a
+                         * '// secrets:allow' marker sitting between
+                         * those quotes matched the prose arm and
+                         * exempted a live credential on the same line
+                         * (driven: guide.md's line "guide 'note <?php
+                         * $x=1; ?> ok // secrets:allow done'
+                         * ghp_<token>" answered 0 findings where the
+                         * identical line without the embedded sample
+                         * flags). The marker consults the
+                         * QUOTE-BLANKED prose view — the escape-aware
+                         * grammar pairs the quotes across the masked
+                         * sample bytes, a marker inside a string pair
+                         * blanking to spaces — glm19-2's own doctrine
+                         * (a marker-shaped text in string data is
+                         * DATA, never an exemption) at the one
+                         * boundary the per-slice view left open.
+                         */
+                        /*
+                         * t31-glm55-2 [R55-2, driven both directions —
+                         * the guard counted the WRONG string]: the
+                         * round-54 guard counted unescaped quotes on
+                         * the WHOLE RAW line while the pairing it
+                         * guards judges the region-stripped PROSE
+                         * view — an embedded sample's quotes flipped
+                         * the parity both ways (a sample apostrophe
+                         * making the raw count even while the judged
+                         * view stayed odd, the marker reading as code
+                         * and exempting the live credential; and the
+                         * mirror — a sample apostrophe making the raw
+                         * count odd over a QUOTE-FREE prose view,
+                         * false-flagging a legitimately-marked line
+                         * master exempts). The guard counts the same
+                         * string the consult judges: the prose view
+                         * (the non-region arm's view is the house
+                         * grammar's product over the whole line,
+                         * whose empty-shell replacement preserves the
+                         * per-class parity — counting it and counting
+                         * the raw line answer identically there, so
+                         * every round-54 pin rides unchanged).
+                         */
+                        $prose_marker = ! wp_connectors_line_quote_pairing_is_ambiguous($prose_view) && 1 === preg_match($allowMarker, wp_connectors_blank_quoted_strings($prose_view));
+                    }
+                    if ($prose_marker) {
+                        continue;
+                    }
                 }
                 // Never include the matched text in the finding.
                 $findings[] = sprintf('%s:%d %s (%s)', $label, $index + 1, $name, $pattern[1]);
@@ -151,38 +1897,303 @@ function wp_connectors_scan_string($contents, $label)
 /**
  * Recursively scans files under given roots.
  *
- * @param list<string> $roots Absolute paths (files or directories).
- * @return list<string> Findings.
+ * The segment prune is a DEV-TREE concept (review round t31-r12-3,
+ * closing the round-6 ledger line's named fix shape): the repository
+ * scan skips segments no source ever lives in — but a scan of an
+ * EXTRACTED ARTIFACT must never prune inside it. The builder never
+ * ships dev segments (the collector drops them by the one
+ * development-entry vocabulary), so a 'vendor'-shaped segment inside a
+ * shipped tree is not a place to skip reading, it IS the signal: the
+ * r6 HIGH had a live key at <slug>/src/Shared/vendor/keys.txt inspect
+ * ACCEPTED while the identical key at src/Shared/keys.txt rejected
+ * (reproduced) — the src/Shared dev-entry exemption exempts
+ * CLASSIFICATION, never the content judgment. Artifact scans pass
+ * false; the repository scan keeps the prune. (The prune list itself
+ * stays the repo walk's own traversal concept — a SUBSET of the one
+ * development-entry vocabulary, not a second vocabulary: pruning more
+ * of it would blind the repo scan to root config files it covers by
+ * contract. The SUBSET is judged by the vocabulary's own fold —
+ * wp_connectors_segment_is_named(), the mechanic
+ * wp_connectors_is_development_entry() rides (t31-ocr1-5) — so a
+ * case-variant 'VENDOR/' or 'Tools/' prunes exactly where the folded
+ * gates judge it a development entry, and 'Tests/' stays scanned:
+ * a vocabulary member the subset does not name is this scan's charge,
+ * not its skip. Never a byte-exact array_intersect twin here. The
+ * judgment rides segments BELOW the root only (t31-ocr1-12): the
+ * scan root's ANCESTORS are not this walk's dev tree, and judging
+ * them let a dev-named checkout ancestor blind the whole scan.)
+ *
+ * @param list<string> $roots               Absolute paths (files or directories).
+ * @param bool         $prune_dev_segments  Whether to skip development-tree segments (the repository scan's concept; artifact scans never prune).
+ * @return list<string> Findings — credential matches, plus one
+ *                      "unreadable file — the secret scan cannot run"
+ *                      line per file whose read failed (glm14-2), one
+ *                      "unreadable scan root — the secret scan cannot
+ *                      run" line per root that names nothing at all —
+ *                      missing or a dangling symlink (glm21-3), one
+ *                      "unreadable directory — the secret scan cannot
+ *                      run" line per walked root whose iteration
+ *                      aborted at a directory this process cannot
+ *                      open (glm22-1), and one "over the 2 MB
+ *                      secret-scan size limit" line per over-limit
+ *                      file — walked (glm14-3) or named directly at
+ *                      the file-root arm (glm20-1): the scan verdict
+ *                      is never clean over bytes it did not read;
+ *                      both consumers — the CLI's exit code and the
+ *                      inspector's violations — derive their refusal
+ *                      from this list.
+ * @throws RuntimeException When a per-entry read fails at the
+ *                          engine's own layer — the SPL iterator's
+ *                          RuntimeExceptions (getPathname()/getSize())
+ *                          pass untouched; the glm22-1 fence owns only
+ *                          the UnexpectedValueException boundary abort,
+ *                          never the per-entry class beside it.
  */
-function wp_connectors_scan_paths(array $roots)
+function wp_connectors_scan_paths(array $roots, bool $prune_dev_segments = true)
 {
     $findings = array();
-    $excluded = array( '.git', 'vendor', 'node_modules', 'dist', 'tools', '.phpunit.cache' );
+    $excluded = $prune_dev_segments ? array( '.git', 'vendor', 'node_modules', 'dist', 'tools', '.phpunit.cache' ) : array();
     foreach ($roots as $root) {
         if (is_file($root)) {
-            $findings = array_merge($findings, wp_connectors_scan_string((string) file_get_contents($root), $root));
+            /*
+             * glm20-1 (the round-20 #1 hybrid's caller-seam half): this
+             * arm had NO size cap — glm14-3's recorded 'a caller naming
+             * one file owns that choice' doctrine — but the census
+             * above charges only the span factor, and the scan's
+             * WHOLE-CALL terms ride uncharged over it (the second
+             * token stream the masker pays, the masked view, the
+             * regions array, the findings — the whole-call undercharge
+             * the round-20 ledger names as its residual), so a >2 MB
+             * single-file argument kept the fatal-without-verdict
+             * window however deliberately the caller named it (driven:
+             * a 2.85 MB prose-heavy payload scanned to zero findings,
+             * no refusal — every byte read, the bound never consulted).
+             * The named target answers the SAME loud refusal the walk
+             * ships (glm14-3's policy shape, the gate's own calibration
+             * basis — the 2 MB memory bound), never a silent clean
+             * verdict over bytes past it.
+             */
+            $size = filesize($root);
+            if (false !== $size && $size > 2 * 1024 * 1024) {
+                $findings[] = sprintf('%s: over the 2 MB secret-scan size limit — the secret scan cannot run', $root);
+                continue;
+            }
+            /*
+             * glm14-2: the read owns its failure — the old (string)
+             * cast laundered a false read (permission denial, a file
+             * vanished mid-walk) into an empty string, so a chmod-000
+             * file carrying a live token scanned to "0 finding(s)"
+             * exit 0 while every sibling gate treats the same shape
+             * as a loud FAIL (check-conventions' unreadable-file
+             * violation; php -l's exit 1). The failure IS a finding:
+             * the CLI's exit code and the inspector's verdict are
+             * both derived from this list, so both consumers refuse
+             * with zero changes. The @ suppresses only the engine's
+             * E_WARNING — the loud refusal is the finding line, the
+             * ocr30-4 doctrine.
+             */
+            $contents = @file_get_contents($root);
+            if (false === $contents) {
+                $findings[] = sprintf('%s: unreadable file — the secret scan cannot run', $root);
+                continue;
+            }
+            // glm18-2: the operator named this one file — content shape
+            // outranks the extension (a php-headed 'config.inc' rides
+            // the CODE arm).
+            $findings = array_merge($findings, wp_connectors_scan_string($contents, $root, true));
             continue;
         }
         if (! is_dir($root)) {
+            /*
+             * glm21-3: a root that names NOTHING — a typo'd CLI
+             * target, a dangling symlink — once answered 'secrets: 0
+             * finding(s)' exit 0, certifying a tree the scan never saw
+             * clean (the ocr20-4 narrative's shape, never adjudicated;
+             * the glm14-5/ocr53-4/glm14-2 doctrines refuse this class
+             * loudly everywhere else). The refusal is a finding line in
+             * the glm14-2 vocabulary — both consumers (the CLI's exit
+             * code, the inspector's violations) derive their refusal
+             * from this list with zero changes.
+             */
+            $findings[] = sprintf('%s: unreadable scan root — the secret scan cannot run', $root);
             continue;
         }
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
-        );
-        foreach ($iterator as $file) {
-            /** @var SplFileInfo $file */
-            $parts = explode(DIRECTORY_SEPARATOR, $file->getPathname());
-            if (array_intersect($parts, $excluded) !== array()) {
-                continue;
+        /*
+         * glm22-1 (the standing scan_paths residual since OCR round 24,
+         * closing by its own convention): a chmod-000 root or entry
+         * aborts the bare walk with the iterator's own
+         * UnexpectedValueException — from the RecursiveDirectoryIterator
+         * constructor or mid-recursion through getChildren() — and
+         * nothing caught it: the whole scan died with NO verdict (the
+         * CLI call site hands this walk an unfenced tree by
+         * construction, exit 255 on the uncaught SPL fatal). The walk
+         * rides the ocr33-6/ocr36-2 fence idiom every sibling walker
+         * already carries (check-conventions' glm17-17,
+         * inspect-artifact's t31-ocr24-2, the lint walk's
+         * t31-ocr30-3): the CONSTRUCTION rides the try (the ocr23 rd-1
+         * doctrine — the iteration seam's own first statement), the
+         * boundary abort converts to the walk's own named refusal in
+         * the glm14-2 vocabulary with the SPL message parenthetically,
+         * the findings collected from the readable trees before the
+         * abort stay (the partial count stays loud), and the
+         * per-entry RuntimeExceptions pass untouched (the fence owns
+         * the directory-OPEN boundary class alone).
+         */
+        try {
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)
+            );
+            // The prune judges segments BELOW the root only (verifier round
+            // t31-ocr1-12) — the lint walk's shape: the full pathname's
+            // ANCESTORS are not this walk's dev tree, and judging them let a
+            // 'dist'-shaped checkout ancestor blind the whole scan silently
+            // (reproduced: 0 findings under a Dist/ ancestor, 1 under Dst/
+            // — the exact-case shape was pre-round, the fold widened it to
+            // every casing).
+            /*
+             * The prefix arithmetic strips BOTH separator spellings (OCR
+             * round 31, t31-ocr31-5, the t31-ocr29-3 vocabulary class):
+             * rtrim($root, DIRECTORY_SEPARATOR) consulted only the native
+             * one, so a '/'-suffixed root on a separator host kept its
+             * trailing separator in the length while the iterator below
+             * treats '/' as a separator there too — $below_root one byte
+             * over, and every walked relative lost its first byte. The
+             * strip judges the spelling CLASS, never the host it runs on:
+             * on POSIX the '\' arm costs residue only for a path
+             * literally named with a trailing backslash byte (the
+             * ocr29-3 trade, residue over victim), and on this POSIX host
+             * the arithmetic is byte-identical to the former rtrim.
+             */
+            $below_root = strlen(rtrim($root, '/\\')) + 1;
+            foreach ($iterator as $file) {
+                /** @var SplFileInfo $file */
+                // The segment walk exists ONLY to prune, and pruning is
+                // constant for the whole walk: with $prune_dev_segments
+                // false (the artifact scan) the inner guard was provably
+                // never true, yet the explode+segment loop still ran per
+                // file — skipped entirely now (t31-ocr9-6; behavior
+                // identical: nothing prunes either way).
+                if ($prune_dev_segments) {
+                    $parts = explode(DIRECTORY_SEPARATOR, (string) substr($file->getPathname(), $below_root));
+                    foreach ($parts as $part) {
+                        if (wp_connectors_segment_is_named($part, $excluded)) {
+                            continue 2;
+                        }
+                    }
+                }
+                /*
+                 * t31-glm64-3 [R64-5, driven — the round-63 fence
+                 * sat INSIDE the !isFile() branch]: a resolving
+                 * FILE symlink answers isFile() TRUE (is_file
+                 * follows the link) and the walk READ THROUGH it,
+                 * judging the target's bytes under the link's own
+                 * pathname — the fence's own message falsified one
+                 * shape over. The link judgment precedes the kind
+                 * judgment: every link entry answers the refusal.
+                 */
+                if ($file->isLink()) {
+                    $findings[] = sprintf('%s: %s is a symlink — the secret scan never reads through a link; replace or remove the link', $root, $file->getPathname());
+                    continue;
+                }
+                if (! $file->isFile()) {
+                    continue;
+                }
+                /*
+                 * glm14-4: 'phtml' joins the allowlist the same round the
+                 * ONE is-a-source owner (wp_connectors_is_php_source())
+                 * gained the template class — the r6 ledger line's reopen
+                 * condition ("a real producer") was met by a driven
+                 * 'form.phtml' entry carrying a live token past this
+                 * screen. '.php5'/'.php7'/'.inc' stay out until a driven
+                 * producer ships one (the r6 bar).
+                 *
+                 * glm21-2: the allowlist rides BEFORE the size cap — the
+                 * cap once fired first, so a legitimate 3 MB assets/big.png
+                 * inside a shipped artifact rejected the WHOLE inspection
+                 * ('9 violations, exit 1') over bytes the extension screen
+                 * would never read (driven: the oversized .png answered the
+                 * loud cap finding where the walk never charges .png at
+                 * all). The cap fires only for extensions the scan would
+                 * actually read — the over-refusal direction of the cap's
+                 * own memory-bound purpose (glm14-3/glm20-1).
+                 */
+                /*
+                 * t31-glm62-2 [R62-2, driven both directions by both
+                 * the review and the driver — the r12 recorded
+                 * residual's re-open condition FIRED with the
+                 * demanded producer]: the read allowlist judged the
+                 * extension byte-exactly, so a trailing edge-junk
+                 * byte (space/tab/control, either edge) made a
+                 * credential-bearing file of a scanned family
+                 * invisible to the walk AND
+                 * to artifact inspection (a shipped
+                 * 'docs/notes.md\x20' carrying a live token ACCEPTED
+                 * where the clean-named twin REJECTED). The gate
+                 * folds TRAILING edge junk — the
+                 * wp_connectors_path_edge_junk class MINUS THE DOT:
+                 * a dot is the near-source grammar's own byte (the
+                 * inspector's fence owns that class; folding it here
+                 * would re-adjudicate near-source verdicts).
+                 */
+                $extension = trim(strtolower($file->getExtension()), str_replace('.', '', wp_connectors_path_edge_junk()));
+                /*
+                 * t31-glm38-2 [R38-2, security:medium, driven end-to-end]:
+                 * the walk's extension allowlist omitted html/htm/xhtml
+                 * while the SAME library's marker grammar
+                 * (wp_connectors_allow_marker_pattern, glm24-1) serves
+                 * exactly that family — a live credential embedded in an
+                 * HTML asset was never read: admin.html with a
+                 * github-token inside <script> shipped in the built zip
+                 * (collectFiles has no extension filter) and
+                 * inspect-artifact answered ACCEPTED exit 0 where the
+                 * byte-identical admin.svg answered REJECTED — the same
+                 * bytes judged purely by extension, the marker grammar's
+                 * own family never reaching its reader. The markup trio
+                 * joins the walk allowlist, the marker family and the
+                 * read set agreeing for the first time (the ledger's
+                 * generic allowlist residual: a driven producer, the bar
+                 * met).
+                 */
+                if ($extension !== '' && ! in_array($extension, array( 'php', 'phtml', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml', 'html', 'htm', 'xhtml' ), true)) {
+                    continue;
+                }
+                if ($file->getSize() > 2 * 1024 * 1024) {
+                    /*
+                     * glm14-3: the 2 MB cap is a deliberate memory bound —
+                     * the scan is line-based over the whole file's
+                     * contents, so the bound exists to keep a hostile
+                     * multi-gigabyte entry from exhausting the process
+                     * before a verdict lands (CORRECTED at glm20-1: the
+                     * file-root arm above once had no cap under this
+                     * paragraph's 'a caller naming one file owns that
+                     * choice' premise — the whole-call undercharge kept the
+                     * fatal window the caller's naming could not close, and
+                     * the named target rides the same loud refusal now; the
+                     * WALK still judges trees it did not choose).
+                     * The skip is LOUD, never silent: an over-limit file
+                     * answers a finding line in the glm14-2 vocabulary, so
+                     * the verdict never reads clean over bytes the scan
+                     * did not read — a zip shipping a >2 MB entry now
+                     * fails the inspector's credential screen instead of
+                     * passing ACCEPTED (driven red at HEAD: exactly 1
+                     * finding, the oversized twin invisible).
+                     */
+                    $findings[] = sprintf('%s: over the 2 MB secret-scan size limit — the secret scan cannot run', $file->getPathname());
+                    continue;
+                }
+                /*
+                 * glm14-2 (the walk arm of the file-root arm above): a
+                 * false read is a finding, never a laundered empty scan.
+                 */
+                $contents = @file_get_contents($file->getPathname());
+                if (false === $contents) {
+                    $findings[] = sprintf('%s: unreadable file — the secret scan cannot run', $file->getPathname());
+                    continue;
+                }
+                $findings = array_merge($findings, wp_connectors_scan_string($contents, $file->getPathname()));
             }
-            if (! $file->isFile() || $file->getSize() > 2 * 1024 * 1024) {
-                continue;
-            }
-            $extension = strtolower($file->getExtension());
-            if ($extension !== '' && ! in_array($extension, array( 'php', 'js', 'json', 'txt', 'md', 'xml', 'yml', 'yaml', 'neon', 'env', 'ini', 'dist', 'po', 'svg', 'sh', 'go', 'conf', 'config', 'properties', 'pem', 'key', 'toml' ), true)) {
-                continue;
-            }
-            $findings = array_merge($findings, wp_connectors_scan_string((string) file_get_contents($file->getPathname()), $file->getPathname()));
+        } catch (UnexpectedValueException $walk_refusal) {
+            $findings[] = sprintf('%s: unreadable directory — the secret scan cannot run (%s)', $root, $walk_refusal->getMessage());
         }
     }
 

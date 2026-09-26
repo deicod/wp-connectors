@@ -141,6 +141,58 @@ function has_action($tag, $callback = false)
     return has_filter($tag, $callback);
 }
 
+/**
+ * The ONE hook-iteration owner (glm27-2): core's WP_Hook walks the
+ * priorities through a LIVE pointer that add_filter()/
+ * remove_filter() re-sync mid-run (class-wp-hook.php's
+ * resort_active_iterations, pinned 7.1.1 — derived against the local
+ * reference): the walk re-derives the priority list at every bucket
+ * boundary, so a remove at a pending priority STOPS its delivery
+ * (the bucket is consulted when the walk reaches it, never snap-
+ * shotted at run start) and an add at a pending priority DELIVERS
+ * (the new priority is in the list the next tick reads). The old
+ * `foreach (WpHarness::$filters[$tag])` rode PHP's copy-on-write
+ * snapshot — the exact inverse of core on BOTH shapes: an
+ * unhook-before-it-runs STILL RAN (the snapshot still carried the
+ * bucket) and a mid-run add at a pending priority was INVISIBLE
+ * (the mutation detached the walk's copy; driven red at HEAD both
+ * ways). The bucket itself is snapshotted at ITS start — core's own
+ * `foreach ($this->callbacks[$priority])` shape: a same-bucket
+ * unhook of a LATER sibling still delivers, and a same-bucket add
+ * never joins the running bucket.
+ *
+ * Emulation boundary, recorded: core's resort also steps the pointer
+ * BACK for a priority ADDED at the numeric value currently executing
+ * (class-wp-hook.php's $new_priority === current_priority arm) — a
+ * self-re-entering quirk no suite shape rides; this walk keeps the
+ * forward-only floor (a bucket, once left, never re-runs in one
+ * pass), the honest approximation of every driven shape.
+ *
+ * @param string $tag Hook tag.
+ * @return iterable<array{callback: mixed, accepted_args: int, key: string}> The live walk's entries.
+ */
+function wp_connectors_harness_hook_entries($tag)
+{
+    $floor = null;
+    while (true) {
+        $next = null;
+        foreach (array_keys(WpHarness::$filters[ $tag ] ?? array()) as $priority) {
+            if (null === $floor || $priority > $floor) {
+                $next = $priority;
+                break;
+            }
+        }
+        if (null === $next) {
+            return;
+        }
+        $floor = $next;
+        $bucket = WpHarness::$filters[ $tag ][ $next ] ?? array();
+        foreach ($bucket as $entry) {
+            yield $entry;
+        }
+    }
+}
+
 function apply_filters($tag, $value, ...$args)
 {
     if (! isset(WpHarness::$filters[ $tag ])) {
@@ -149,12 +201,20 @@ function apply_filters($tag, $value, ...$args)
 
     WpHarness::$current_action_stack[] = $tag;
     try {
-        foreach (WpHarness::$filters[ $tag ] as $callbacks) {
-            foreach ($callbacks as $entry) {
-                $call_args = array_merge(array( $value ), $args);
-                $call_args = array_slice($call_args, 0, max(1, $entry['accepted_args']));
-                $value = call_user_func_array($entry['callback'], $call_args);
-            }
+        foreach (wp_connectors_harness_hook_entries($tag) as $entry) {
+            /*
+             * glm28-7: the arity rides VERBATIM (core's call shape —
+             * WP_Hook::apply_filters, class-wp-hook.php pinned 7.1.1:
+             * array_slice over (int) $accepted_args, no floor): the
+             * max(1, ...) clamp passed ONE arg to a 0-arity callback —
+             * an ArgumentCountError in production for a registration
+             * core serves with zero. The glm14 deferral this closes
+             * named exactly this clamp (latent then: no in-repo ', 0)'
+             * registration; the first driven evidence now on record).
+             */
+            $call_args = array_merge(array( $value ), $args);
+            $call_args = array_slice($call_args, 0, $entry['accepted_args']);
+            $value = call_user_func_array($entry['callback'], $call_args);
         }
     } finally {
         array_pop(WpHarness::$current_action_stack);
@@ -172,13 +232,9 @@ function do_action($tag, ...$args)
     WpHarness::$current_action_stack[] = $tag;
 
     try {
-        if (isset(WpHarness::$filters[ $tag ])) {
-            foreach (WpHarness::$filters[ $tag ] as $callbacks) {
-                foreach ($callbacks as $entry) {
-                    $call_args = array_slice($args, 0, $entry['accepted_args']);
-                    call_user_func_array($entry['callback'], $call_args);
-                }
-            }
+        foreach (wp_connectors_harness_hook_entries($tag) as $entry) {
+            $call_args = array_slice($args, 0, $entry['accepted_args']);
+            call_user_func_array($entry['callback'], $call_args);
         }
     } finally {
         array_pop(WpHarness::$current_action_stack);
@@ -227,32 +283,211 @@ function get_option($option, $default = false)
     return $default;
 }
 
+/**
+ * The STORED copy of an option value — core's own storage shape
+ * (glm19-5).
+ *
+ * Core's head clone (option.php:882-884/:1108-1110, pinned 7.1.1) is
+ * SHALLOW, but core's row is serialized BYTES at the database layer:
+ * the stored value shares NO object reference with the caller, nested
+ * objects included. The harness has no database, so the serialization
+ * detachment rides the WRITE itself — unserialize(serialize()), the
+ * stored row serialized-equal to what core's maybe_serialize() would
+ * persist, cheap at stub scale. Scalars are immutable in PHP and ride
+ * through untouched.
+ *
+ * @param mixed $value The sanitized value about to be stored.
+ * @return mixed The detached stored copy.
+ */
+function wp_connectors_option_stored_copy($value)
+{
+    return (is_object($value) || is_array($value)) ? unserialize(serialize($value)) : $value;
+}
+
+/**
+ * Core's clone-at-head over an object value — the ONE owner of the
+ * head shape (glm23-5): update_option() (option.php:882-884, pinned
+ * 7.1.1), add_option() (:1108-1110), and set_transient()'s delegated
+ * branches each clone an object BEFORE the hook family fires, so an
+ * observer at 'add_option'/'update_option' mutates the CLONE, never
+ * the caller's object (glm18-8/glm19-4/glm22-5 — the doctrine each
+ * seat's own comment carries). The head was hand-copied at all three
+ * seats: a core-parity correction landing at the twins alone left the
+ * transient seat silently keeping the old shape (the exact divergence
+ * class glm22-4/5/6 closed). Scalars ride through untouched.
+ *
+ * @param mixed $value The incoming value at the seat's head.
+ * @return mixed The cloned object, or the value verbatim.
+ */
+function wp_connectors_option_head_clone($value)
+{
+    return is_object($value) ? clone $value : $value;
+}
+
+/**
+ * Core's TWO-ARM unchanged compare — the ONE owner of the refusal
+ * predicate (glm23-5): the identity compare, then maybe_serialize()
+ * equality over equal-valued non-identical arrays/objects
+ * (option.php:923, pinned 7.1.1 — glm17-8's doctrine, core's own
+ * comment citing ticket #38903). update_option() and
+ * set_transient()'s update branch spelled the two arms inline; the
+ * twins' next compare correction now lands HERE alone, every seat's
+ * refusal flipping with it.
+ *
+ * @param mixed $old  The stored row's value.
+ * @param mixed $value The sanitized incoming value.
+ * @return bool True when the re-save is UNCHANGED — refuse it.
+ */
+function wp_connectors_value_unchanged($old, $value)
+{
+    return $old === $value
+        || ((is_array($value) || is_object($value)) && serialize($value) === serialize($old));
+}
+
+/**
+ * The '_transient_<name>' option-row spelling — the ONE owner of the
+ * eleven-byte convention (glm26-9): set_transient()'s delegated row,
+ * delete_transient()'s delegated delete, and the wpdb enumeration's
+ * option_name presentation each spelled the concat by hand, and this
+ * round's substr(10) off-by-one at the reverse parse is the
+ * demonstrated hazard of unowned spellings.
+ *
+ * @param string $name Transient name.
+ * @return string The option row's name.
+ */
+function wp_connectors_transient_option_name($name)
+{
+    return '_transient_' . $name;
+}
+
+/**
+ * The REVERSE parse — whether an option name is a transient VALUE
+ * row, and the transient's name when it is (glm26-9: the parse twin
+ * of the owner above). glm27-1 CORRECTS glm26-3's exclusion: core's
+ * delete_option() is namespace-blind — the row '_transient_
+ * timeout_<name>' IS the value row of a transient named
+ * 'timeout_<name>' (delete_option over a live aliased row answers
+ * true and kills it, option.php's row-check → pre-hook → delete →
+ * result-gated pair), so the value parse resolves the WHOLE
+ * '_transient_' family, timeout spellings included. The alias's
+ * other reading is the timeout owner below.
+ *
+ * @param string $option Option name.
+ * @return string|false The transient name, or false when the option
+ *                      names no transient value row.
+ */
+function wp_connectors_transient_name_from_option($option)
+{
+    if (0 !== strpos($option, '_transient_')) {
+        return false;
+    }
+
+    return substr($option, strlen('_transient_'));
+}
+
+/**
+ * The TIMEOUT-half parse — whether an option name is the
+ * '_transient_timeout_<name>' row, and whose timeout it arms
+ * (glm27-1): the same string the value parse above reads as the
+ * value row of transient 'timeout_<name>' ALSO names the timeout
+ * row of transient '<name>' — core carries ONE physical row under
+ * the name, however it was written. The harness models the timeout
+ * half as the transient entry's expires_at (no separate rows, the
+ * standing simplification): the row EXISTS in this model exactly
+ * when the transient is live and its window is ARMED (expires_at
+ * !== false — a no-expiration transient wrote no timeout row), and
+ * deleting it disarms the window without touching the value half.
+ *
+ * @param string $option Option name.
+ * @return string|false The transient whose timeout row the option
+ *                      names, or false when it names none.
+ */
+function wp_connectors_transient_timeout_name_from_option($option)
+{
+    if (0 !== strpos($option, '_transient_timeout_')) {
+        return false;
+    }
+
+    return substr($option, strlen('_transient_timeout_'));
+}
+
 function update_option($option, $value, $autoload = null)
 {
-    $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
-
     /*
-     * Core semantics: no update (and no hooks, no write, no autoload
-     * flip) when the value is unchanged — the short-circuit runs BEFORE
-     * any autoload handling. glm23-8 (review round 23, finding 8)
-     * removed the old `null === $autoload` condition: an unchanged-value
-     * save with an explicit autoload argument used to rewrite the row,
-     * flip the recorded autoload, and return true where core returns
-     * false with no write at all.
+     * glm16-3: core sanitizes at the HEAD, then compares — never a
+     * raw-input compare (driven: core's own order at update_option()'s
+     * head). The stub's raw-compare-first meant a raw-equal save never
+     * consulted the sanitizer at all (a counting callback answered
+     * runs=0 over a save core sanitizes before judging), and a
+     * false-RETURNING callback completed an ADD core refuses outright:
+     * the sanitized false compares EQUAL to the missing-row false, one
+     * refusal with no hooks and no write. The glm23-8 unchanged-value
+     * contract keeps its outcome — no update, no hooks, no write, no
+     * autoload flip when the stored value equals the saved one — it
+     * just rides the core-ordered compare now, with the sanitizer run
+     * first exactly like core's.
+     *
+     * glm16-5: the delegation below re-sanitizes at add_option()'s own
+     * head — core's BOTH-HEADS shape, structural through the natural
+     * delegation (never a forced double call): a FIRST save runs the
+     * registered callback exactly twice, every subsequent save once.
+     * The round-15 runs=1 spec was wrong; core parity wins.
+     *
+     * glm18-8: core CLONES an object value at the head, before the
+     * sanitizer (option.php:882-884, pinned 7.1.1) — the harness
+     * stores live references, so a caller mutating the object they
+     * saved and re-saving it hit the identity arm with the SAME
+     * reference on both sides and the save answered false with ZERO
+     * hooks where core's detached copy completes with the full hook
+     * family (driven). The head clone detaches the stored row from
+     * the caller's reference — the identity arm compares two distinct
+     * objects and maybe_serialize() equality decides, exactly core's
+     * compare; an UNCHANGED re-save still answers core's silent
+     * false (the glm17-8 second arm, now over detached copies).
+     *
+     * glm23-5: the head clone and the two-arm compare ride their ONE
+     * owners (wp_connectors_option_head_clone() /
+     * wp_connectors_value_unchanged()) — the third hand-copied
+     * spelling at set_transient() below closed with them.
      */
-    if ($old === $value) {
+    $value = wp_connectors_option_head_clone($value);
+    $value = sanitize_option($option, $value);
+    $old = array_key_exists($option, WpHarness::$options) ? WpHarness::$options[ $option ] : false;
+    /*
+     * glm17-8: core's unchanged compare carries TWO arms (option.php:923,
+     * pinned 7.1.1, pre-verified): the identity compare, then
+     * maybe_serialize() equality — 'if the unserialized data differs,
+     * the (maybe) serialized data is checked to avoid unnecessary
+     * database calls for otherwise identical object instances' (core's
+     * own comment, ticket #38903). Two equal-VALUED but non-identical
+     * arrays/objects are UNCHANGED to core: no write, no hooks, no
+     * autoload flip. The stub rode the identity arm alone — the exact
+     * identity-vs-value class glm16-12 eradicated from the cron key
+     * 350 lines above, reopened on the option path (driven: an
+     * equal-valued ArrayObject save wrote and fired the update
+     * family). glm23-5: the arms ride their ONE owner
+     * (wp_connectors_value_unchanged()).
+     */
+    if (wp_connectors_value_unchanged($old, $value)) {
         return false;
     }
 
     /*
      * Core semantics (see add_option()'s docblock below): a save for a
-     * MISSING row delegates to add_option(), which fires ONLY the
-     * add_option_ hook family — never update_option_{$option} or
-     * updated_option (code-review GLM1 #7; the stub previously fired the
-     * update family here, so tests emulating a first persisted save
-     * exercised the wrong hook path).
+     * row core's get_option() reads as FALSE delegates to add_option(),
+     * which fires ONLY the add_option_ hook family — never
+     * update_option_{$option} or updated_option (code-review GLM1 #7;
+     * the stub previously fired the update family here, so tests
+     * emulating a first persisted save exercised the wrong hook path).
+     *
+     * glm15-14: the predicate is get_option-SHAPED, not array_key_exists
+     * — a row STORED AS FALSE is indistinguishable from a missing row
+     * through core's get_option() (both answer false), so core routes
+     * its save to the ADD family while the harness's exists-check routed
+     * UPDATE (driven: the stored-false save fired update_option_ in the
+     * harness, the add family in core).
      */
-    if (! array_key_exists($option, WpHarness::$options)) {
+    if (false === $old) {
         return add_option($option, $value, '', $autoload);
     }
 
@@ -267,7 +502,11 @@ function update_option($option, $value, $autoload = null)
      */
     do_action('update_option', $option, $old, $value);
 
-    WpHarness::$options[ $option ] = $value;
+    // glm19-5: the write stores the SERIALIZED-EQUAL copy — core's
+    // row is serialized bytes, so no nested reference survives the
+    // write (the hooks above observe the caller-shaped $value, exactly
+    // core's pre-INSERT vantage).
+    WpHarness::$options[ $option ] = wp_connectors_option_stored_copy($value);
     if (null !== $autoload) {
         WpHarness::$option_autoload[ $option ] = (bool) $autoload;
     } elseif (! array_key_exists($option, WpHarness::$option_autoload)) {
@@ -282,26 +521,167 @@ function update_option($option, $value, $autoload = null)
 
 function add_option($option, $value = '', $deprecated = '', $autoload = null)
 {
-    if (array_key_exists($option, WpHarness::$options)) {
+    /*
+     * glm19-4: core clones an object value at the TRUE head here TOO —
+     * BOTH heads (option.php:1108-1110 ahead of :1113's sanitize,
+     * pinned 7.1.1, the same shape glm18-8 pinned at
+     * update_option()'s :882-884) — the stub's direct-add path stored
+     * the caller's LIVE reference, so a mutate-in-place re-save
+     * through update_option() compared the caller's reference against
+     * itself-as-stored and answered the unchanged false with ZERO
+     * hooks where core's add-time detached copy completes with the
+     * full family (driven — glm18-8's exact class through the other
+     * entry point).
+     *
+     * glm23-5: the head clone rides its ONE owner
+     * (wp_connectors_option_head_clone()) beside both twins and the
+     * transient seat below.
+     */
+    $value = wp_connectors_option_head_clone($value);
+    /*
+     * glm17-9: core sanitizes at the TRUE head — BEFORE the
+     * exists-guard (option.php:1113's sanitize_option() precedes the
+     * :1121 guard, pinned 7.1.1) — so an add over an existing row
+     * still counts the add-head run before it answers the guard's
+     * false. The stub had the guard first, silently skipping the
+     * sanitizer on the no-op path (driven: the existing-row add ran
+     * the registered callback zero times).
+     */
+    $value = sanitize_option($option, $value);
+    /*
+     * glm17-4 CORRECTS glm16-4's premise: core's INSERT does NOT die
+     * in a duplicate-key collision — it rides ON DUPLICATE KEY UPDATE
+     * (option.php:1142 in the pinned WP 7.1.1, pre-verified against
+     * the local reference), and core's guard (default-option filter
+     * !== get_option()) returns early ONLY for a row that reads
+     * NON-false through get_option(). A row STORED AS FALSE reads
+     * false — indistinguishable from missing — so the guard PASSES,
+     * the hooks fire, the ON DUPLICATE KEY UPDATE overwrites the row,
+     * and add_option() answers TRUE (the stored-false add completes
+     * observably, exactly like a first save). glm16-4 had inverted
+     * core on this shape (a silent no-op for BOTH stored rows) off a
+     * collision premise the pinned source falsifies; the silent no-op
+     * now stands for the NON-false duplicate alone, core's own guard
+     * shape.
+     */
+    if (array_key_exists($option, WpHarness::$options) && false !== WpHarness::$options[ $option ]) {
         return false;
     }
-    WpHarness::$options[ $option ] = $value;
+
+    /*
+     * glm18-9: core fires the GENERIC 'add_option' action BEFORE the
+     * write (option.php:1140's do_action precedes :1142's INSERT, WP
+     * 7.1.1) — an observer at the hook reads the row through
+     * get_option() as core reads it: the OLD value (false for a first
+     * add), never the new one (driven: the stub had written first, so
+     * the observer read the new value). The specific and closing
+     * hooks stay POST-write, core's own order around the cache set.
+     */
+    do_action('add_option', $option, $value);
+
+    /*
+     * glm15-3/glm16-5 (the head-of sanitize moved above the guard at
+     * glm17-9, core's own order — the runs arithmetic this comment
+     * carries is unchanged by the move): core calls sanitize_option()
+     * at the head of add_option() (option.php:1113, WP 7.1.1), and it
+     * runs at BOTH heads of a first save (update_option()'s own head
+     * AND the add_option() it delegates to), so a delegated first
+     * save runs the callback exactly TWICE, structural through the
+     * natural delegation (never a forced double call), and every
+     * subsequent save exactly once.
+     */
+    // glm19-5: the INSERT stores the SERIALIZED-EQUAL copy, the same
+    // detached-row shape update_option()'s write owns — storage
+    // semantics identical by entry point.
+    WpHarness::$options[ $option ] = wp_connectors_option_stored_copy($value);
     WpHarness::$option_autoload[ $option ] = null === $autoload ? true : (bool) $autoload;
 
     // Core semantics: adding an option fires the add-option hook family —
     // NOT update_option_{$option}. (update_option() delegates to add_option()
     // when the row is missing, so a first-ever save fires these hooks only;
     // the specific hook passes exactly two args: option name, value.)
-    do_action('add_option', $option, $value);
     do_action("add_option_{$option}", $option, $value);
     do_action('added_option', $option, $value);
 
     return true;
 }
 
+/**
+ * The ONE row-exists predicate for the delete seat (glm27-3): the
+ * missing-row consult AND the post-pre-hook affected-rows gate read
+ * the SAME three representations of core's one row — the seeded
+ * literal option row, the value-half transient (identity-keyed,
+ * glm26-1), and the armed timeout half (glm27-1's model of the
+ * '_transient_timeout_<name>' row). The gate is core's own shape
+ * (option.php:1253, pinned 7.1.1): \$wpdb->delete()'s AFFECTED ROWS
+ * decide the success pair, and a mid-action observer at the
+ * 'delete_option' pre-hook that deleted the row leaves the delete
+ * affecting nothing — false, no success hooks — where the seat once
+ * fired the pair unconditionally (the glm26-2 class one seat over:
+ * the store re-consulted, never the pre-family capture trusted).
+ *
+ * @param string      $option    Option name.
+ * @param string|false $transient The value-half transient name, or false.
+ * @param string|false $timeout_of The timeout-half transient name, or false.
+ * @return bool True when any modeled representation of the row is live.
+ */
+function wp_connectors_delete_option_row_live($option, $transient, $timeout_of)
+{
+    if (array_key_exists($option, WpHarness::$options)) {
+        return true;
+    }
+    if (false !== $transient && array_key_exists($transient, WpHarness::$transients)) {
+        return true;
+    }
+
+    return false !== $timeout_of
+        && isset(WpHarness::$transients[ $timeout_of ])
+        && false !== WpHarness::$transients[ $timeout_of ]['expires_at'];
+}
+
 function delete_option($option)
 {
-    if (! array_key_exists($option, WpHarness::$options)) {
+    /*
+     * glm25-7: core is ONE row — a '_transient_'-prefixed key names
+     * the row the transient store may model, so the delete owns that
+     * half of the mirror too (glm24-3 closed the transient-to-option
+     * direction; this is the option-to-transient one, the uninstall
+     * path's LIKE-enumeration deletes the shape — the wpdb stub
+     * presents transient rows in their _transient_<name> option_name
+     * form). The missing-row predicate consults BOTH stores: the row
+     * exists whichever store carries it. glm27-1 CORRECTS the
+     * '_transient_timeout_' family's standing no-such-row
+     * simplification (glm25-7/glm26-3's premise — that core answers
+     * false over the family — held only for ABSENT rows): the family
+     * names a row the harness DOES model, twice over. The string
+     * '_transient_timeout_<name>' is core's ONE physical row under
+     * two readings — the VALUE row of a transient named
+     * 'timeout_<name>' (the value parse) AND the timeout row of
+     * transient '<name>' (the timeout parse, the entry's armed
+     * expires_at this harness's model of that row). The row EXISTS
+     * when ANY reading names a live half — a seeded literal option
+     * row, a live aliased transient, an armed window — and the
+     * delete kills EVERY half it names: the aliased transient's
+     * whole entry, the timeout reading's window DISARMED alone
+     * (core: the value row '_transient_<name>' survives its timeout
+     * row's delete — the transient serves its value forever after),
+     * and the literal option row.
+     */
+    /*
+     * glm26-1: the transient half gates on IDENTITY, never truthiness
+     * — '0' and '' are live transient names, and the `$transient &&`
+     * truthiness gates let their deletes answer the missing-row false
+     * over a live row, the row surviving its own delete (driven; the
+     * PHP-truthiness class this loop has closed repeatedly).
+     *
+     * glm26-3/glm26-9: the parse rides its ONE owner — glm27-1
+     * widens the owner's value parse to the whole '_transient_'
+     * family and adds the timeout twin beside it (the two readings
+     * of the one row, each unable to drift from its spelling again).
+     */
+    $transient = wp_connectors_transient_name_from_option($option);
+    $timeout_of = wp_connectors_transient_timeout_name_from_option($option);
+    if (! wp_connectors_delete_option_row_live($option, $transient, $timeout_of)) {
         // Core still runs the DELETE (and its caches) for a missing row;
         // record the ATTEMPT so tests can pin "no needless delete" call
         // shapes (e.g. availability state cleanup).
@@ -309,8 +689,46 @@ function delete_option($option)
 
         return false;
     }
+    /*
+     * glm26-4: core's own hook family (option.php:1227/:1264/:1273,
+     * pinned 7.1.1) — the generic 'delete_option' action fires BEFORE
+     * the delete (the row still present to the observer), and the
+     * keyed 'delete_option_{$option}' + closing 'deleted_option'
+     * pair fires AFTER a SUCCESSFUL delete alone, each at its own
+     * single $option arity; a missing row fires NONE (core's row
+     * check returns before the pre-hook). The seat modeled zero hook
+     * seats — newly load-bearing because glm25-6 routes every
+     * transient deletion through this seat as core's own delegation.
+     *
+     * glm27-3: 'successful' is core's AFFECTED-ROWS gate
+     * (option.php:1253, pinned 7.1.1) — the delete's result decides
+     * the pair, and the harness's result is the store re-consult: a
+     * mid-action observer at the pre-hook may have deleted the row
+     * (a legal core shape; the inner delete answers its own family),
+     * and the outer delete then affects NOTHING — false with no
+     * success hooks, never the true + double pair the seat once
+     * answered (driven; the glm26-2 class one seat over).
+     */
+    do_action('delete_option', $option);
+    if (! wp_connectors_delete_option_row_live($option, $transient, $timeout_of)) {
+        WpHarness::$delete_option_attempts[] = $option;
+
+        return false;
+    }
+    if (false !== $transient) {
+        unset(WpHarness::$transients[ $transient ]);
+    }
+    if (false !== $timeout_of
+        && isset(WpHarness::$transients[ $timeout_of ])
+        && false !== WpHarness::$transients[ $timeout_of ]['expires_at']) {
+        // glm27-1: the timeout half dies ALONE — the value row it
+        // armed survives, core's own shape over the one row's halves.
+        WpHarness::$transients[ $timeout_of ]['expires_at'] = false;
+    }
     unset(WpHarness::$options[ $option ], WpHarness::$option_autoload[ $option ]);
     WpHarness::$delete_option_attempts[] = $option;
+    do_action("delete_option_{$option}", $option);
+    do_action('deleted_option', $option);
 
     return true;
 }
@@ -347,6 +765,39 @@ function get_transient($transient)
 
 function set_transient($transient, $value, $expiration = 0)
 {
+    /*
+     * glm23-2: core's own FIRST STATEMENTS (option.php:1526/:1539,
+     * pinned 7.1.1) — the pre_set_transient_<name> filter rewrites
+     * the value at the head (the rewritten value flows to storage AND
+     * compare, exactly what the delegated add/update_option() would
+     * persist) and the expiration_of_transient_<name> filter follows
+     * it, the rewritten TTL arming the row. The harness seat dropped
+     * the whole family (driven: the filter never ran). The completion
+     * actions — set_transient_<name> ($value, $expiration,
+     * $transient, option.php:1594) then the generic set_transient
+     * ($transient, $value, $expiration, :1605) — fire over a
+     * COMPLETED save alone (`if ( $result )`, :1579): the unchanged
+     * re-save's false (glm22-4) fires neither. The deprecated
+     * 'setted_transient' action (:1618) rides the harness's standing
+     * no-do_action_deprecated simplification.
+     */
+    $value = apply_filters("pre_set_transient_{$transient}", $value, $expiration, $transient);
+    $expiration = apply_filters("expiration_of_transient_{$transient}", $expiration, $value, $transient);
+    /*
+     * glm24-5: the completion actions observe the value the frame
+     * carries HERE — pre-head-clone, pre-head-sanitize. Core's clone
+     * (glm22-5's doctrine) and sanitize (glm22-6's) live INSIDE the
+     * delegated by-value twins (add_option()/update_option() receive
+     * $value by value; their reassignments never propagate back), so
+     * core's own do_action("set_transient_{$transient}", $value, ...)
+     * at option.php:1594/:1605 hands the observer the
+     * pre_set-filtered RAW value — the caller's own object instance
+     * included. The frame's reassignments below (the clone, the
+     * sanitize) stop before the action seat; the add/update family
+     * hooks keep observing sanitized+cloned exactly as the twins pin
+     * it.
+     */
+    $completion_value = $value;
     if ($expiration > 0) {
         $expires_at = WpHarness::now() + $expiration;
     } elseif ($expiration < 0) {
@@ -355,19 +806,288 @@ function set_transient($transient, $value, $expiration = 0)
     } else {
         $expires_at = false;
     }
+    /*
+     * glm21-6: core's set_transient() delegates the write itself to
+     * add_option()/update_option() over the '_transient_<name>' row
+     * (option.php, pinned 7.1.1), so the transient store answers the
+     * option twins' own DETACHMENT and HOOK semantics, never a
+     * live-reference silent store: the stored value rides
+     * wp_connectors_option_stored_copy() (glm19-5's doctrine — core's
+     * row is serialized bytes at the database layer, so a caller
+     * mutating the object/array they saved no longer leaks into
+     * get_transient), and the add/update option hook family fires
+     * over the row's '_transient_<name>' spelling — the generic action
+     * PRE-write (glm18-9's order), the specific and closing hooks
+     * post-write, exactly the twins' own shapes and arities. The
+     * add-vs-update predicate is get_option-shaped like the twins'
+     * own (glm15-14): a row stored as false reads missing, the ADD
+     * family fires. The '_transient_timeout_<name>' half of core's
+     * delegation is not modeled — the harness expires in place
+     * (expires_at) and no such row exists to fire over, the recorded
+     * simplification at this seam.
+     */
+    /*
+     * glm22-5: the head clone — the glm18-8/glm19-4 doctrine at the
+     * delegation's own head: core's add_option()/update_option() each
+     * clone an object value BEFORE the hook family fires, so an
+     * observer at 'add_option'/'update_option' mutates the CLONE,
+     * never the caller's object; the harness handed the family the
+     * caller's LIVE reference, so a mutating observer reached the
+     * caller's value through the transient seat (driven — the clone
+     * doctrine glm21-6's delegation missed). The hooks observe the
+     * clone at core's own pre-INSERT vantage (a hook-seat mutation
+     * lands in the STORED row, exactly the twins' shape), and the
+     * stored row keeps its own serialized-equal copy (glm19-5/glm21-6)
+     * — observers mutate copies, never the caller's value.
+     *
+     * glm23-5: the head clone and the two-arm compare ride their ONE
+     * owners (wp_connectors_option_head_clone() /
+     * wp_connectors_value_unchanged()) with the twins above — this
+     * seat's spelling was the THIRD hand copy.
+     */
+    $value = wp_connectors_option_head_clone($value);
+    $transient_option = wp_connectors_transient_option_name($transient);
+    /*
+     * glm22-6: sanitize at the head — core's delegation rides
+     * add_option()/update_option(), and BOTH twins sanitize at their
+     * own heads (glm15-3/glm16-5/glm17-9), so the transient row's own
+     * filter — sanitize_option__transient_<name> — runs at every core
+     * save where the harness never consulted it (driven: the filter
+     * never fired). Exactly ONE run per save whichever family
+     * persists it (the delegation is either/or: the ADD branch rides
+     * add_option's head, the UPDATE branch update_option's own —
+     * never both), the sanitized value comparing (glm16-3's core
+     * order), storing, and riding every hook.
+     */
+    $value = sanitize_option($transient_option, $value);
+    /*
+     * glm23-3: the predicate reads through the OPTION store too —
+     * core's set_transient() asks get_option($transient_option)
+     * (option.php:1548, pinned 7.1.1), the same row a seed's
+     * add_option('_transient_<name>') wrote, so a seeded row answers
+     * the UPDATE family with its own value as the old where the
+     * harness read its transient store alone and fired the ADD family
+     * over the standing seed (driven), the two stores left divergent.
+     * The seat's own store wins when both carry a row (its entries
+     * carry the expires_at half a bare option row cannot); a row the
+     * option store holds keeps its home current through the save —
+     * core writes ONE row, whichever store the harness models it in.
+     */
+    $option_row = array_key_exists($transient_option, WpHarness::$options);
+    // glm24-11: the transient-store key check spelled ONCE — the $old
+    // ternary once hand-copied the same array_key_exists the
+    // $own_entry read spells one line below.
+    $own_entry = array_key_exists($transient, WpHarness::$transients);
+    /*
+     * glm26-2: the standing expiry captured where $own_entry is
+     * derived — BEFORE the hook family fires. A mid-save observer at
+     * the update/add_option actions may DELETE the row (a legal core
+     * shape); the write's keep-guard once re-read the row AFTER the
+     * family, and the undefined-key warning over the deleted row
+     * killed the save under the suite's warning-to-exception regime
+     * — no completion hooks, no return (driven). Core completes this
+     * shape: the timeout row is settled BEFORE the value row's
+     * delegated hook family fires (glm23-1's own arming order), so
+     * the capture is the pre-hook vantage the write keeps.
+     */
+    $standing_expires_at = $own_entry ? WpHarness::$transients[ $transient ]['expires_at'] : false;
+    $old = $own_entry
+        ? WpHarness::$transients[ $transient ]['value']
+        : ($option_row ? WpHarness::$options[ $transient_option ] : false);
+    $existing = false !== $old;
+    if ($existing) {
+        /*
+         * glm23-1: core's update branch refreshes the TIMEOUT row
+         * UNCONDITIONALLY over an expiration-bearing save
+         * (option.php:1562-1571, pinned 7.1.1: the else-branch runs
+         * update_option('_transient_timeout_<name>', time() +
+         * $expiration) ahead of the value row's own update_option()),
+         * and the VALUE row refuses an unchanged re-save separately
+         * below — glm22-4's false answered BEFORE any timeout
+         * refresh, so an unchanged re-save never refreshed expires_at
+         * (driven: at t=1120 the row was dead where core answers the
+         * value) and an expired-but-unread row re-saved with its own
+         * value stayed permanently dead (the entry keys exist — the
+         * expiry check is get_transient's own, never the write side's).
+         * The live caller: ZaiDiscoveryCache::store_ids() re-saves the
+         * same discovered list with DISCOVERY_TTL (the availability
+         * probe's seed path writes without reading), so reads degraded
+         * to cache misses after the first TTL window. A zero
+         * $expiration leaves the standing timeout row untouched —
+         * core's own `if ( $expiration )` — never arming or disarming
+         * a TTL the save did not name. The timeout row's own hook
+         * family rides the seat's recorded simplification (glm22-4's
+         * note below): no '_transient_timeout_<name>' row exists to
+         * fire over. Core's re-arm family over a timeout-less row —
+         * the delete-plus-re-add of option.php:1563-1567 — rides the
+         * same simplification: the seat updates in place whatever
+         * timeout half the row models.
+         *
+         * glm24-2: the timeout row arms over a SEEDED-ONLY row too —
+         * the write-before-refusal ordering is the row's, never the
+         * store's: core writes the timeout row before the value row's
+         * own unchanged refusal whichever row carried the old value,
+         * so a seed re-saved with its own value and a TTL answers the
+         * twins' false while the row serves the seed until the armed
+         * window ends (the refresh once guarded on $own_entry alone
+         * and a seed-only row never armed, get_transient answering
+         * false immediately — driven). The armed entry carries the
+         * seed as its value (the only row the seat has read); a
+         * CHANGED re-save overwrites the whole row at the write below.
+         */
+        /*
+         * glm24-10: the arming reuses the HEAD'S OWN $expires_at
+         * derivation — the >0/<0 arms were spelled twice here (two
+         * now() reads that could straddle a tick on an unfrozen
+         * clock, arming a window one second off the head's own), and
+         * the zero-expiration guard is the derivation's own false:
+         * ONE arm, ONE read, the head's arithmetic the only spelling
+         * (construction-evident — no second read exists to straddle;
+         * the frozen-clock legs pin the arithmetic both arms ride).
+         */
+        if (false !== $expires_at) {
+            if ($own_entry) {
+                WpHarness::$transients[ $transient ]['expires_at'] = $expires_at;
+            } else {
+                WpHarness::$transients[ $transient ] = array(
+                    'value' => $old,
+                    'expires_at' => $expires_at,
+                );
+            }
+        }
+        /*
+         * glm22-4: core's delegation answers the twins' own unchanged
+         * false — the update branch rides update_option(), whose
+         * glm17-8 two-arm compare (identity, then serialized
+         * equality) refuses an identical re-save with ZERO hooks,
+         * where the harness fired the full update family and answered
+         * true (driven). The stored row is a detached copy (glm21-6),
+         * so the identity arm never holds at this seat — the
+         * serialized-equality arm decides, exactly the twins' compare
+         * over detached copies. The expiring half's timeout-row hooks
+         * (core's update_option over '_transient_timeout_<name>'
+         * firing even over an unchanged VALUE row) ride the seam's
+         * recorded simplification — no timeout row exists to fire
+         * over. glm23-5: the arms ride their ONE owner
+         * (wp_connectors_value_unchanged()).
+         */
+        if (wp_connectors_value_unchanged($old, $value)) {
+            return false;
+        }
+        do_action('update_option', $transient_option, $old, $value);
+    } else {
+        do_action('add_option', $transient_option, $value);
+    }
+    /*
+     * glm24-11: ONE stored copy serves both stores — the seeded-row
+     * save once paid wp_connectors_option_stored_copy() twice. The
+     * sharing is the agreeing-stores doctrine's OWN shape (glm23-3):
+     * core writes ONE row, so the mirror holding the same detached
+     * instance is the honest model — a mutation through either
+     * store's row lands in both, exactly one row's semantics. glm26-11
+     * (the round-25 ledgering (b), corrected in place by grant): the
+     * ONE-ROW DOCTRINE is the sharing's whole basis — the former
+     * 'copy-on-write keeps the value-sharing safe' clause was WRONG
+     * for nested objects (copy-on-write is an engine optimization
+     * over the shared zval, never a detachment: a nested mutation
+     * lands in both stores, which is one row's own meaning, not a
+     * hazard the doctrine needs saving from).
+     */
+    $stored = wp_connectors_option_stored_copy($value);
     WpHarness::$transients[ $transient ] = array(
-        'value' => $value,
-        'expires_at' => $expires_at,
+        'value' => $stored,
+        /*
+         * glm23-1: over an existing row the standing (refreshed)
+         * timeout survives the write — core touches the timeout row
+         * only over an expiration-bearing save, so a zero-expiration
+         * re-save never disarms a TTL the save did not name. The add
+         * path takes the head's own derivation; a seeded option row
+         * carries no timeout half to keep (glm23-3).
+         *
+         * glm24-4: the keep-guard keys on $own_entry alone — $existing
+         * is FALSE for a stored-false row (the get_option-shaped
+         * predicate's own reading), and the ($existing && $own_entry)
+         * spelling once let a zero-expiration re-save reset a
+         * TTL-armed stored-false row's expires_at to false, the row
+         * never dying (driven; glm23-1's own invariant violated). The
+         * transient store's own row is the row whose window stands.
+         *
+         * glm25-1: the keep is the ZERO-EXPIRATION SAVE'S alone
+         * ($own_entry && false === $expires_at) — keying on
+         * $own_entry alone was too broad: a stored-false row answers
+         * $existing FALSE, so the arming block above never runs over
+         * it and THIS write is the row's only expiry seat, where
+         * keeping the standing expires_at disarmed every TTL-bearing
+         * re-save (set('k', false) then set('k', false, 100) never
+         * expired; set('f', false, 100) then set('f', false, 300)
+         * died at the stale first window — driven). The standing
+         * timeout survives only a save that names no expiration
+         * (glm23-1's own rule); an expiration-bearing save takes the
+         * head's derivation whichever row shape carries it. glm26-2:
+         * the kept value is the PRE-FAMILY CAPTURE above, never a
+         * re-read of the row (a mid-save deleting observer may have
+         * removed it).
+         */
+        'expires_at' => ($own_entry && false === $expires_at) ? $standing_expires_at : $expires_at,
     );
+    if ($option_row) {
+        // glm23-3: the seeded row's own home stays current — the stores
+        // agree, exactly core's one-row write (the glm24-11 shared
+        // $stored instance, one row's own semantics).
+        WpHarness::$options[ $transient_option ] = $stored;
+    }
+    if ($existing) {
+        do_action("update_option_{$transient_option}", $old, $value, $transient_option);
+        do_action('updated_option', $transient_option, $old, $value);
+    } else {
+        do_action("add_option_{$transient_option}", $transient_option, $value);
+        do_action('added_option', $transient_option, $value);
+    }
+    // glm23-2: the completion family rides the pin's order and arities
+    // (option.php:1594/:1605) over the completed save alone — the
+    // FILTERED value and expiration, `if ( $result )`'s own spelling.
+    // glm24-5: the value is the PRE-HEAD capture above ($completion_value)
+    // — never the frame's post-clone, post-sanitize reassignment.
+    do_action("set_transient_{$transient}", $completion_value, $expiration, $transient);
+    do_action('set_transient', $transient, $completion_value, $expiration);
 
     return true;
 }
 
 function delete_transient($transient)
 {
-    unset(WpHarness::$transients[ $transient ]);
+    /*
+     * glm24-3: the delete owns BOTH stores — glm23-3's mirror (the
+     * option row a seeded save keeps current so the stores agree)
+     * is a second copy of core's ONE row, and a delete that left
+     * it standing answered get_option() with the value
+     * post-delete, the wpdb uninstall enumeration still presented
+     * the row, and a re-save fired the UPDATE family where core
+     * fires the ADD over its deleted row (driven). The mirror
+     * dies with the transient; the '_transient_timeout_<name>'
+     * half rides the seat's standing no-such-row simplification.
+     *
+     * glm25-6: the seat rides core's own shape (option.php:1380-1418,
+     * pinned 7.1.1, driver pre-verified): the delete_transient_<name>
+     * action fires BEFORE the delete — unconditionally, a missing row
+     * still announces its deletion attempt — deleted_transient fires
+     * AFTER a SUCCESSFUL delete alone (`if ($result)` gates it), and
+     * the return is the delete's own: false over a missing row (the
+     * seat once modeled zero hook seats and answered true
+     * unconditionally, driven). glm25-7: the delete itself is core's
+     * own DELEGATION — delete_option() consults BOTH stores per the
+     * mirror doctrine (the row exists whichever store models it), so
+     * ONE deletion spelling owns the paired unset; core's
+     * timeout-row delete_option beside the result rides the standing
+     * no-such-row simplification.
+     */
+    do_action("delete_transient_{$transient}", $transient);
+    $result = delete_option(wp_connectors_transient_option_name($transient));
+    if ($result) {
+        do_action('deleted_transient', $transient);
+    }
 
-    return true;
+    return $result;
 }
 
 /*
@@ -517,7 +1237,7 @@ if (!class_exists('wpdb')) {
              */
             if (!WpHarness::$external_object_cache) {
                 foreach (array_keys(WpHarness::$transients) as $transient) {
-                    $names[] = '_transient_' . $transient;
+                    $names[] = wp_connectors_transient_option_name($transient);
                 }
             }
 
@@ -543,17 +1263,117 @@ $GLOBALS['wpdb'] = new wpdb();
  * -------------------------------------------------------------------------
  */
 
+/**
+ * The cron args identity: core's own key shape, md5(serialize($args))
+ * (glm16-12).
+ *
+ * Core's cron array keys events by the digest of the SERIALIZED args —
+ * an equality over VALUES (two distinct-but-equal-valued object args
+ * serialize to identical bytes and are the same event), never PHP's
+ * identity compare (===), which answered 'different' for an
+ * equal-valued pair and stacked twin entries that double-fired in one
+ * tick where core's keyed array answers one.
+ *
+ * @param array $args Event args.
+ * @return string The serialized digest.
+ */
+function wp_connectors_cron_args_key($args)
+{
+    return md5(serialize($args));
+}
+
 function wp_schedule_single_event($timestamp, $hook, $args = array())
 {
+    /*
+     * glm17-14: core's own head guard (cron.php:48-60, pinned 7.1.1)
+     * — 'Make sure timestamp is a positive integer': a timestamp at
+     * or below zero answers FALSE, never a queued event (the stub
+     * queued both and the epoch/past-due entries fired as due).
+     *
+     * glm18-7: the guard judges the RAW value, core's own spelling —
+     * '! is_numeric( $timestamp ) || $timestamp <= 0'. The standing
+     * (int) coercion rode AHEAD of the guard, so a true or '60abc'
+     * coerced to a positive integer and QUEUED where core refuses
+     * (is_numeric answers false for both before any cast), and a 0.5
+     * coerced to 0 and REFUSED where core schedules the event (the
+     * value stays numeric downstream — core keys the row on the raw
+     * timestamp, never an int-folded twin). The normalization '+= 0'
+     * lands AFTER the guard: numeric spellings fold to their numeric
+     * value ('60' the int 60), the fractional ones keep their
+     * fraction (CORRECTED at glm19-6: the row itself rides the
+     * int-truncated key — core's $crons[ts] shape).
+     *
+     * glm19-7: INF and NAN pass the raw-value guard — is_numeric
+     * answers true for both and neither compares <= 0 — where no
+     * honest schedule exists: the stub queued the raw INF as a
+     * NEVER-FIRING zombie (INF > now forever) while core's key
+     * truncation collapses it onto key 0, firing every pass, never
+     * the claimed time. The guard refuses NON-FINITE values
+     * (is_finite on the numeric value — zombies never queue, never
+     * fire-by-truncation-accident).
+     */
+    if (! is_numeric($timestamp) || $timestamp <= 0 || ! is_finite((float) $timestamp)) {
+        return false;
+    }
+    $timestamp += 0;
+    /*
+     * glm19-6: core keys the row at $crons[ $event->timestamp ]
+     * (cron.php:202, pinned 7.1.1) and a PHP array KEY truncates a
+     * float — 0.5 lands at key 0. Core's guard passes the fractional
+     * raw value ('! is_numeric || <= 0' never checks int-ness), so the
+     * row a fractional timestamp schedules LANDS AT KEY 0: invisible
+     * to wp_next_scheduled() (core reconstructs from the key and its
+     * '! $next' falsy guard answers false, cron.php:825), cancellable
+     * through wp_unschedule_event()'s own key fold, and due every
+     * pass. The harness stores the row on the int-truncated
+     * timestamp — core's own key shape, never the fractional twin the
+     * round-18 pin asserted (glm18-7's fractional-acceptance premise
+     * falsified against the key truncation).
+     */
+    $args_key = wp_connectors_cron_args_key($args);
+    /*
+     * glm15-13/glm16-7/glm17-5: core's duplicate window for singles —
+     * an identical event (same hook, same args) already pending is
+     * the same event, not a second one, and the skip answers FALSE
+     * (core's own return; the stub answered true). glm17-5 corrects
+     * the window's SHAPE to core's two-sided band on the NEW event's
+     * timestamp (cron.php:135-145, pinned 7.1.1, pre-verified against
+     * the local reference): min = 0 when the new ts sits within ten
+     * minutes of now (else ts - 10 min), max = now + 10 min when the
+     * new ts is past (else ts + 10 min) — an EXISTING single inside
+     * the band is the duplicate. The round-16 one-sided floor
+     * (existing_ts >= now - 10 min) answered the wrong shape both
+     * ways (driven): a new single 20 minutes out deduped against a
+     * near-future existing one core stacks (min = ts - 10 min excludes
+     * it), and a near-future new single STACKED against an 11-minute-
+     * old existing one core dedupes (min = 0 counts every past
+     * identical single — 'when scheduling events within ten minutes
+     * of the current time, all past identical events are considered
+     * duplicates', core's own comment). The harness's deterministic
+     * clock stands in for time().
+     *
+     * glm17-6: the duplicate predicate is RECURRENCE-BLIND — core's
+     * isset($crons[ts][$hook][md5(args)]) carries no recurrence term,
+     * so a single scheduled over an identical-key RECURRING entry
+     * inside the band answers FALSE with the recurring row untouched:
+     * a single never overwrites a recurrence core keeps (falsifying
+     * glm16-6's replace-on-the-single-arm — under the band a
+     * same-timestamp identical-key entry is ALWAYS inside the window
+     * (min <= ts <= max by construction), so the keyed-replace loop
+     * that fix rode is unreachable and deleted).
+     */
+    $now = WpHarness::now();
+    $min = $timestamp < $now + 10 * MINUTE_IN_SECONDS ? 0 : $timestamp - 10 * MINUTE_IN_SECONDS;
+    $max = $timestamp < $now ? $now + 10 * MINUTE_IN_SECONDS : $timestamp + 10 * MINUTE_IN_SECONDS;
     foreach (WpHarness::$cron[ $hook ] ?? array() as $event) {
-        if ($event['timestamp'] === (int) $timestamp && $event['args'] === $args && ! isset($event['interval'])) {
-            return true; // Duplicate single event, matching core behavior.
+        if (wp_connectors_cron_args_key($event['args']) === $args_key
+            && $event['timestamp'] >= $min && $event['timestamp'] <= $max) {
+            return false; // Core's duplicate-single skip.
         }
     }
     WpHarness::$cron[ $hook ][] = array(
         'timestamp' => (int) $timestamp,
         'args' => $args,
-        'id' => $hook . '-' . count(WpHarness::$cron[ $hook ] ?? array()) . '-' . wp_connectors_harness_uid(),
     );
 
     return true;
@@ -561,13 +1381,61 @@ function wp_schedule_single_event($timestamp, $hook, $args = array())
 
 function wp_schedule_event($timestamp, $recurrence, $hook, $args = array())
 {
+    /*
+     * glm18-6: core's own head guard (cron.php:252-263, pinned 7.1.1)
+     * — the same 'Make sure timestamp is a positive integer' refusal
+     * glm17-14 pinned at the single entry point, judged on the RAW
+     * value (is_numeric + > 0, exactly core's spelling, never a
+     * pre-cast). The stub queued a recurring event at timestamp 0 or
+     * below — a due-now row that fired and re-armed forever while
+     * claiming a recurrence core refuses to key at all (driven).
+     *
+     * glm21-9: the is_finite guard glm19-7 landed at the SINGLE head
+     * only — the recurring head accepted INF/NAN/'1e999' (is_numeric
+     * answers true for all three, none compares <= 0), queued the row
+     * at (int) cast 0, and the 'never-due' recurrence armed at an
+     * arbitrary grid phase: the harness's own asymmetry doctrine
+     * (never queue what cannot fire, glm19-7's own vocabulary — the
+     * verifier refuted the core-parity premise for the recurring
+     * shape, so the honest basis is internal consistency between the
+     * twin heads).
+     */
+    if (! is_numeric($timestamp) || $timestamp <= 0 || ! is_finite((float) $timestamp)) {
+        return false;
+    }
     $intervals = wp_get_schedules();
-    $interval = isset($intervals[ $recurrence ]) ? (int) $intervals[ $recurrence ]['interval'] : 0;
+    /*
+     * glm15-9: an unknown recurrence REFUSES (false), core's own
+     * branch — the stub accepted it with interval 0, an event that
+     * fired once and never rescheduled while claiming a recurrence
+     * (driven: a schedule the defaults never carried — 'weekly'
+     * before it joined them — returned TRUE with interval 0).
+     */
+    if (! isset($intervals[ $recurrence ])) {
+        return false;
+    }
+    $interval = (int) $intervals[ $recurrence ]['interval'];
+    /*
+     * glm15-13: keyed-array REPLACE — core's cron array keys events by
+     * [timestamp][hook][md5(args)], so scheduling the IDENTICAL event
+     * (same timestamp, same args) REPLACES the entry rather than
+     * appending a twin. The old append double-fired the pair in one
+     * tick (driven) where core fires once. glm16-12: the args leg of
+     * the key rides the SERIALIZED DIGEST (the helper above), never
+     * PHP's identity compare.
+     */
+    $args_key = wp_connectors_cron_args_key($args);
+    foreach (WpHarness::$cron[ $hook ] ?? array() as $index => $event) {
+        if ($event['timestamp'] === (int) $timestamp && wp_connectors_cron_args_key($event['args']) === $args_key) {
+            WpHarness::$cron[ $hook ][ $index ]['interval'] = $interval;
+
+            return true;
+        }
+    }
     WpHarness::$cron[ $hook ][] = array(
         'timestamp' => (int) $timestamp,
         'args' => $args,
         'interval' => $interval,
-        'id' => $hook . '-' . count(WpHarness::$cron[ $hook ] ?? array()) . '-' . wp_connectors_harness_uid(),
     );
 
     return true;
@@ -576,16 +1444,24 @@ function wp_schedule_event($timestamp, $recurrence, $hook, $args = array())
 function wp_next_scheduled($hook, $args = array())
 {
     $best = false;
+    $args_key = wp_connectors_cron_args_key($args);
     foreach (WpHarness::$cron[ $hook ] ?? array() as $event) {
-        if ($event['args'] !== $args) {
+        if (wp_connectors_cron_args_key($event['args']) !== $args_key) {
             continue;
         }
         if (false === $best || $event['timestamp'] < $best) {
             $best = $event['timestamp'];
         }
     }
-
-    return $best;
+    /*
+     * glm19-6: core's next-event loop reads the row through its KEY
+     * and guards '! $next' (cron.php:825, pinned 7.1.1) — a key-0 row
+     * (the int truncation of a fractional 0 < ts < 1 timestamp, the
+     * only shape that lands there: core's guard refuses every ts <= 0)
+     * is INVISIBLE to the query. The harness answers the same
+     * falsy-key false, never the truncated 0.
+     */
+    return $best ?: false;
 }
 
 function wp_get_scheduled_events($hook = null)
@@ -606,8 +1482,9 @@ function wp_get_scheduled_events($hook = null)
 
 function wp_unschedule_event($timestamp, $hook, $args = array())
 {
+    $args_key = wp_connectors_cron_args_key($args);
     foreach (WpHarness::$cron[ $hook ] ?? array() as $index => $event) {
-        if ($event['timestamp'] === (int) $timestamp && $event['args'] === $args) {
+        if ($event['timestamp'] === (int) $timestamp && wp_connectors_cron_args_key($event['args']) === $args_key) {
             unset(WpHarness::$cron[ $hook ][ $index ]);
             WpHarness::$cron[ $hook ] = array_values(WpHarness::$cron[ $hook ]);
 
@@ -633,11 +1510,23 @@ function wp_clear_scheduled_hook($hook)
 
 function wp_get_schedules()
 {
-    return array(
+    /*
+     * glm15-9: core's own shape — the 'cron_schedules' filter is
+     * applied FIRST and the defaults merged OVER it, so a plugin adds
+     * its own schedules but can never clobber a default spelling. The
+     * stub's static map never applied the filter at all, so a custom
+     * schedule registered through it was invisible at resolution time
+     * (driven: a 'cron_schedules' callback's entry never answered).
+     * 'weekly' joins the default set (core's own, WP 5.4+).
+     */
+    $schedules = array(
         'hourly' => array( 'interval' => HOUR_IN_SECONDS ),
         'twicedaily' => array( 'interval' => 12 * HOUR_IN_SECONDS ),
         'daily' => array( 'interval' => DAY_IN_SECONDS ),
+        'weekly' => array( 'interval' => WEEK_IN_SECONDS ),
     );
+
+    return array_merge(apply_filters('cron_schedules', array()), $schedules);
 }
 
 if (! defined('HOUR_IN_SECONDS')) {
@@ -649,12 +1538,8 @@ if (! defined('DAY_IN_SECONDS')) {
 if (! defined('MINUTE_IN_SECONDS')) {
     define('MINUTE_IN_SECONDS', 60);
 }
-
-function wp_connectors_harness_uid()
-{
-    static $counter = 0;
-
-    return 'e' . (++$counter);
+if (! defined('WEEK_IN_SECONDS')) {
+    define('WEEK_IN_SECONDS', 604800);
 }
 
 /*
@@ -871,28 +1756,111 @@ function wp_verify_nonce($nonce, $action = -1)
     return is_string($nonce) && hash_equals(wp_create_nonce($action), $nonce) ? 1 : false;
 }
 
+/*
+ * glm28-2: core's wp_nonce_ays() (functions.php:3727, pinned 7.1.1) —
+ * the die screen check_admin_referer() terminates a failed
+ * verification through. The harness models the GENERIC arm (the
+ * 'log-out' arm's logout-URL rendering rides core machinery the
+ * harness does not stub — the recorded divergence at this seam, the
+ * generic message serving every action the suite drives).
+ */
+function wp_nonce_ays($action)
+{
+    wp_die(__('The link you followed has expired.'), __('An error occurred.'), array( 'response' => 403 ));
+}
+
 function check_admin_referer($action = -1, $query_arg = '_wpnonce')
 {
-    $nonce = isset($_REQUEST[ $query_arg ]) ? (string) wp_unslash($_REQUEST[ $query_arg ]) : '';
-    if ($nonce !== '' && wp_verify_nonce($nonce, $action)) {
-        return true;
+    /*
+     * glm28-2: core's own shape (pluggable.php:1374, pinned 7.1.1) —
+     * a FAILED verification DIES (wp_nonce_ays + die), whatever the
+     * request carried: the glm15 refutation's premise ("dies ONLY
+     * when \$query_arg is absent") was falsified against the pin (a
+     * PRESENT-but-bad nonce dies identically), and the re-open rule
+     * its own entry names — a driven spelling where the stub's
+     * verdict differs from core's on the same request — fired at the
+     * live consumer (ZaiSettingsTest's authorized-user-without-valid-
+     * nonce leg asserted post-conditions that only ran because the
+     * die never fired). The former seat recorded the failure into
+     * doing_it_wrong and CONTINUED — the opposite contract. The
+     * emulation boundary is the ajax twin's own (glm27-6): the
+     * harness has ONE die vocabulary, its wp_die() stub THROWING the
+     * RuntimeException that stops execution — wp_nonce_ays() never
+     * returns here, and core's trailing die() is unreachable by
+     * construction. Core's referer escape (-1 === \$action with a
+     * referer under admin_url()) is dropped with the boundary
+     * recorded: the harness answers no referer vocabulary, so the
+     * escape arm is unconstructible in this engine — every failed
+     * verification dies, the stricter and simpler truth of the two.
+     */
+    if (-1 === $action) {
+        _doing_it_wrong(__FUNCTION__, 'You should specify an action to be verified by using the first parameter.', '3.2.0');
     }
-    WpHarness::$doing_it_wrong[] = array(
-        'function' => 'check_admin_referer',
-        'message' => 'Nonce verification failed in the test harness.',
-        'version' => '0.0.0',
-    );
+    /*
+     * t31-glm63-10 [R63-10]: an ARRAY-valued nonce cast to string
+     * raises the engine's conversion warning BEFORE the die path,
+     * where core passes the raw value to wp_verify_nonce() (false,
+     * dies cleanly) and the check_ajax_referer() twin handles the
+     * identical shape — the cast dropped (the '?' hostile spelling
+     * reads as a failed verification).
+     */
+    $nonce = isset($_REQUEST[ $query_arg ]) ? wp_unslash($_REQUEST[ $query_arg ]) : '';
+    $result = '' !== $nonce ? wp_verify_nonce($nonce, $action) : false;
+    do_action('check_admin_referer', $action, $result);
+    if (! $result) {
+        wp_nonce_ays($action);
+        die(); // phpcs:ignore Generic.CodeAnalysis.UnreachableCode -- core's own trailing die, unreachable through the throwing stub.
+    }
 
-    return false;
+    return $result;
 }
 
 function check_ajax_referer($action = -1, $query_arg = false, $die = true)
 {
-    if (false === $query_arg) {
-        $query_arg = '_ajax_nonce';
+    /*
+     * glm27-6: core's own shape (pluggable.php, pinned 7.1.1 — the
+     * pin names the third parameter $stop; the same seat, spelled
+     * $die here). The seat DELEGATED to check_admin_referer(), which
+     * dropped \$die and answered the admin twin's own contract — a
+     * false return with execution CONTINUING — where core's ajax
+     * twin DIES on the failure (the opposite behavior; the
+     * adjudicated check_admin_referer no-die contract is that
+     * function's, never this seat's — CORRECTED at glm28-2: that
+     * no-die contract was itself falsified against the pin, the
+     * admin twin now dying on every failed verification; the
+     * delegation this paragraph records answered the WRONG contract
+     * either way). The nonce lookup is core's own
+     * three-way order: the named query arg, then '_ajax_nonce', then
+     * '_wpnonce'; the verdict rides wp_verify_nonce() and the
+     * 'check_ajax_referer' action fires with core's arity over it.
+     */
+    if (-1 === $action) {
+        _doing_it_wrong(__FUNCTION__, 'You should specify an action to be verified by using the first parameter.', '4.7.0');
+    }
+    $nonce = '';
+    if ($query_arg && isset($_REQUEST[ $query_arg ])) {
+        $nonce = $_REQUEST[ $query_arg ];
+    } elseif (isset($_REQUEST['_ajax_nonce'])) {
+        $nonce = $_REQUEST['_ajax_nonce'];
+    } elseif (isset($_REQUEST['_wpnonce'])) {
+        $nonce = $_REQUEST['_wpnonce'];
+    }
+    $result = wp_verify_nonce($nonce, $action);
+    do_action('check_ajax_referer', $action, $result);
+    if ($die && false === $result) {
+        /*
+         * Emulation boundary, recorded: core splits wp_doing_ajax()
+         * (wp_die(-1, 403)) from a plain die('-1'); the harness has
+         * no wp_doing_ajax() and ONE die vocabulary — its wp_die()
+         * stub, which THROWS the RuntimeException that stops
+         * execution under the suite's warning-to-exception regime.
+         * The 403 response shape rides the args core's own call
+         * carries.
+         */
+        wp_die('-1', '', array( 'response' => 403 ));
     }
 
-    return check_admin_referer($action, $query_arg);
+    return $result;
 }
 
 function wp_nonce_field($action = -1, $name = '_wpnonce', $referer = true, $echo = true)
@@ -911,7 +1879,21 @@ function wp_nonce_field($action = -1, $name = '_wpnonce', $referer = true, $echo
 
 function wp_nonce_url($url, $action = -1, $name = '_wpnonce')
 {
-    return $url . (strpos($url, '?') === false ? '?' : '&') . $name . '=' . wp_create_nonce($action);
+    /*
+     * glm28-3: core's own shape (functions.php, pinned 7.1.1) — the
+     * hand-glued '?'/'&' separator put the nonce INSIDE the fragment
+     * on a fragment-bearing URL ('...?page=z#frag' answered
+     * '...#frag&_wpnonce=x', laundering the nonce into the client-
+     * side anchor), where core DELEGATES to add_query_arg() — the
+     * fragment-correct owner this file already carries (glm15-11) —
+     * and hands the whole result through esc_html() (core's own
+     * wrap; the return is an href-shaped string). The '&amp;'
+     * un-escape of the input rides verbatim (a caller holding a
+     * pre-escaped URL is core's documented input contract).
+     */
+    $url = str_replace('&amp;', '&', (string) $url);
+
+    return esc_html(add_query_arg($name, wp_create_nonce($action), $url));
 }
 
 /*
@@ -933,7 +1915,23 @@ function esc_attr($text)
 function esc_url($url)
 {
     $url = (string) $url;
-    if (preg_match('/^https?:\/\//i', $url) !== 1) {
+    /*
+     * glm28-5: wp_allowed_protocols() members SURVIVE (core's
+     * shape, kses.php/formatting.php pinned — esc_url() preserves
+     * every allowed-protocol scheme and answers '' only for the
+     * disallowed): the http(s)-only probe once returned '' for
+     * mailto:/tel:/ftp:, green-testing an empty href over a
+     * connector's support link. The set is the minimal honest one
+     * for this stub's consumers (http/https plus the three the
+     * finding drove); core's own list is wider (news, irc, sms, …
+     * — wp_allowed_protocols()), the recorded divergence beside
+     * the seat's standing FILTER_SANITIZE_URL arm in place of
+     * core's kses walk. A scheme-less spelling keeps the '' the
+     * seat always answered (core's relative-URL arms ride the
+     * request context this stub does not model).
+     */
+    $scheme = strtolower((string) strstr($url, ':', true));
+    if (! in_array($scheme, array( 'http', 'https', 'ftp', 'mailto', 'tel' ), true)) {
         return '';
     }
 
@@ -1003,9 +2001,89 @@ function sanitize_key($key)
     return apply_filters('sanitize_key', $sanitized_key, $key);
 }
 
+/**
+ * Strips out all characters that are not allowable in an email —
+ * core's gates verbatim (glm28-6, formatting.php:3831 pinned 7.1.1).
+ *
+ * The seat was a bare FILTER_SANITIZE_EMAIL passthrough, so
+ * 'bogus@@example..com' passed where core answers '' and the
+ * `if ( ! $email = sanitize_email( ... ) )` idiom never saw the
+ * refusal — the documented dot/at/length checks are the contract
+ * every consumer of the sanitizer rides. Each gate and the success
+ * path speak core's own 'sanitize_email' filter arms (context string
+ * third; the harness's apply_filters answers with no suite listener
+ * changing the value).
+ *
+ * @param string $email Email address to filter.
+ * @return string The filtered email address ('' when a gate refuses).
+ */
 function sanitize_email($email)
 {
-    return filter_var((string) $email, FILTER_SANITIZE_EMAIL);
+    $email = (string) $email;
+
+    // Test for the minimum length the email can be.
+    if (strlen($email) < 6) {
+        return apply_filters('sanitize_email', '', $email, 'email_too_short');
+    }
+
+    // Test for an @ character after the first position.
+    if (false === strpos($email, '@', 1)) {
+        return apply_filters('sanitize_email', '', $email, 'email_no_at');
+    }
+
+    // Split out the local and domain parts.
+    list( $local, $domain ) = explode('@', $email, 2);
+
+    // LOCAL PART: Test for invalid characters.
+    $local = preg_replace('/[^a-zA-Z0-9!#$%&\'*+\/=?^_`{|}~\.-]/', '', $local);
+    if ('' === $local) {
+        return apply_filters('sanitize_email', '', $email, 'local_invalid_chars');
+    }
+
+    // DOMAIN PART: Test for sequences of periods.
+    $domain = preg_replace('/\.{2,}/', '', $domain);
+    if ('' === $domain) {
+        return apply_filters('sanitize_email', '', $email, 'domain_period_sequence');
+    }
+
+    // Test for leading and trailing periods and whitespace.
+    $domain = trim($domain, " \t\n\r\0\x0B.");
+    if ('' === $domain) {
+        return apply_filters('sanitize_email', '', $email, 'domain_period_limits');
+    }
+
+    // Split the domain into subs.
+    $subs = explode('.', $domain);
+
+    // Assume the domain will have at least two subs.
+    if (2 > count($subs)) {
+        return apply_filters('sanitize_email', '', $email, 'domain_no_periods');
+    }
+
+    // Create an array that will contain valid subs.
+    $new_subs = array();
+
+    // Loop through each sub.
+    foreach ($subs as $sub) {
+        // Test for leading and trailing hyphens.
+        $sub = trim($sub, " \t\n\r\0\x0B-");
+
+        // Test for invalid characters.
+        $sub = preg_replace('/[^a-z0-9-]+/i', '', $sub);
+
+        // If there's anything left, add it to the valid subs.
+        if ('' !== $sub) {
+            $new_subs[] = $sub;
+        }
+    }
+
+    // If there aren't 2 or more valid subs.
+    if (2 > count($new_subs)) {
+        return apply_filters('sanitize_email', '', $email, 'domain_no_valid_subs');
+    }
+
+    // Join valid subs into the new domain; put the email back together.
+    return apply_filters('sanitize_email', $local . '@' . implode('.', $new_subs), $email, null);
 }
 
 function absint($maybeint)
@@ -1031,34 +2109,102 @@ function wp_json_encode($data, $options = 0)
     return json_encode($data, $options);
 }
 
-function wp_unslash($value)
+/**
+ * Core's map_deep (glm27-4, formatting.php:5215-5234, pinned 7.1.1):
+ * the callback maps onto every NON-array, NON-object leaf — arrays
+ * recursed by value reassignment, OBJECTS walked through
+ * get_object_vars() with their properties reassigned — so a leaf the
+ * callback does not transform passes through UNTOUCHED. The former
+ * `(string)` seats coerced every non-string member (an int member
+ * became its string twin) and an object member FATALED under
+ * strict_types — neither is core's shape.
+ *
+ * @param mixed    $value    The array, object, or scalar.
+ * @param callable $callback The leaf transform.
+ * @return mixed The value with the callback applied to every leaf.
+ */
+function wp_connectors_map_deep($value, $callback)
 {
     if (is_array($value)) {
-        return array_map('wp_unslash', $value);
+        foreach ($value as $index => $item) {
+            $value[ $index ] = wp_connectors_map_deep($item, $callback);
+        }
+    } elseif (is_object($value)) {
+        foreach (get_object_vars($value) as $property => $item) {
+            $value->{$property} = wp_connectors_map_deep($item, $callback);
+        }
+    } else {
+        $value = $callback($value);
     }
 
-    return stripslashes((string) $value);
+    return $value;
+}
+
+function wp_unslash($value)
+{
+    /*
+     * glm27-4: core's stripslashes_deep() — map_deep() over the
+     * strings-only callback (formatting.php, pinned 7.1.1): strings
+     * stripped, every other leaf VERBATIM (an int member stays int),
+     * objects WALKED (their string properties stripped), never the
+     * (string) coercion that turned ints into strings and objects
+     * into fatals.
+     */
+    return wp_connectors_map_deep($value, static function ($item) {
+        return is_string($item) ? stripslashes($item) : $item;
+    });
 }
 
 function wp_slash($value)
 {
+    /*
+     * glm27-4: core's own three-arm shape (formatting.php:5864,
+     * pinned 7.1.1) — arrays recursed, strings slashed, everything
+     * else VERBATIM: objects pass through untouched (the mirror
+     * divergence from wp_unslash's map_deep walk is core's own; the
+     * former (string) coercion answered string twins for both).
+     */
     if (is_array($value)) {
         return array_map('wp_slash', $value);
     }
+    if (is_string($value)) {
+        return addslashes($value);
+    }
 
-    return addslashes((string) $value);
+    return $value;
 }
 
 function wp_parse_args($args, $defaults = array())
 {
+    /*
+     * glm27-5: core's own three-branch head (functions.php, pinned
+     * 7.1.1) — an OBJECT reads its vars, an ARRAY passes by value, a
+     * STRING parses through wp_parse_str()'s query-string shape
+     * (parse_str over the raw input, the 'wp_parse_str' filter
+     * applied to the parsed result, core's own spelling). The stub
+     * DISCARDED the string form into array() — get_sites('fields=
+     * ids&number=2') mis-parsed against the advertised array|string
+     * surface (driven: the parsed keys never reached the query).
+     */
     if (is_object($args)) {
-        $args = get_object_vars($args);
-    }
-    if (! is_array($args)) {
-        $args = array();
+        $parsed_args = get_object_vars($args);
+    } elseif (is_array($args)) {
+        $parsed_args = $args;
+    } else {
+        parse_str((string) $args, $parsed_args);
+        $parsed_args = apply_filters('wp_parse_str', $parsed_args);
     }
 
-    return array_merge($defaults, $args);
+    /*
+     * Core's merge guard — non-empty defaults alone merge (the
+     * numeric keys a parsed string can carry survive an empty-
+     * defaults call verbatim, never array_merge()'s reindexing).
+     */
+    if (is_array($defaults) && $defaults) {
+        return array_merge($defaults, $parsed_args);
+    }
+
+    return $parsed_args;
 }
 
 function trailingslashit($value)
@@ -1093,6 +2239,22 @@ function add_query_arg(...$args)
         $url = $args[2];
     }
 
+    /*
+     * glm15-11: the fragment splits off BEFORE param parsing and
+     * re-appends LAST (core's own shape) — the stub folded the whole
+     * string into the '?' split, so a fragment was swallowed into the
+     * last param's value ('code=1#frag' parsed as the VALUE '1#frag',
+     * re-encoded '%23frag') or a new param appended INSIDE the
+     * fragment ('cb#frag?p=v'). Zero callers today, but OAuth redirect
+     * URLs are where fragments live — closed preemptively.
+     */
+    $fragment = '';
+    $hash = strpos($url, '#');
+    if (false !== $hash) {
+        $fragment = substr($url, $hash);
+        $url = substr($url, 0, $hash);
+    }
+
     $parts = explode('?', $url, 2);
     $path = $parts[0];
     $params = array();
@@ -1100,10 +2262,66 @@ function add_query_arg(...$args)
         parse_str($parts[1], $params);
     }
     foreach ($query as $key => $value) {
+        /*
+         * glm28-4: core's idiom (functions.php, pinned 7.1.1) — a
+         * FALSE value UNSETS the key; the merge once stored it and
+         * http_build_query() emitted 'key=0', a parameter the caller
+         * meant to remove (the remove_query_arg() sibling below
+         * speaks exactly this value, core's own channel).
+         */
+        if (false === $value) {
+            unset($params[ (string) $key ]);
+
+            continue;
+        }
         $params[ (string) $key ] = $value; // Replace, do not duplicate.
     }
 
-    return $path . ($params === array() ? '' : '?' . http_build_query($params));
+    /*
+     * t31-glm47-8 [R47-7, driven — the separator rode the INI]: core
+     * builds the query with '&' (its own `_http_build_query()` shape),
+     * while the bare http_build_query() consults
+     * arg_separator.output — an ini every host may set differently
+     * ('&amp;' on many distro builds) — so the stub emitted
+     * '&amp;'-joined queries and every pinned assertion over the
+     * built URL failed four times under
+     * `-d arg_separator.output='&amp;'` where the default-ini run
+     * stayed green: harness parity hostage to process ini. The
+     * separator pins explicitly, the output stable on every host.
+     */
+    return $path . ($params === array() ? '' : '?' . http_build_query($params, '', '&')) . $fragment;
+}
+
+/**
+ * Removes an item or items from a query string (core's shape,
+ * functions.php pinned): the scalar form and the array-of-keys form
+ * both speak add_query_arg()'s false-value channel — the idiom the
+ * merge above honors. The default $query resolves against the
+ * current REQUEST_URI exactly like the two-scalar add_query_arg()
+ * form (core's `false === $args[2]` arm).
+ *
+ * glm28-4: the stub did not exist — the architecture gate's allowed
+ * WP-token vocabulary names it (an OAuth redirect's code/state strip
+ * is the canonical future consumer), so any connector using it
+ * passed the sweep and fataled under the harness.
+ *
+ * @param string|array $key   The query key (or list of keys) to remove.
+ * @param string|false $query The URL (false: the current REQUEST_URI).
+ * @return string The URL with the named keys stripped.
+ */
+function remove_query_arg($key, $query = false)
+{
+    if (is_array($key)) {
+        foreach ($key as $k) {
+            $query = remove_query_arg($k, $query);
+        }
+
+        return $query;
+    }
+
+    return false === $query
+        ? add_query_arg($key, false)
+        : add_query_arg($key, false, $query);
 }
 
 /*
@@ -1160,9 +2378,23 @@ function load_plugin_textdomain($domain, $deprecated = false, $plugin_rel_path =
 
 function wp_remote_request($url, $args = array())
 {
-    $method = isset($args['method']) ? $args['method'] : 'POST';
+    /*
+     * glm15-12: the default method is GET, core's own (WP_Http::
+     * request) — the stub defaulted POST, so every default-method
+     * call was recorded (and handed to pre_http_request mocks) as a
+     * POST, green-testing a generic REST client against a divergent
+     * method.
+     *
+     * glm16-9: the default lands BEFORE the pre_http_request filter
+     * sees $args, core's own order — the round-15 fix computed the
+     * method for the recorder only, so a mock observed a method-less
+     * array where core hands it 'GET'.
+     */
+    if (! isset($args['method'])) {
+        $args['method'] = 'GET';
+    }
     $pre = apply_filters('pre_http_request', false, (array) $args, (string) $url);
-    WpHarness::recordHttpAttempt($method, (string) $url, (array) $args, false !== $pre);
+    WpHarness::recordHttpAttempt($args['method'], (string) $url, (array) $args, false !== $pre);
     if (false !== $pre) {
         return $pre;
     }
@@ -1310,7 +2542,33 @@ function current_time($type = 'U', $gmt = false)
 
 function plugins_url($path = '', $plugin = '')
 {
-    return 'https://example.test/wp-content/plugins/' . ltrim((string) $path, '/');
+    /*
+     * glm27-7: core's own folder derivation (link-template.php,
+     * pinned 7.1.1) — the $plugin argument names the plugin's own
+     * main file and the URL carries its folder segment: dirname(
+     * plugin_basename( $plugin )), skipped only for a plugin sitting
+     * in the plugins ROOT ('.' — no segment to carry). The stub
+     * ignored the argument entirely, so plugins_url('assets/x.js',
+     * __FILE__) addressed the plugins root instead of the plugin's
+     * own folder (driven). Core's guards ride verbatim: the
+     * mu-plugins arm is not modeled (the harness defines no
+     * WPMU_PLUGIN_DIR), set_url_scheme() is the fixed https host,
+     * and the path append rides core's own non-empty-string guard
+     * ('' answers the bare plugins URL, no trailing slash — core's
+     * own spelling).
+     */
+    $url = 'https://example.test/wp-content/plugins';
+    if ('' !== $plugin && is_string($plugin)) {
+        $folder = dirname(plugin_basename(wp_normalize_path($plugin)));
+        if ('.' !== $folder) {
+            $url .= '/' . ltrim($folder, '/');
+        }
+    }
+    if ($path && is_string($path)) {
+        $url .= '/' . ltrim((string) $path, '/');
+    }
+
+    return apply_filters('plugins_url', $url, $path, $plugin);
 }
 
 function plugin_basename($file)
@@ -1371,11 +2629,70 @@ function register_setting($option_group, $option_name, $args = array())
     // idiomatic `global $wp_registered_settings` read.
     $GLOBALS['wp_registered_settings'][ $option_name ] = WpHarness::$registered_settings[ $option_name ];
 
+    /*
+     * glm14-10: core's sanitize wiring — the recorded callback rides
+     * the sanitize_option_{name} filter, exactly core's mechanism, so
+     * the settings-save path (sanitize_option() below, then
+     * update_option()) can never skip it. The stub previously
+     * RECORDED the callback only and defined no sanitize_option() at
+     * all, so a test emulating the options.php save (POST, admin_init,
+     * update_option) stored the raw POST value with the registered
+     * sanitizer never consulted — the suite green-testing a save
+     * pipeline that behaves differently from production, where core
+     * invokes the callback before persistence. Latent today (no test
+     * rides the path yet); wired now so the first Task-3.2+ settings
+     * test inherits core's contract instead of discovering the drift.
+     */
+    if (! empty($args['sanitize_callback'])) {
+        add_filter("sanitize_option_{$option_name}", $args['sanitize_callback']);
+    }
+
     return true;
+}
+
+/**
+ * Sanitizes an option value through the registered settings filter.
+ *
+ * glm14-10: core's primitive, subset-scoped — core runs its built-in
+ * per-option table first, then the sanitize_option_{name} filter this
+ * harness's register_setting() registers its callback under; the stub
+ * owns the FILTER half only (no built-in table — the settings this
+ * harness registers carry their own callbacks).
+ *
+ * glm15-3: update_option()/add_option() call this at their own heads
+ * (core's option.php shape, both functions), passing the filter THREE
+ * args — sanitized value, option name, original value — so the
+ * function-level API stores the filter's ANSWER, never the raw input.
+ * The null GUARD stays the save-path CALLER's (core's options.php
+ * shape): a null answer from the filter refuses the options.php save;
+ * update_option()/add_option() store it like any other answer.
+ *
+ * @param string $option Option name.
+ * @param mixed  $value  Raw value (e.g. the unslashed POST input).
+ * @return mixed The sanitized value, null when the callback refuses.
+ */
+function sanitize_option($option, $value)
+{
+    $original = $value;
+
+    return apply_filters("sanitize_option_{$option}", $value, $option, $original);
 }
 
 function unregister_setting($option_group, $option_name)
 {
+    /*
+     * glm15-8: core's unregister removes the sanitize hook the
+     * registration wired (remove_filter for exactly the
+     * sanitize_option_{name} filter — glm14-10's own sibling). The
+     * registry row alone going away left the callback ON the filter,
+     * so register(A), unregister, register(B) answered A's sanitize
+     * still riding beside B's (driven: 'vAB' where core answers 'vB')
+     * — the unregistered sanitizer kept shaping every later save.
+     */
+    $registered = WpHarness::$registered_settings[ $option_name ] ?? null;
+    if (null !== $registered && ! empty($registered['sanitize_callback'])) {
+        remove_filter("sanitize_option_{$option_name}", $registered['sanitize_callback']);
+    }
     unset(WpHarness::$registered_settings[ $option_name ], $GLOBALS['wp_registered_settings'][ $option_name ]);
 
     return true;
@@ -1454,28 +2771,100 @@ function add_settings_error($setting, $code, $message, $type = 'error')
 
 function settings_errors($setting = '', $sanitize = false, $hide_on_update = false)
 {
-    return WpHarness::$settings_errors;
+    /*
+     * glm21-8: the $setting filter is core's own contract (core reads
+     * the slug and narrows the returned rows, template.php) — the stub
+     * once returned the whole array over every slug, answering 2 rows
+     * where core answers 1. The twin 15 lines below already owns the
+     * filter; this seat delegates to it (never a second predicate),
+     * the '' spelling keeping the historical whole-array behavior for
+     * existing callers.
+     *
+     * glm22-7: the $sanitize/$hide_on_update arguments are HONORED —
+     * the exact argument-dropping class glm21-8 closed for $setting
+     * at this seat (both parameters were accepted and silently
+     * dropped, driven). $hide_on_update is core's own head
+     * (template.php: the rows hide over a settings-updated request,
+     * core answering VOID at its echo-shaped seat — this seat's
+     * recorded return divergence keeps the empty array); $sanitize
+     * delegates to the twin's own second parameter (core's spelling —
+     * never a second predicate at the seat), the twin re-running
+     * sanitize_option() over the setting's stored row so a registered
+     * callback's settings errors surface by default.
+     */
+    if ($hide_on_update && ! empty($_GET['settings-updated'])) {
+        return array();
+    }
+
+    return get_settings_errors((string) $setting, (bool) $sanitize);
 }
 
 /**
  * Core-faithful getter for the registered settings errors: returns (does
  * NOT print) the errors recorded for a setting slug, mirroring
- * wp-admin/includes/template.php. The settings_errors() stub above keeps
- * its historical return-the-array behavior for existing callers.
+ * wp-admin/includes/template.php. The settings_errors() stub above
+ * delegates its $setting filter to this twin (glm21-8) and keeps its
+ * historical return-the-array behavior for existing callers.
  *
  * @param string $setting_code Setting slug to filter by ('' for all).
- * @return array<string, array<string, string>> Filtered errors.
+ * @param bool   $sanitize     Whether to re-run sanitize_option() over the
+ *                             setting's stored row first (core's own head,
+ *                             glm22-7 — the register_setting() callback's
+ *                             settings errors surface by default).
+ * @return list<array<string, string>> Filtered errors, densely appended
+ *                                      in record order (core's shape, glm22-8).
  */
-function get_settings_errors($setting_code = '')
+function get_settings_errors($setting_code = '', $sanitize = false)
 {
+    /*
+     * glm22-7: core's own head (template.php) — $sanitize re-runs the
+     * sanitization for this setting's stored row, the flag's
+     * documented purpose being the sanitize_callback's own settings
+     * errors surfacing by default. The harness's own filter seat
+     * (sanitize_option()) answers, so a registered callback observes
+     * the stored row exactly as core's re-run reads it.
+     */
+    if ($sanitize) {
+        sanitize_option($setting_code, get_option($setting_code));
+    }
+    /*
+     * glm23-4: the PASS-BACK merge — core's own shape between the
+     * sanitize head and the reads (template.php:1928-1931, pinned
+     * 7.1.1): over a settings-updated request with rows parked in the
+     * 'settings_errors' transient (options.php's save redirect), the
+     * passed-back rows merge INTO the one store every caller reads —
+     * in-process rows first, passed-back appended (core's array_merge
+     * order) — and the transient is CONSUMED by the merge, exactly
+     * once. The harness answered in-process rows alone (driven). The
+     * settings_errors() seat's $hide_on_update head answers BEFORE
+     * the twin runs, so the hidden path neither merges nor consumes —
+     * core's own order preserved.
+     */
+    if (isset($_GET['settings-updated']) && $_GET['settings-updated']) {
+        $passed_back = get_transient('settings_errors');
+        if ($passed_back) {
+            WpHarness::$settings_errors = array_merge(WpHarness::$settings_errors, (array) $passed_back);
+            delete_transient('settings_errors');
+        }
+    }
     if ('' === $setting_code) {
         return WpHarness::$settings_errors;
     }
 
+    /*
+     * glm22-8: the filtered rows answer core's DENSE-APPEND shape —
+     * core's get_settings_errors() appends the matches
+     * (template.php: $setting_errors[] = ...), where the twin keyed
+     * them by their STORE indices, surfacing a sparse 0/2 list
+     * through the glm21-8 delegation for two errors on one setting
+     * (driven; the delegation widened the twin's pre-existing
+     * divergence into a caller-visible shape). Append, never key
+     * preservation; the rows keep their record order.
+     */
     $matches = array();
     foreach (WpHarness::$settings_errors as $key => $error) {
         if (is_array($error) && (isset($error['setting']) ? $error['setting'] : '') === $setting_code) {
-            $matches[$key] = $error;
+            $matches[] = $error;
         }
     }
 

@@ -32,6 +32,56 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
      * no option row delegates to add_option() and fires ONLY the
      * add_option_ hook family; real updates fire the update family.
      */
+    /**
+     * glm27-4: wp_unslash()/wp_slash() ride core's LEAF semantics —
+     * core's stripslashes_deep() is map_deep() over the strings-only
+     * callback (arrays recursed, OBJECTS walked through their string
+     * properties, every non-string leaf VERBATIM), and wp_slash()
+     * spells its own three-arm shape (arrays recursed, strings
+     * slashed, everything else verbatim — objects untouched,
+     * formatting.php:5864, pinned 7.1.1). The stub coerced every
+     * non-string member through (string) — an int member answered
+     * its string twin, and an object member FATALED under
+     * strict_types (driven red at HEAD: coerced/fatal).
+     */
+    /**
+     * glm27-5: wp_parse_args() parses the STRING form — core's
+     * wp_parse_str() query-string shape (functions.php, pinned
+     * 7.1.1), so the array|string surface get_sites() itself
+     * advertises answers one verdict either way. The stub DISCARDED
+     * the string into array() — get_sites('fields=ids&number=2')
+     * never saw its keys (driven red at HEAD: the parsed arguments
+     * reached no part of the query).
+     */
+    public function testParseArgsParsesTheStringForm()
+    {
+        $this->assertSame(array( 'a' => '1', 'b' => 'two' ), wp_parse_args('a=1&b=two'), 'The string form parses into its query-string shape (red at HEAD: array() — the string discarded).');
+        $this->assertSame(array( 'a' => '1', 'c' => 'd' ), wp_parse_args('c=d&a=1', array( 'a' => 'x', 'c' => 'y' )), 'The parsed keys merge OVER the defaults, core\'s own order.');
+
+        WpHarness::$sites = array( 2, 3 );
+        $this->assertSame(array( 1, 2 ), get_sites('fields=ids&number=2'), 'The advertised array|string surface answers one verdict either way — the string form drives the query (red at HEAD: the objects returned, the parsed keys never reaching the query).');
+    }
+
+    public function testUnslashAndSlashRideCoresMapDeepLeafSemantics()
+    {
+        $input = array(
+            's' => 'a\\b',
+            'i' => 7,
+            'o' => (object) array( 's' => 'c\\d', 'i' => 9 ),
+        );
+        $unslashed = wp_unslash($input);
+        $this->assertSame('ab', $unslashed['s'], 'String members strip.');
+        $this->assertSame(7, $unslashed['i'], 'An int member stays INT — core\'s callback passes non-strings through verbatim (red at HEAD: coerced to \'7\').');
+        $this->assertSame('cd', $unslashed['o']->s, 'An object member is WALKED, never fataled — its string properties strip (red at HEAD: (string) on the instance).');
+        $this->assertSame(9, $unslashed['o']->i, 'The object\'s int property stays int too.');
+
+        $object = new stdClass();
+        $object->x = 'q\\w';
+        $this->assertSame($object, wp_slash($object), 'wp_slash() returns an OBJECT untouched — core\'s own three-arm shape, objects verbatim (red at HEAD: fataled).');
+        $this->assertSame("a\\'b", wp_slash("a'b"), 'String scalars slash.');
+        $this->assertSame(7, wp_slash(7), 'Non-string scalars pass through verbatim (red at HEAD: \'7\').');
+    }
+
     public function testWpdbPrepareSubstitutesBoundValuesVerbatim()
     {
         /*
@@ -107,6 +157,37 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame('42', sanitize_key(42));
     }
 
+    /**
+     * glm28-7: apply_filters passes the registration's arity through
+     * VERBATIM (core's call shape — WP_Hook::apply_filters, pinned):
+     * the max(1, ...) clamp passed one arg to a 0-arity callback —
+     * an ArgumentCountError in production for a registration core
+     * serves with zero. The glm14 deferral this closes named exactly
+     * the clamp (latent then; first driven evidence now).
+     */
+    public function testAZeroArityFilterCallbackReceivesZeroArgs()
+    {
+        $received = null;
+        add_filter('glm28_zero', static function (...$args) use (&$received) {
+            $received = $args;
+
+            return 'filtered';
+        }, 10, 0);
+
+        $this->assertSame('filtered', apply_filters('glm28_zero', 'value', 'extra'), 'The filter runs and its return rides the value.');
+        $this->assertSame(array(), $received, 'A 0-arity registration receives ZERO args (red at HEAD: one — the ArgumentCountError the clamp mints in production).');
+
+        // Existing registrations unchanged: the default 1-arg shape and a
+        // declared 2-arg shape keep their arities verbatim.
+        add_filter('glm28_two', static function ($value, $extra = null) use (&$received) {
+            $received = array( $value, $extra );
+
+            return $value;
+        }, 10, 2);
+        $this->assertSame('v', apply_filters('glm28_two', 'v', 'e'));
+        $this->assertSame(array( 'v', 'e' ), $received, 'A 2-arity registration receives exactly two.');
+    }
+
     public function testUpdateOptionOnAMissingRowDelegatesToAddOptionHooks()
     {
         update_option('wpct_probe_opt', 'first');
@@ -145,6 +226,75 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(0, did_action('update_option_wpct_probe_autoload'));
     }
 
+
+    public function testUnchangedValuesCompareOverSerializedEqualityCoreArm()
+    {
+        /*
+         * glm17-8: core's unchanged compare is identity OR
+         * maybe_serialize() equality (option.php:923, pinned 7.1.1) —
+         * two equal-VALUED but non-identical arrays/objects are
+         * UNCHANGED: no write, no hooks, no autoload flip (ticket
+         * #38903's own class). The stub rode identity alone (driven
+         * red at HEAD: an equal-valued ArrayObject save wrote the
+         * second instance and fired the update family).
+         */
+        $make = static function () {
+            return new ArrayObject(array( 'k' => 'v' ));
+        };
+        $first = $make();
+        $this->assertTrue(update_option('glm17_obj_opt', $first));
+        $this->assertSame(0, did_action('update_option_glm17_obj_opt'), 'staging: the first save rode the add family, never the update one.');
+
+        $second = $make();
+        $this->assertNotSame($first, $second, 'staging: the pair must be two distinct instances — the serialized-equality arm this leg drives.');
+
+        $this->assertFalse(update_option('glm17_obj_opt', $second), 'An equal-valued non-identical object answers UNCHANGED, core\'s maybe_serialize arm (red at HEAD: true, the write completed).');
+        $this->assertSame(0, did_action('update_option_glm17_obj_opt'), 'No update hooks fired over the unchanged value (red at HEAD: the specific hook fired).');
+        $this->assertSame(0, did_action('updated_option'), 'The closing hook stayed silent too.');
+        /*
+         * CORRECTED (glm18-8): the leg once asserted the stored
+         * INSTANCE was the caller's own $first (assertSame) — the
+         * harness's reference-storage artifact, falsified by core's
+         * own head clone (option.php:882-884): core never stores the
+         * caller's instance, it stores serialized bytes, and the
+         * harness's parity shape is the detached equal-valued copy.
+         * "Nothing wrote" still names the leg: the stored row carries
+         * the FIRST value, never the second instance.
+         */
+        $this->assertEquals($first, get_option('glm17_obj_opt'), 'Nothing wrote — the stored row still carries the FIRST value, a detached equal-valued copy of it (red at HEAD: the second instance stored).');
+        $this->assertNotSame($second, get_option('glm17_obj_opt'), 'The second instance is not the stored row.');
+
+        // The control: a genuinely different value still updates.
+        $this->assertTrue(update_option('glm17_obj_opt', array( 'k' => 'changed' )));
+        $this->assertSame(array( 'k' => 'changed' ), get_option('glm17_obj_opt'));
+    }
+
+    public function testTheExistingRowAddStillRunsTheSanitizerCoreOrder()
+    {
+        /*
+         * glm17-9: core sanitizes at the TRUE head of add_option() —
+         * BEFORE the exists-guard (option.php:1113 precedes :1121,
+         * pinned 7.1.1) — so the guard's no-op add still counts the
+         * add-head run. The stub had the guard first, silently
+         * skipping the sanitizer on the existing-row path (driven red
+         * at HEAD: the callback ran zero times over the no-op add).
+         */
+        $runs = 0;
+        register_setting('glm17', 'glm17_head_opt', array(
+            'sanitize_callback' => static function ($v) use (&$runs) {
+                ++$runs;
+
+                return $v;
+            },
+        ));
+
+        update_option('glm17_head_opt', 'stored');
+        $this->assertSame(2, $runs, 'staging: the first save ran the sanitizer at BOTH heads (glm16-5\'s pin).');
+
+        $this->assertFalse(add_option('glm17_head_opt', 'attempt'), 'The non-false duplicate keeps the silent no-op (glm17-4\'s guard).');
+        $this->assertSame(3, $runs, 'The add HEAD ran before the guard — the no-op add still sanitizes (red at HEAD: the guard returned first, 2).');
+        $this->assertSame('stored', get_option('glm17_head_opt'), 'The no-op wrote nothing, as before.');
+    }
 
     public function testUpdateOptionHookOrderAndArityMatchCore()
     {
@@ -289,13 +439,12 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
          * shape throws now; extending the stub to a new query family is
          * a conscious edit, never a silent empty.
          */
-        try {
-            $GLOBALS['wpdb']->get_col('SELECT option_name FROM wp_options WHERE option_name LIKE \'x%\' ORDER BY option_name');
-            $this->fail('An unrecognized get_col() query shape must throw.');
-        } catch (RuntimeException $e) {
-            $this->assertStringContainsString('unsupported query shape', $e->getMessage());
-            $this->assertStringContainsString('ORDER BY', $e->getMessage(), 'The diagnostic names the query it refused.');
-        }
+        $refusal = $this->refusalOf(
+            fn() => $GLOBALS['wpdb']->get_col('SELECT option_name FROM wp_options WHERE option_name LIKE \'x%\' ORDER BY option_name'),
+            'An unrecognized get_col() query shape must throw.', \RuntimeException::class
+        );
+        $this->assertStringContainsString('unsupported query shape', $refusal->getMessage());
+        $this->assertStringContainsString('ORDER BY', $refusal->getMessage(), 'The diagnostic names the query it refused.');
     }
 
     public function testOutboundHttpIsBlockedUnlessMocked()
@@ -459,6 +608,41 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         }
     }
 
+    /**
+     * glm28-14: advanceTime() rejects NEGATIVE advances — the sibling
+     * DeterministicClock::advanceBy()'s own doctrine ('only advances;
+     * rewinding is not a wall-clock behavior'). The seat once accepted
+     * negatives and silently rewound the frozen clock, so an expiry
+     * assertion with a sign error false-greened against time moving
+     * the other way.
+     */
+    public function testAdvanceTimeRejectsNegativeAdvances()
+    {
+        $this->freezeTime(1700000000);
+
+        try {
+            WpHarness::advanceTime(-60);
+            $this->fail('A negative advance must THROW — red at HEAD it silently rewound the frozen clock.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('only advances', $e->getMessage(), 'The refusal names the sibling\'s own doctrine.');
+        }
+        $this->assertSame(1700000000, WpHarness::$frozen_time, 'The clock never rewound — the refused advance landed nowhere.');
+
+        // Positive advances unchanged.
+        WpHarness::advanceTime(400);
+        $this->assertSame(1700000400, WpHarness::$frozen_time, 'A positive advance keeps moving the frozen clock.');
+
+        // The refusal is unconditional: the sign error is the defect
+        // wherever the clock state stands (live clock included).
+        WpHarness::reset();
+        try {
+            WpHarness::advanceTime(-1);
+            $this->fail('A negative advance over a live clock throws too — the sign error is the defect, never the clock state.');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertNull(WpHarness::$frozen_time, 'The live clock stays untouched by the refused advance.');
+        }
+    }
+
     public function testDeterministicClockDrivesTransientsAndCron()
     {
         $this->freezeTime(1700000000);
@@ -481,6 +665,2071 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertSame(1, WpHarness::runDueEvents());
         $this->assertSame(1, $fired);
         $this->assertFalse(wp_next_scheduled('test_clock_event'));
+    }
+
+    /**
+     * glm21-6: set_transient() answers the option twins' own
+     * DETACHMENT and HOOK semantics — core delegates the write to
+     * add_option()/update_option() over the '_transient_<name>' row,
+     * so the stored value is a serialized-equal copy (glm19-5's
+     * doctrine: mutation after the save never leaks into
+     * get_transient) and the add/update option hook family fires over
+     * the row's own spelling.
+     */
+    public function testSetTransientStoresADetachedCopyAndFiresTheOptionHookFamily()
+    {
+        $payload = (object) array('models' => array('glm-5.3'));
+        $this->assertTrue(set_transient('glm21_obj', $payload, 3600));
+        $payload->models[] = 'glm-5.2';
+
+        $stored = get_transient('glm21_obj');
+        $this->assertSame(array('glm-5.3'), $stored->models, 'Mutation after set_transient does NOT leak into get_transient (red at HEAD: the live reference leaked, glm-5.2 visible) — the transient store answers the option twins\' own serialized-equal copy doctrine.');
+        $this->assertNotSame($payload, $stored, 'The stored row shares no reference with the caller.');
+
+        $this->assertTrue(set_transient('glm21_hook', 'v1'));
+        $this->assertSame(1, did_action('add_option__transient_glm21_hook'), 'The FIRST save fires the add family over the row spelling (red at HEAD: zero hooks fired).');
+        $this->assertSame(0, did_action('update_option__transient_glm21_hook'), 'The update family stays silent for the first save.');
+
+        $this->assertTrue(set_transient('glm21_hook', 'v2'));
+        $this->assertSame(1, did_action('add_option__transient_glm21_hook'), 'The add family fires exactly once.');
+        $this->assertSame(1, did_action('update_option__transient_glm21_hook'), 'A save over an existing row fires the update family, exactly core\'s add_option/update_option delegation.');
+        $this->assertSame(1, did_action('updated_option'), 'The closing update hook fires with it.');
+
+        // glm15-14's get_option-shaped predicate rides here too: a row
+        // STORED AS FALSE reads missing, the ADD family fires again.
+        $this->assertTrue(set_transient('glm21_false', false));
+        $this->assertTrue(set_transient('glm21_false', 'x'));
+        $this->assertSame(2, did_action('add_option__transient_glm21_false'), 'A stored-false row reads missing through the delegation predicate — both saves fire the add family.');
+    }
+
+    /**
+     * glm22-4: set_transient() answers the twins' own UNCHANGED
+     * short-circuit — core's update branch delegates to
+     * update_option(), whose glm17-8 two-arm compare refuses an
+     * identical re-save with false and ZERO hooks, where the harness
+     * fired the full update family and answered true (red at HEAD).
+     */
+    public function testSetTransientAnswersTheUnchangedShortCircuit()
+    {
+        $this->assertTrue(set_transient('glm22_same', 'v1'));
+        $before_update = did_action('update_option__transient_glm22_same');
+        $before_close = did_action('updated_option');
+
+        // The scalar arm: an identical re-save answers false, zero hooks.
+        $this->assertFalse(set_transient('glm22_same', 'v1'), 'An identical re-save answers false — the twins\' own unchanged contract (red at HEAD: true).');
+        $this->assertSame($before_update, did_action('update_option__transient_glm22_same'), 'ZERO update-family hooks fire over the unchanged re-save (red at HEAD: the full family).');
+        $this->assertSame($before_close, did_action('updated_option'), 'The closing hook stays silent too.');
+        $this->assertSame('v1', get_transient('glm22_same'), 'The stored row stands untouched by the refused re-save.');
+
+        // The object arm: the identity compare never holds at this seat (the
+        // stored row is a detached copy, glm21-6) — serialized equality
+        // decides, the twins' compare over detached copies.
+        $payload = (object) array('models' => array('glm-5.3'));
+        $this->assertTrue(set_transient('glm22_obj', $payload));
+        $obj_before_update = did_action('update_option__transient_glm22_obj');
+        $this->assertFalse(set_transient('glm22_obj', $payload), 'An equal-valued object re-save answers false — the serialized-equality arm (red at HEAD: true, the identity arm alone).');
+        $this->assertSame($obj_before_update, did_action('update_option__transient_glm22_obj'), 'ZERO hooks over the equal-valued object re-save.');
+        $this->assertSame(array('glm-5.3'), get_transient('glm22_obj')->models, 'The stored row stands.');
+
+        // A CHANGED re-save completes — the family fires, the answer true.
+        $this->assertTrue(set_transient('glm22_same', 'v2'), 'A changed re-save completes with the full family.');
+        $this->assertSame($before_update + 1, did_action('update_option__transient_glm22_same'), 'The changed re-save fires the update family exactly once.');
+        $this->assertSame('v2', get_transient('glm22_same'), 'The changed value lands.');
+    }
+
+    /**
+     * glm23-1: set_transient() answers core's TWO-ROW TTL mechanics —
+     * core's update branch refreshes the '_transient_timeout_<name>'
+     * row UNCONDITIONALLY over an expiration-bearing save
+     * (option.php:1562-1571, pinned 7.1.1) and the VALUE row refuses
+     * an unchanged re-save separately below it (update_option's own
+     * compare), so the harness's single unchanged false at the head
+     * let the TTL stand stale: an unchanged re-save never refreshed
+     * expires_at, and an expired-but-unread row re-saved with its own
+     * value stayed permanently dead (driven red at HEAD). The live
+     * caller: ZaiDiscoveryCache::store_ids() re-saves the same
+     * discovered ID list with DISCOVERY_TTL (the availability probe's
+     * seed path writes without reading), so reads degraded to cache
+     * misses after the first TTL window.
+     */
+    public function testSetTransientRefreshesTheTimeoutRowOverAnUnchangedReSave()
+    {
+        // (a) the unchanged re-save refreshes expires_at while the value
+        // row keeps the twins' own refusal (glm22-4 stands: false, no
+        // hooks).
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm23_ttl', 'v1', 100));
+        $this->freezeTime(1050);
+        $before_update = did_action('update_option__transient_glm23_ttl');
+        $this->assertFalse(set_transient('glm23_ttl', 'v1', 100), 'The unchanged re-save keeps the twins\' own false — the value row refuses its own update exactly as before.');
+        $this->assertSame($before_update, did_action('update_option__transient_glm23_ttl'), 'ZERO update-family hooks over the unchanged re-save — the value row\'s refusal is glm22-4\'s own, untouched by the timeout refresh.');
+        $this->freezeTime(1120);
+        $this->assertSame('v1', get_transient('glm23_ttl'), 'The TIMEOUT row refreshed over the unchanged re-save — core answers v1 at t=1120 where the first window ended at 1100 (red at HEAD: false, the row expired).');
+
+        // (b) the expired-but-unread row resurrects: the re-save reads
+        // through the expiry check (core's get_option-shaped predicate
+        // never expires — the timeout row refresh revives the row).
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm23_dead', 'v1', 100));
+        $this->freezeTime(1120);
+        $this->assertFalse(set_transient('glm23_dead', 'v1', 100), 'The unchanged re-save over the dead row answers false too — the value row\'s own refusal, never a second family.');
+        $this->freezeTime(1219);
+        $this->assertSame('v1', get_transient('glm23_dead'), 'The dead row\'s re-save resurrected it — the timeout refreshed past the old expiry (red at HEAD: permanently dead, false).');
+
+        // (c) a zero-expiration save neither arms nor disarms a standing
+        // timeout (core's own `if ( $expiration )` at option.php:1562 —
+        // the no-expiration re-save never touches the timeout row), so
+        // the row still dies at the FIRST window's end.
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm23_standing', 'v1', 100));
+        $this->freezeTime(1050);
+        $this->assertTrue(set_transient('glm23_standing', 'v2'), 'A changed no-expiration re-save completes — the value row updates.');
+        $this->freezeTime(1099);
+        $this->assertSame('v2', get_transient('glm23_standing'), 'Inside the first window the refreshed value serves.');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm23_standing'), 'The no-expiration re-save left the standing timeout alone (red at HEAD: the harness overwrote expires_at to false and the row never died) — core keeps the first window\'s end.');
+    }
+
+    /**
+     * glm23-2: set_transient() answers core's own first statements —
+     * the pre_set_transient_<name> filter rides the HEAD
+     * (option.php:1526, pinned 7.1.1: the rewritten value flows to
+     * storage and compare), the expiration_of_transient_<name> filter
+     * follows it (:1539), and the completion actions
+     * set_transient_<name> ($value, $expiration, $transient, :1594)
+     * and set_transient ($transient, $value, $expiration, :1605) fire
+     * over a COMPLETED save alone — `if ( $result )` (:1579), so an
+     * unchanged re-save (glm22-4's false) fires neither. The harness
+     * seat dropped the whole family (driven red at HEAD: the filter
+     * never ran, 'orig' stored).
+     */
+    public function testSetTransientFiresThePreSetTransientFilterFamily()
+    {
+        $filter_seen = array();
+        $rewrites = 0;
+        add_filter('pre_set_transient_glm23_pre', static function ($value, $expiration, $transient) use (&$filter_seen, &$rewrites) {
+            $filter_seen[] = array( $value, $expiration, $transient );
+
+            return 'rewritten' . (++$rewrites > 1 ? (string) $rewrites : '');
+        }, 10, 3);
+        $completion = array();
+        add_action('set_transient_glm23_pre', static function (...$args) use (&$completion) {
+            $completion[] = array( 'specific', ...$args );
+        }, 10, 3);
+        add_action('set_transient', static function (...$args) use (&$completion) {
+            $completion[] = array( 'generic', ...$args );
+        }, 10, 3);
+
+        // First save: the ADD family persists the REWRITTEN value.
+        $this->assertTrue(set_transient('glm23_pre', 'orig', 100));
+        $this->assertSame(array( 'orig', 100, 'glm23_pre' ), $filter_seen[0] ?? null, 'The pre_set_transient filter rides the head with the pin\'s own arity ($value, $expiration, $transient) — option.php:1526 (red at HEAD: never fires).');
+        $this->assertSame('rewritten', get_transient('glm23_pre'), 'The REWRITTEN value is what stores — the filter\'s answer flows to storage (red at HEAD: \'orig\' stored).');
+
+        // Second save: the rewritten value flows to the COMPARE too — the
+        // update family observes the OLD ('rewritten') against the new
+        // rewrite, exactly the delegated update_option() vantage.
+        $update_args = array();
+        add_action('update_option__transient_glm23_pre', static function (...$args) use (&$update_args) {
+            $update_args[] = $args;
+        }, 10, 3);
+        $this->assertTrue(set_transient('glm23_pre', 'orig2', 100));
+        $this->assertSame(array( 'rewritten', 'rewritten2', '_transient_glm23_pre' ), $update_args[0], 'The update family\'s old/new pair rides the filter\'s answers — the first rewrite observed as the OLD, the second as the new.');
+
+        // The completion actions fired over both COMPLETED saves, in the
+        // pin's order and arities.
+        $this->assertSame(array( 'specific', 'rewritten', 100, 'glm23_pre' ), $completion[0], 'The set_transient_<name> action fires on completion with the pin\'s arity ($value, $expiration, $transient) — option.php:1594.');
+        $this->assertSame(array( 'generic', 'glm23_pre', 'rewritten', 100 ), $completion[1], 'The generic set_transient action follows ($transient, $value, $expiration) — option.php:1605.');
+
+        /*
+         * `if ( $result )` (:1579): the unchanged re-save fires NEITHER
+         * action — the value row refused its own update. The compare
+         * itself rides the FILTERED value: a filter rewriting to the
+         * stored value makes the save unchanged whatever the caller
+         * passed.
+         */
+        add_filter('pre_set_transient_glm23_same', static function () {
+            return 'v1';
+        });
+        $this->assertTrue(set_transient('glm23_same', 'v1'));
+        $specific_before = did_action('set_transient_glm23_same');
+        $generic_before = did_action('set_transient');
+        $this->assertFalse(set_transient('glm23_same', 'anything-else'), 'The compare sees the FILTERED value — \'anything-else\' rewritten to the stored \'v1\' answers the twins\' unchanged false (red at HEAD: \'anything-else\' stored, true).');
+        $this->assertSame($specific_before, did_action('set_transient_glm23_same'), 'The specific completion action stays silent over the refused re-save.');
+        $this->assertSame($generic_before, did_action('set_transient'), 'The generic completion action stays silent too.');
+    }
+
+    /**
+     * glm23-2 (the expiration half of the head family): the
+     * expiration_of_transient_<name> filter rides between the value
+     * filter and the write (option.php:1539) — the rewritten TTL is
+     * the TTL that arms.
+     */
+    public function testSetTransientHonorsTheExpirationOfTransientFilter()
+    {
+        add_filter('expiration_of_transient_glm23_exp', static function () {
+            return 200;
+        });
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm23_exp', 'v1', 100));
+        $this->freezeTime(1150);
+        $this->assertSame('v1', get_transient('glm23_exp'), 'The FILTERED expiration armed the row — alive at t=1150 past the caller\'s 100 (red at HEAD: the filter never ran, the row died at 1100).');
+        $this->freezeTime(1201);
+        $this->assertFalse(get_transient('glm23_exp'), 'The rewritten window ends at its own 200 — dead at t=1201.');
+    }
+
+    /**
+     * glm23-3: a seeded '_transient_<name>' OPTION row is visible to
+     * set_transient() — core's predicate is get_option-shaped over the
+     * option row (option.php:1548/:1563, pinned 7.1.1), so a seed the
+     * option store carries (an out-of-band write; the wpdb stub's
+     * uninstall enumeration reads exactly these rows) answers the
+     * UPDATE family with its own value as the old, where the harness
+     * seat read its transient store alone and fired the ADD family
+     * over the standing seed (driven red at HEAD), the two stores
+     * left divergent. The seeded row's own home stays current through
+     * the save — core writes ONE row, whichever store the harness
+     * models it in.
+     */
+    public function testSetTransientSeesASeededTransientOptionRow()
+    {
+        $this->assertTrue(add_option('_transient_glm23_seeded', 'seed'));
+        $update_pairs = array();
+        add_action('update_option__transient_glm23_seeded', static function (...$args) use (&$update_pairs) {
+            $update_pairs[] = $args;
+        }, 10, 3);
+        $seed_add_count = did_action('add_option__transient_glm23_seeded');
+
+        $this->assertTrue(set_transient('glm23_seeded', 'fresh'));
+        $this->assertSame(1, did_action('update_option__transient_glm23_seeded'), 'The seeded option row is VISIBLE to the seat — core\'s get_option-shaped predicate reads the same row the seed wrote, so the save fires the UPDATE family (red at HEAD: the ADD family, the row invisible).');
+        $this->assertSame($seed_add_count, did_action('add_option__transient_glm23_seeded'), 'The ADD family stays silent over the standing seed (the seed\'s own add alone in the count).');
+        $this->assertSame(array( 'seed', 'fresh', '_transient_glm23_seeded' ), $update_pairs[0] ?? null, 'The update family observes the SEED as the old value (red at HEAD: fired with no old at all).');
+        $this->assertSame('fresh', get_transient('glm23_seeded'), 'The transient view serves the fresh value.');
+        $this->assertSame('fresh', get_option('_transient_glm23_seeded'), 'The seeded row\'s own home stays current — the stores agree (red at HEAD: \'seed\' standing beside the fresh transient row).');
+    }
+
+    /**
+     * glm24-2: the timeout row ARMS over a seeded-only row — core's
+     * update branch writes the '_transient_timeout_<name>' row
+     * BEFORE the value row's own unchanged refusal
+     * (option.php:1562-1571, pinned 7.1.1 — the write-before-refusal
+     * ordering), so a seed re-saved with its own value and a TTL
+     * answers the twins' unchanged FALSE while the row still serves
+     * the seed until the armed window ends; the harness's refresh
+     * block guarded on $own_entry alone, so a seed-only row (no
+     * transient-store entry) never armed and get_transient answered
+     * false IMMEDIATELY over the standing option seed (driven red at
+     * HEAD).
+     */
+    public function testSetTransientArmsTheTimeoutRowOverASeededRow()
+    {
+        $this->freezeTime(1000);
+        $this->assertTrue(add_option('_transient_glm24_seed_ttl', 'seed'));
+        $before_update = did_action('update_option__transient_glm24_seed_ttl');
+        $this->assertFalse(set_transient('glm24_seed_ttl', 'seed', 100), 'The value row keeps the twins\' own unchanged false over the seeded row — the arming rides ahead of the compare, never through it (glm22-4 stands).');
+        $this->assertSame($before_update, did_action('update_option__transient_glm24_seed_ttl'), 'ZERO value-family hooks over the refused re-save — the timeout row arms ahead of the refusal, exactly core\'s own order.');
+        $this->freezeTime(1050);
+        $this->assertSame('seed', get_transient('glm24_seed_ttl'), 'The seeded row serves its own value until the armed window ends (red at HEAD: false immediately — the seed-only row never armed a timeout).');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm24_seed_ttl'), 'The armed window ends at its own 100 — the refused save still wrote the timeout row, and the row dies at it.');
+    }
+
+    /**
+     * glm24-3: delete_transient() owns BOTH stores — glm23-3's
+     * mirror (the option row a seeded save keeps current so the
+     * stores agree) created a second copy the seat's own delete
+     * never owned: after a save over a seed, delete_transient()
+     * left the mirrored option row standing — get_option()
+     * answering the value post-delete (core: false), the wpdb
+     * uninstall enumeration still presenting the row, and a
+     * re-save firing the UPDATE family where core fires the ADD
+     * over its one deleted row (driven red at HEAD). The mirror
+     * dies with the transient.
+     */
+    public function testDeleteTransientOwnsTheMirroredOptionRow()
+    {
+        $this->assertTrue(add_option('_transient_glm24_del', 'seed'));
+        $this->assertTrue(set_transient('glm24_del', 'x'));
+        $this->assertSame('x', get_option('_transient_glm24_del'), 'staging: the save mirrors into the option row (glm23-3\'s agreeing-stores shape).');
+
+        $this->assertTrue(delete_transient('glm24_del'));
+        $this->assertFalse(get_transient('glm24_del'), 'The transient row dies at the delete.');
+        $this->assertFalse(get_option('_transient_glm24_del'), 'The MIRRORED option row dies with it (red at HEAD: \'x\' standing) — core deletes its one row, whichever store the harness models it in.');
+        $this->assertSame(
+            array(),
+            $this->censusTransientRows('glm24_del'),
+            'The uninstall enumeration answers EMPTY post-delete (red at HEAD: the mirrored row still presented) — no second copy survives the seat\'s own delete.'
+        );
+
+        // A re-save over the deleted row fires the ADD family — core's
+        // own shape over a row its delete removed.
+        $update_before = did_action('update_option__transient_glm24_del');
+        $add_before = did_action('add_option__transient_glm24_del');
+        $this->assertTrue(set_transient('glm24_del', 'y'));
+        $this->assertSame($update_before, did_action('update_option__transient_glm24_del'), 'A re-save over the deleted row fires the ADD family, never the UPDATE (red at HEAD: the standing mirror answered UPDATE).');
+        $this->assertSame($add_before + 1, did_action('add_option__transient_glm24_del'), 'The ADD family fires over the deleted row — the save sees no row either store carries.');
+        $this->assertSame('y', get_transient('glm24_del'), 'The re-saved value serves.');
+    }
+
+    /**
+     * glm24-4: a zero-expiration re-save never DISARMS a TTL-armed
+     * stored-false row — the write's expires_at keep-guard keyed on
+     * $existing (FALSE for a stored-false value, the get_option-shaped
+     * predicate's own reading), so set('f', false, 100) then
+     * set('f', false) reset expires_at to false and the row NEVER
+     * died, violating glm23-1's own invariant (a zero-expiration save
+     * never disarms a TTL the save did not name — the standing
+     * timeout row survives as core keeps it). The guard keys on
+     * $own_entry: the transient store's own row is the row whose
+     * window stands (driven red at HEAD).
+     */
+    public function testAZeroExpirationReSaveKeepsAStoredFalseRowsWindow()
+    {
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm24_sf', false, 100), 'staging: the stored-false row arms its window (the ADD family — a false row reads missing to the get_option-shaped predicate, glm15-14).');
+        $this->freezeTime(1050);
+        $this->assertTrue(set_transient('glm24_sf', false), 'The zero-expiration re-save completes — the stored-false row still reads missing, the ADD family its own shape.');
+        $this->assertFalse(get_transient('glm24_sf'), 'The row serves its stored false inside the window — the false answer is the VALUE, never the expiry.');
+        $this->assertSame(
+            array( '_transient_glm24_sf' ),
+            $this->censusTransientRows('glm24_sf'),
+            'INSIDE the window the row LIVES (t=1050 < 1100) — the enumeration census proves the false read was the stored value.'
+        );
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm24_sf'), 'Past the window the read answers false — the death itself is the census below.');
+        $this->assertSame(
+            array(),
+            $this->censusTransientRows('glm24_sf'),
+            'The stored-false row DIES at its original expiry (red at HEAD: never dies — the keep-guard keyed on $existing reset expires_at to false over the stored-false shape and the row stood forever).'
+        );
+    }
+
+    /**
+     * glm25-6: delete_transient() rides core's own shape
+     * (option.php:1380-1418, pinned 7.1.1, driver pre-verified): the
+     * delete_transient_<name> action fires BEFORE the delete —
+     * unconditionally, a missing row still announces its deletion
+     * attempt — deleted_transient fires AFTER a SUCCESSFUL delete
+     * alone (`if ($result)` gates it), and the return is the delete's
+     * own: false over a missing row, true over a deleted one. The
+     * seat modeled ZERO hook seats and answered true unconditionally
+     * (driven red at HEAD: the missing-row true). The '_transient_
+     * timeout_<name>' delete_option core gates beside the result
+     * rides the seat's standing no-such-row simplification.
+     */
+    public function testDeleteTransientRidesCoresHookShapeAndMissingRowFalse()
+    {
+        $order = array();
+        add_action('delete_transient_glm25_del', static function (...$args) use (&$order) {
+            $order[] = array( 'pre', $args );
+        });
+        add_action('deleted_transient', static function (...$args) use (&$order) {
+            $order[] = array( 'done', $args );
+        });
+
+        /*
+         * The MISSING row: the pre-hook still announces the attempt,
+         * the completion stays silent, the return is the delete's own
+         * false (red at HEAD: true).
+         */
+        $this->assertFalse(delete_transient('glm25_del'), 'A missing row answers the delete\'s own false — core\'s return is delete_option()\'s, never an unconditional true (red at HEAD: true over zero hook seats).');
+        $this->assertSame(
+            array( array( 'pre', array( 'glm25_del' ) ) ),
+            $order,
+            'The pre-hook fires BEFORE the delete unconditionally; deleted_transient stays silent over the missing row — `if ($result)` gates the completion family (red at HEAD: zero hook seats at all).'
+        );
+
+        /*
+         * The SUCCESSFUL delete: both hooks in core's order, both
+         * stores cleaned (the seeded mirror shape — glm23-3's
+         * agreeing stores, glm24-3's delete ownership).
+         */
+        $this->assertTrue(add_option('_transient_glm25_del', 'seed'));
+        $this->assertTrue(set_transient('glm25_del', 'x'));
+        $this->assertSame('x', get_option('_transient_glm25_del'), 'staging: the save mirrors into the option row (glm23-3\'s agreeing-stores shape).');
+
+        $order = array();
+        $this->assertTrue(delete_transient('glm25_del'), 'The deleted row answers true.');
+        $this->assertSame(
+            array( array( 'pre', array( 'glm25_del' ) ), array( 'done', array( 'glm25_del' ) ) ),
+            $order,
+            'A SUCCESSFUL delete fires both hooks in core\'s order — the specific pre-hook first, the completion after the delete, each at its own arity (option.php:1391/:1414).'
+        );
+        $this->assertFalse(get_transient('glm25_del'), 'The transient store\'s row dies at the delete.');
+        $this->assertFalse(get_option('_transient_glm25_del'), 'The mirrored option row dies with it — core deletes its one row, whichever store the harness models it in (glm24-3).');
+    }
+
+    /**
+     * glm25-7: delete_option() over a '_transient_'-prefixed key owns
+     * the transient-store row too — core is ONE row (the delete kills
+     * the transient), and glm24-3 closed only the transient-to-option
+     * direction; the option-to-transient direction left the transient
+     * store's row standing: get_transient() still served post-delete
+     * (driven red at HEAD). The uninstall path's LIKE-enumeration
+     * deletes ride this shape (the wpdb stub presents the transient
+     * rows in their _transient_<name> option_name form). Non-transient
+     * deletes unchanged.
+     */
+    public function testDeleteOptionOverATransientKeyOwnsTheTransientStoreRow()
+    {
+        $this->assertTrue(set_transient('glm25_opt', 'v'), 'staging: the transient-store row saves.');
+        $this->assertSame('v', get_transient('glm25_opt'), 'staging: the row serves.');
+
+        $this->assertTrue(delete_option('_transient_glm25_opt'), 'The delete owns the row the transient store models — core\'s ONE row, whichever store carries it (red at HEAD: false — the options store alone held the key).');
+        $this->assertFalse(get_transient('glm25_opt'), 'The transient store\'s row dies at the option-keyed delete (red at HEAD: still serving).');
+        $this->assertSame(
+            array(),
+            $this->censusTransientRows('glm25_opt'),
+            'The uninstall enumeration answers EMPTY post-delete — the LIKE-enumeration shape rides the mirror.'
+        );
+        $this->assertFalse(delete_option('_transient_glm25_opt'), 'The row is gone from BOTH stores — the second delete answers the missing-row false.');
+
+        // Non-transient deletes unchanged.
+        $this->assertTrue(add_option('glm25_plain_opt', 'x'));
+        $this->assertTrue(delete_option('glm25_plain_opt'));
+        $this->assertFalse(get_option('glm25_plain_opt'), 'A non-transient delete keeps its own shape.');
+    }
+
+    /**
+     * glm26-1: delete_option()'s transient half gates on IDENTITY,
+     * never truthiness — '0' and '' are live transient names, and the
+     * `$transient &&` truthiness gates let their deletes answer the
+     * missing-row false over a live row: set_transient('0', 'v');
+     * delete_transient('0') answered false and get_transient() kept
+     * serving (driven red at HEAD — glm25-7's mirror broken over the
+     * falsy names, the PHP-truthiness class this loop has closed
+     * repeatedly).
+     */
+    public function testFalsyTransientNamesDeleteCleanly()
+    {
+        $this->assertTrue(set_transient('0', 'v'), 'staging: the \'0\'-named row saves.');
+        $this->assertTrue(set_transient('', 'e'), 'staging: the empty-named row saves.');
+
+        $this->assertTrue(delete_transient('0'), 'The \'0\'-named row deletes — the transient half compares identity, never truthiness (red at HEAD: the missing-row false over a live row).');
+        $this->assertFalse(get_transient('0'), 'The \'0\'-named row is gone (red at HEAD: still serving).');
+        $this->assertTrue(delete_transient(''), 'The empty-named row deletes identically — false !== \'\' is the only gate.');
+        $this->assertFalse(get_transient(''), 'The empty-named row is gone.');
+    }
+
+    /**
+     * glm26-2: the write's keep-guard reads a CAPTURE from before the
+     * hook family, never the row a mid-save observer may have deleted
+     * — a deleting observer at the update/add_option actions left
+     * $transients[$transient] absent at the keep-guard's read, and
+     * the undefined-key warning killed the save under the suite's
+     * warning-to-exception regime: no completion hooks, no return
+     * (driven red at HEAD — core completes this shape; the standing
+     * window is settled before the family fires, glm23-1's own
+     * arming order).
+     */
+    public function testAMidSaveDeletingObserverCannotKillTheSave()
+    {
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm26_mid', 'a', 100), 'staging: the row arms its window.');
+        $this->freezeTime(1050);
+        $completed_before = did_action('set_transient_glm26_mid');
+
+        add_action('update_option', static function ($option) {
+            if ('_transient_glm26_mid' === $option) {
+                delete_transient('glm26_mid');
+            }
+        });
+        $this->assertTrue(set_transient('glm26_mid', 'b'), 'The save completes over the mid-save delete — the keep-guard reads the pre-family capture (red at HEAD: the undefined-key warning killed the save under the warning-to-exception regime).');
+        $this->assertSame('b', get_transient('glm26_mid'), 'The completed save stores its value — the write re-creates the row the observer deleted.');
+        $this->assertSame($completed_before + 1, did_action('set_transient_glm26_mid'), 'The completion family fired over the completed save — never a regime kill mid-method.');
+        $this->freezeTime(1099);
+        $this->assertSame('b', get_transient('glm26_mid'), 'The kept window stands — the capture carried the standing 1100 expiry across the observer\'s delete.');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm26_mid'), 'The row dies at the first save\'s own window — glm23-1\'s zero-expiration keep over the capture.');
+    }
+
+    /**
+     * glm27-1: the two namespaces of the one row — core's
+     * delete_option() is namespace-blind (option.php's row-check →
+     * pre-hook → delete → result-gated pair over whatever row the
+     * name carries), and the spelling '_transient_timeout_<name>'
+     * names ONE physical row under two readings: the VALUE row of a
+     * transient named 'timeout_<name>' and the timeout row of
+     * transient '<name>'. glm26-3's exclusion routed the whole family
+     * to the missing-row false — its recorded premise ('core answers
+     * false') held only for ABSENT rows; over the live aliased row
+     * core answers TRUE and kills it (driven red at HEAD: the value
+     * row permanently undeletable while the wpdb enumeration listed
+     * a row delete_option claimed absent).
+     */
+    public function testDeleteOptionAnswersTheTwoNamespacesOfTheOneTimeoutRow()
+    {
+        // Leg 1 — the VALUE reading: a transient literally named
+        // 'timeout_demo' lives in the row '_transient_timeout_demo'.
+        $this->assertTrue(set_transient('timeout_demo', 'v1'), 'staging: the aliased name saves.');
+        $this->assertTrue(delete_option('_transient_timeout_demo'), 'The value reading answers TRUE — the row exists, and core kills it (red at HEAD: glm26-3\'s exclusion answered the missing-row false over the live row).');
+        $this->assertFalse(get_transient('timeout_demo'), 'The aliased transient is dead — its value row was the row the delete carried (red at HEAD: the row survived its own delete).');
+
+        // Leg 2 — the TIMEOUT reading: an armed window is this
+        // harness's model of the '_transient_timeout_<name>' row; its
+        // delete disarms the window ALONE, the value row surviving
+        // (core: the transient serves its value forever once its
+        // timeout row is gone).
+        $this->freezeTime(2000);
+        $this->assertTrue(set_transient('glm27_ttl', 'v2', 100), 'staging: the armed window saves.');
+        $this->assertTrue(delete_option('_transient_timeout_glm27_ttl'), 'The timeout reading answers TRUE — the armed window is the row the name carries (red at HEAD: the missing-row false).');
+        $this->assertSame('v2', get_transient('glm27_ttl'), 'The value row survives its timeout row\'s delete — the window alone died.');
+        $this->freezeTime(5000);
+        $this->assertSame('v2', get_transient('glm27_ttl'), 'The disarmed row never dies — no window remains to end.');
+
+        // Leg 3 — a plain transient under the family's spelling:
+        // neither a transient named 'timeout_plain' nor an armed
+        // window on 'plain' exists, so the row is absent and the
+        // delete keeps glm26-3's own verdict over the ABSENT row.
+        $this->assertTrue(set_transient('plain', 'v3'), 'staging: the plain transient saves.');
+        $this->assertFalse(delete_option('_transient_timeout_plain'), 'No reading names a live row — the missing-row false, exactly glm26-3\'s verdict over the absent timeout row.');
+        $this->assertSame('v3', get_transient('plain'), 'The plain transient is untouched.');
+    }
+
+    /**
+     * glm26-4: delete_option() rides core's own hook family
+     * (option.php:1227/:1264/:1273, pinned 7.1.1): the generic
+     * 'delete_option' action fires BEFORE the delete (the row still
+     * present to the observer), the keyed 'delete_option_{$option}'
+     * and closing 'deleted_option' fire AFTER a SUCCESSFUL delete
+     * alone, each at its own single $option arity — and a MISSING row
+     * fires NONE (core's row check returns before the pre-hook). The
+     * seat modeled zero hook seats; the family is newly load-bearing
+     * because glm25-6 routes every transient deletion through this
+     * seat as core's own delegation (driven red at HEAD: zero hooks
+     * over a live delete).
+     */
+    public function testDeleteOptionRidesCoresHookFamily()
+    {
+        $order = array();
+        $observe = static function (...$args) use (&$order) {
+            $order[] = $args;
+        };
+        add_action('delete_option', $observe, 10, 1);
+        add_action('delete_option_glm26_dopt', $observe, 10, 1);
+        add_action('deleted_option', $observe, 10, 1);
+        $seen_at_pre = null;
+        add_action('delete_option', static function () use (&$seen_at_pre) {
+            $seen_at_pre = get_option('glm26_dopt');
+        });
+
+        $this->assertTrue(add_option('glm26_dopt', 'x'), 'staging: the row saves.');
+        $this->assertTrue(delete_option('glm26_dopt'), 'The live row deletes.');
+        $this->assertSame(
+            array( array( 'glm26_dopt' ), array( 'glm26_dopt' ), array( 'glm26_dopt' ) ),
+            $order,
+            'The three hooks fire in core\'s order — the generic pre-hook, the keyed success action, the closing action — each at its own single-arg arity (red at HEAD: zero hooks).'
+        );
+        $this->assertSame('x', $seen_at_pre, 'The pre-hook observes the row STILL PRESENT — core fires it before the DELETE itself.');
+
+        $order = array();
+        $this->assertFalse(delete_option('glm26_dopt'), 'The missing row answers false.');
+        $this->assertSame(array(), $order, 'A missing row fires NONE of the family — core\'s row check returns before the pre-hook.');
+    }
+
+    /**
+     * glm27-3: the success pair rides core's AFFECTED-ROWS gate
+     * (option.php:1253, pinned 7.1.1) — \$wpdb->delete()'s result
+     * decides the pair, and a mid-action observer at the
+     * 'delete_option' pre-hook that deletes the row itself leaves
+     * the outer delete affecting NOTHING: core answers FALSE with no
+     * keyed/closing hooks over that row (the inner delete answered
+     * its own family), where the seat fired the pair
+     * unconditionally — true plus the DOUBLE family (driven red at
+     * HEAD). The store re-consult is the harness's affected-rows
+     * reading, the glm26-2 class one seat over.
+     */
+    public function testDeleteOptionGatesTheSuccessPairOnAffectedRows()
+    {
+        $order = array();
+        $observe = static function (...$args) use (&$order) {
+            $order[] = $args;
+        };
+        add_action('delete_option', $observe, 10, 1);
+        add_action('delete_option_glm27_gate', $observe, 10, 1);
+        add_action('deleted_option', $observe, 10, 1);
+        $fired = 0;
+        add_action('delete_option', static function ($option) use (&$fired) {
+            if (0 === $fired++) {
+                delete_option($option); // The mid-action deleting observer (one shot).
+            }
+        });
+
+        $this->assertTrue(add_option('glm27_gate', 'x'), 'staging: the row saves.');
+        $this->assertFalse(delete_option('glm27_gate'), 'The outer delete answers FALSE — its row was already gone when the DELETE ran, core\'s own affected-rows verdict (red at HEAD: true).');
+        $this->assertSame(
+            array( array( 'glm27_gate' ), array( 'glm27_gate' ), array( 'glm27_gate' ), array( 'glm27_gate' ) ),
+            $order,
+            'The family fires core\'s shape over the observer delete — the generic pre-hook TWICE (outer and inner), the keyed/closing pair ONCE (the inner\'s alone; red at HEAD: the pair doubled).'
+        );
+        $this->assertFalse(get_option('glm27_gate'), 'The row is gone either way — the gate is about the verdict and the pair, never the store.');
+    }
+
+    /**
+     * glm27-2: the hook ITERATION re-syncs with the live registration
+     * array — core's WP_Hook walks priorities through a pointer that
+     * add_filter()/remove_filter() resort mid-run
+     * (class-wp-hook.php's resort_active_iterations, pinned 7.1.1):
+     * a remove at a pending priority STOPS its delivery (the bucket
+     * is consulted when the walk reaches it), and an add at a pending
+     * priority DELIVERS. The stub rode PHP's copy-on-write foreach
+     * snapshot of the whole tag array — the exact inverse on BOTH
+     * shapes: the unhook-before-it-runs idiom still ran the removed
+     * callback, and the mid-run add at a pending priority was
+     * invisible to the walk (driven red at HEAD both ways). The
+     * filter seat rides the same ONE iteration owner, so the value
+     * threading resyncs identically.
+     */
+    public function testHookIterationResyncsWithTheLiveRegistrationArray()
+    {
+        // Leg 1 — unhook-before-it-runs: the priority-10 callback
+        // removes the pending priority-20 registration before the
+        // walk reaches its bucket; core never delivers it.
+        $order = array();
+        $late = static function () use (&$order) {
+            $order[] = 'late';
+        };
+        add_action('glm27_resync', static function () use (&$late) {
+            remove_action('glm27_resync', $late, 20);
+        }, 10, 0);
+        add_action('glm27_resync', $late, 20);
+        do_action('glm27_resync');
+        $this->assertSame(array(), $order, 'The removed callback never delivers — the walk consults the LIVE array when it reaches the pending priority (red at HEAD: the snapshot still delivered it).');
+
+        // Leg 2 — mid-run add at a pending priority: the priority-10
+        // callback registers at the pending 20; core's resort splices
+        // the new priority into the running iteration and DELIVERS it.
+        $order = array();
+        add_action('glm27_addmid', static function () use (&$order) {
+            $order[] = 'early';
+            add_action('glm27_addmid', static function () use (&$order) {
+                $order[] = 'added';
+            }, 20, 0);
+        }, 10, 0);
+        add_action('glm27_addmid', static function () use (&$order) {
+            $order[] = 'base';
+        }, 20, 0);
+        do_action('glm27_addmid');
+        $this->assertSame(array( 'early', 'base', 'added' ), $order, 'The mid-run add at the pending priority DELIVERS after the bucket\'s standing members — core\'s resort shape (red at HEAD: the snapshot never saw it).');
+
+        // Leg 3 — the filter seat rides the same owner: a mid-run add
+        // at a pending priority threads its value into the fold.
+        $add_filter_value = static function ($value) {
+            if ('first' === $value) {
+                add_filter('glm27_fmid', static function () {
+                    return 'second';
+                }, 20, 0);
+            }
+
+            return $value;
+        };
+        add_filter('glm27_fmid', $add_filter_value, 10, 1);
+        $this->assertSame('second', apply_filters('glm27_fmid', 'first'), 'The mid-run filter add at the pending priority folds its value — never a snapshot skip (red at HEAD: \'first\').');
+    }
+
+    /**
+     * glm25-1: TTL (re)arming survives the stored-false row's MISSING
+     * read — glm24-4's keep-guard keyed on $own_entry alone, but a
+     * stored-false row answers $existing FALSE (the get_option-shaped
+     * predicate's own reading), so the arming block (inside $existing)
+     * never ran over it and the write's keep-guard was the row's ONLY
+     * expiry seat: keeping the standing expires_at there disarmed every
+     * TTL-bearing re-save — set('k', false) then set('k', false, 100)
+     * never expired, and set('f', false, 100) then set('f', false,
+     * 300) died at the stale first window (driven red at HEAD, both
+     * shapes). The standing timeout is kept ONLY over a zero-expiration
+     * save; an expiration-bearing save takes the head's own derivation
+     * whichever row shape carries it, and the plain rows keep glm23-1's
+     * zero-expiration keep besides.
+     */
+    public function testTtlArmingSurvivesTheStoredFalseRowsMissingRead()
+    {
+
+        /*
+         * Shape 1 — ARM over a stored-false row that carried no TTL:
+         * the second save names 100, the row must die at it.
+         */
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm25_arm', false));
+        $this->assertTrue(set_transient('glm25_arm', false, 100), 'The TTL-bearing re-save completes over the stored-false row — the ADD family its own shape (the false row reads missing).');
+        $this->freezeTime(1050);
+        $this->assertFalse(get_transient('glm25_arm'), 'Inside the armed window the row serves its stored false — the false answer is the VALUE, never the expiry.');
+        $this->assertSame(array( '_transient_glm25_arm' ), $this->censusTransientRows('glm25_arm'), 'The read above unsets nothing inside the window — the row LIVES at t=1050 < 1100.');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm25_arm'), 'Past the armed window the read answers false — the death itself is the census below.');
+        $this->assertSame(array(), $this->censusTransientRows('glm25_arm'), 'The ARM-OVER-FALSE row dies at the save\'s own 100 (red at HEAD: never armed, the row stood forever).');
+
+        /*
+         * Shape 2 — RE-ARM over an armed stored-false row: the second
+         * save names 300 over the first save's 100, the window moves.
+         */
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm25_rearm', false, 100));
+        $this->assertTrue(set_transient('glm25_rearm', false, 300), 'The TTL-bearing re-save completes — the new window is the save\'s own, never the stale first one.');
+        $this->freezeTime(1150);
+        $this->assertFalse(get_transient('glm25_rearm'), 'Past the FIRST window the read answers false — whether the row died is the census below.');
+        $this->assertSame(array( '_transient_glm25_rearm' ), $this->censusTransientRows('glm25_rearm'), 'The RE-ARMED window stands — the row lives at t=1150 < 1300 (red at HEAD: dead at the stale 1100).');
+        $this->freezeTime(1301);
+        $this->assertFalse(get_transient('glm25_rearm'));
+        $this->assertSame(array(), $this->censusTransientRows('glm25_rearm'), 'The re-armed row dies at the SECOND save\'s own 300.');
+
+        /*
+         * Shape 3 — glm24-4's zero-expiration keep restated beside the
+         * widened guard: a zero-expiration re-save keeps the standing
+         * window (the transient store's own row is the row whose
+         * window stands).
+         */
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm25_keep', false, 100));
+        $this->freezeTime(1050);
+        $this->assertTrue(set_transient('glm25_keep', false), 'The zero-expiration re-save completes — it names no expiration to keep or move.');
+        $this->freezeTime(1099);
+        $this->assertFalse(get_transient('glm25_keep'));
+        $this->assertSame(array( '_transient_glm25_keep' ), $this->censusTransientRows('glm25_keep'), 'The zero-expiration re-save keeps the standing window — the row lives at t=1099 < 1100.');
+        $this->freezeTime(1101);
+        $this->assertFalse(get_transient('glm25_keep'));
+        $this->assertSame(array(), $this->censusTransientRows('glm25_keep'), 'The kept window ends at the FIRST save\'s own 100 (glm24-4 stands over the widened guard).');
+
+        /*
+         * Shape 4 — the plain rows: an expiration-bearing re-save moves
+         * the window, a zero-expiration re-save keeps it (glm23-1 over
+         * the truth-valued row).
+         */
+        $this->freezeTime(1000);
+        $this->assertTrue(set_transient('glm25_plain', 'a', 100));
+        $this->assertTrue(set_transient('glm25_plain', 'b', 200));
+        $this->freezeTime(1150);
+        $this->assertSame('b', get_transient('glm25_plain'), 'The plain row lives inside its re-armed window (t=1150 < 1200).');
+        $this->assertTrue(set_transient('glm25_plain', 'c'));
+        $this->freezeTime(1151);
+        $this->assertSame('c', get_transient('glm25_plain'), 'The zero-expiration re-save keeps the plain row\'s standing window.');
+        $this->freezeTime(1201);
+        $this->assertFalse(get_transient('glm25_plain'), 'The plain row dies at the expiration-bearing save\'s own 200 (t=1201 > 1200).');
+    }
+
+    /**
+     * glm24-5: the completion actions observe the PRE-HEAD value —
+     * core's clone (glm22-5's doctrine) and sanitize (glm22-6's)
+     * live INSIDE the delegated by-value twins
+     * (add_option()/update_option() receive $value by value; their
+     * reassignments never propagate back to set_transient()'s own
+     * frame), so core's do_action("set_transient_{$name}", $value,
+     * ...) at option.php:1594/:1605 hands the observer the
+     * pre_set-filtered RAW value — the caller's own object
+     * instance included. The harness seat reassigned $value at both
+     * heads, so the actions observed the sanitized CLONE (driven red
+     * at HEAD: 'rewritten-sanitized' and a clone where core answers
+     * 'rewritten' and the caller's instance); the add/update family
+     * hooks keep their sanitized+cloned observation exactly as the
+     * twins pin it.
+     */
+    public function testTheCompletionActionsObserveThePreHeadValue()
+    {
+        add_filter('pre_set_transient_glm24_done', static function () {
+            return 'rewritten';
+        });
+        add_filter('sanitize_option__transient_glm24_done', static function ($value) {
+            return $value . '-sanitized';
+        });
+        $seen = array();
+        add_action('set_transient_glm24_done', static function (...$args) use (&$seen) {
+            $seen[] = array( 'specific', ...$args );
+        }, 10, 3);
+        add_action('set_transient', static function (...$args) use (&$seen) {
+            $seen[] = array( 'generic', ...$args );
+        }, 10, 3);
+
+        $this->assertTrue(set_transient('glm24_done', 'orig'));
+        $this->assertSame('rewritten-sanitized', get_transient('glm24_done'), 'staging: the SANITIZED value is what stores — glm22-6\'s own doctrine stands at the storage and the family hooks.');
+        $this->assertSame(array( 'specific', 'rewritten', 0, 'glm24_done' ), $seen[0] ?? null, 'The specific completion action observes the pre_set-filtered RAW value (red at HEAD: \'rewritten-sanitized\') — the clone and the sanitize live inside the delegated twins and never ride the action seat.');
+        $this->assertSame(array( 'generic', 'glm24_done', 'rewritten', 0 ), $seen[1] ?? null, 'The generic action answers identically — never the sanitized clone.');
+
+        // The caller's own object instance — the head clone never
+        // rides the action seat either.
+        $payload = (object) array('models' => array('glm-5.3'));
+        $instance_seen = null;
+        add_action('set_transient_glm24_obj', static function ($value) use (&$instance_seen) {
+            $instance_seen = $value;
+        });
+        $this->assertTrue(set_transient('glm24_obj', $payload));
+        $this->assertSame($payload, $instance_seen, 'The observer at the action seat sees the CALLER\'S OWN instance (red at HEAD: a clone) — core\'s frame never reassigned its $value past the delegation.');
+        $this->assertSame(array('glm-5.3'), $instance_seen->models, 'staging: the observed instance is unmutated.');
+    }
+
+    /**
+     * glm22-5: set_transient() clones an object value at the hook
+     * seat — core's add_option()/update_option() each clone BEFORE
+     * the family fires, so an observer mutating the hook-passed value
+     * never reaches the caller's object; the harness handed the family
+     * the caller's LIVE reference (driven red at HEAD: the mutation
+     * reached the caller through the transient seat — the
+     * glm18-8/glm19-4 clone doctrine glm21-6's delegation missed).
+     */
+    public function testSetTransientClonesAtTheHookSeat()
+    {
+        $payload = (object) array('models' => array('glm-5.3'));
+        $fired = false;
+        add_action('add_option', static function ($option, $value) use (&$fired) {
+            if ('_transient_glm22_clone' === $option && is_object($value)) {
+                $value->models[] = 'mutated-by-observer';
+                $fired = true;
+            }
+        }, 10, 2);
+
+        $this->assertTrue(set_transient('glm22_clone', $payload));
+        $this->assertTrue($fired, 'staging: the observer fired at the hook seat and mutated the value it was handed.');
+
+        $this->assertSame(
+            array('glm-5.3'),
+            $payload->models,
+            "A mutating observer at the hook seat never reaches the caller's object (red at HEAD: reaches) — the clone rides the delegation's own head."
+        );
+        $this->assertSame(
+            array('glm-5.3', 'mutated-by-observer'),
+            get_transient('glm22_clone')->models,
+            'The hook-seat mutation lands in the STORED row instead — core\'s own pre-INSERT vantage, the non-vacuity control proving the observer really mutated the hook-passed copy.'
+        );
+    }
+
+    /**
+     * glm22-6: set_transient() sanitizes at the head — core's
+     * delegation rides add_option()/update_option(), and both twins
+     * sanitize at their own heads, so the transient row's own filter
+     * (sanitize_option__transient_<name>) runs at every core save
+     * where the harness never consulted it (driven red at HEAD: the
+     * filter never fired).
+     */
+    public function testSetTransientSanitizesAtTheHead()
+    {
+        $runs = 0;
+        add_filter('sanitize_option__transient_glm22_san', static function ($value) use (&$runs) {
+            ++$runs;
+
+            return is_string($value) ? $value . '-sanitized' : $value;
+        });
+
+        $this->assertTrue(set_transient('glm22_san', 'raw'));
+        $this->assertSame(1, $runs, 'The transient-name sanitize filter fires at the delegation head (red at HEAD: never fires) — exactly one run, whichever family persists the save.');
+        $this->assertSame('raw-sanitized', get_transient('glm22_san'), 'The SANITIZED value is what stores — core\'s own head-of order, the sanitized value comparing and riding every hook.');
+
+        $this->assertTrue(set_transient('glm22_san', 'raw2'));
+        $this->assertSame(2, $runs, 'Every subsequent save runs it exactly once too — the update branch\'s own head, never both.');
+        $this->assertSame('raw2-sanitized', get_transient('glm22_san'));
+    }
+
+    /**
+     * glm21-7: WpHarness::reset() clears the request-URI superglobal
+     * member — $_SERVER['REQUEST_URI'] is the one member the stubs
+     * read (add_query_arg()'s two-scalar resolution), and a test's
+     * assignment once survived into the next test's verdicts under
+     * --order-by=random (the full-restore snapshot's own leak class:
+     * reset() restored GET/POST/REQUEST only).
+     */
+    public function testResetClearsTheRequestUriSuperglobalMember()
+    {
+        $_SERVER['REQUEST_URI'] = '/polluted?session=leaked';
+        $this->assertSame('/polluted?session=leaked&p=v', add_query_arg('p', 'v'), 'staging: the polluted member drives the two-scalar resolution before the reset.');
+
+        WpHarness::reset();
+
+        $this->assertSame('/?p=v', add_query_arg('p', 'v'), 'After reset() the request-URI member is cleared — the two-scalar resolution answers from the pristine root (red at HEAD: /polluted?session=leaked&p=v).');
+        $this->assertArrayNotHasKey('REQUEST_URI', $_SERVER, 'The member is unset, not emptied — a fresh CLI process carries no REQUEST_URI.');
+    }
+
+    /**
+     * glm21-8: settings_errors() honors its $setting filter — core
+     * narrows the returned rows by the slug, and the stub once
+     * returned the whole array over every slug (2 rows where core
+     * answers 1; the core-faithful get_settings_errors() twin 15
+     * lines below it owned the filter all along). Latent at HEAD
+     * (zero callers of the filtered shape), never ledgered.
+     */
+    public function testSettingsErrorsHonorsItsSettingFilter()
+    {
+        add_settings_error('setting_a', 'code_a1', 'First A error');
+        add_settings_error('setting_b', 'code_b1', 'The B error');
+        add_settings_error('setting_a', 'code_a2', 'Second A error');
+
+        $this->assertCount(2, settings_errors('setting_a'), "settings_errors('setting_a') narrows to the setting's own rows (red at HEAD: the unfiltered 3-row array).");
+        $this->assertCount(1, settings_errors('setting_b'), 'The other slug narrows to its single row.');
+        $this->assertCount(3, settings_errors(), "The bare spelling keeps the historical whole-array behavior for existing callers.");
+        $this->assertSame(get_settings_errors('setting_a'), settings_errors('setting_a'), 'The seat delegates to its core-faithful twin — one filter predicate, never two.');
+
+        /*
+         * glm22-8: the twin answers core's DENSE-APPEND shape — core's
+         * get_settings_errors() appends the filtered rows
+         * (template.php), where the twin keyed them by their STORE
+         * indices, surfacing a sparse 0/2 list through the glm21-8
+         * delegation for two errors on one setting (red at HEAD: the
+         * key-preserving shape below fails).
+         */
+        $filtered = settings_errors('setting_a');
+        $this->assertSame(array( 0, 1 ), array_keys($filtered), 'Two errors on one setting answer a DENSE list of 2 (red at HEAD: the sparse 0/2 key-preserving shape) — core appends, never keys.');
+        $this->assertSame('First A error', $filtered[0]['message'], 'The rows keep their record order — append, never reorder.');
+        $this->assertSame('Second A error', $filtered[1]['message']);
+    }
+
+    /**
+     * glm23-4: the settings-updated PASS-BACK merge rides the twin —
+     * core's get_settings_errors() merges the rows options.php parked
+     * in the 'settings_errors' transient over a settings-updated
+     * request (template.php:1928-1931, pinned 7.1.1: array_merge of
+     * the in-process rows and the passed-back rows, then
+     * delete_transient), where the harness answered in-process rows
+     * alone (driven red at HEAD). The merged rows land in the one
+     * errors store every caller reads — record order in-process
+     * first, passed-back appended — and the transient is consumed by
+     * the merge, exactly once.
+     */
+    public function testTheSettingsErrorsTwinMergesThePassBackTransientOverASettingsUpdatedRequest()
+    {
+        $_GET['settings-updated'] = '1';
+        set_transient('settings_errors', array(
+            array( 'setting' => 'glm23_pb', 'code' => 'pb_code', 'message' => 'The passed-back row', 'type' => 'error' ),
+            array( 'setting' => 'other', 'code' => 'pb_other', 'message' => 'The other passed-back row', 'type' => 'error' ),
+        ));
+        add_settings_error('glm23_pb', 'inproc_code', 'The in-process row');
+
+        $rows = settings_errors('glm23_pb', false, false);
+        $this->assertCount(2, $rows, 'The pass-back rows merge beside the in-process rows over a settings-updated request (red at HEAD: the in-process row alone).');
+        $this->assertSame('The in-process row', $rows[0]['message'], 'Core\'s merge order — the in-process rows first.');
+        $this->assertSame('The passed-back row', $rows[1]['message'], 'The passed-back rows append, template.php\'s array_merge shape.');
+        $this->assertCount(1, settings_errors('other', false, false), 'The other slug\'s passed-back row answers through its own filter — the merge lands in the one store every caller reads.');
+        $this->assertFalse(get_transient('settings_errors'), 'The transient is CONSUMED by the merge (core deletes it) — never merged twice.');
+        $this->assertCount(2, settings_errors('glm23_pb', false, false), 'A second call answers the standing MERGED store without duplicating it — the merge fired exactly once (a second merge would answer 3: core\'s global lands the rows, the transient is gone).');
+
+        // The hidden path never reaches the twin: $hide_on_update keeps
+        // its glm22-7 empty array without consuming the pass-back row.
+        set_transient('settings_errors', array(
+            array( 'setting' => 'glm23_pb', 'code' => 'pb2', 'message' => 'Another passed-back row', 'type' => 'error' ),
+        ));
+        $this->assertSame(array(), settings_errors('glm23_pb', false, true), 'The $hide_on_update head answers first — core\'s own order, the rows hidden before the twin can merge.');
+        $this->assertNotFalse(get_transient('settings_errors'), 'The hidden path consumed nothing — the merge is the twin\'s own, never the seat\'s.');
+        unset($_GET['settings-updated']);
+    }
+
+    /**
+     * glm22-7: settings_errors() honors its $sanitize/$hide_on_update
+     * arguments — both were accepted and silently dropped, the exact
+     * argument-dropping class glm21-8 closed for $setting at the same
+     * seat (driven red at HEAD: neither parameter took effect).
+     */
+    public function testSettingsErrorsHonorsItsSanitizeAndHideOnUpdateArguments()
+    {
+        add_settings_error('glm22_arg', 'static_code', 'The static error');
+        $ran = 0;
+        add_filter('sanitize_option_glm22_arg', static function ($value) use (&$ran) {
+            ++$ran;
+            add_settings_error('glm22_arg', 'sanitize_code', 'The sanitize-time error');
+
+            return $value;
+        });
+
+        // (a) $sanitize delegates to the twin's own second parameter: the
+        // registered callback's settings errors surface by default.
+        $this->assertCount(2, settings_errors('glm22_arg', true), 'The $sanitize flag re-runs sanitize_option() over the setting\'s stored row (red at HEAD: silently dropped) and the callback\'s own settings errors surface by default — the flag\'s documented purpose.');
+        $this->assertSame(1, $ran, 'Exactly one re-run — the delegation to the twin\'s own head, never a second predicate at the seat.');
+        $this->assertCount(2, settings_errors('glm22_arg'), 'Without the flag nothing re-runs — the recorded rows answer alone (the sanitize-time row already recorded stays, no new one lands).');
+
+        // (b) $hide_on_update is core's own head: the rows hide over a
+        // settings-updated request, the empty array at this seat's
+        // recorded return divergence (core answers VOID at its echo shape).
+        $_GET['settings-updated'] = '1';
+        $this->assertSame(array(), settings_errors('glm22_arg', false, true), 'The $hide_on_update flag hides the rows over a settings-updated request (red at HEAD: the full array silently dropped the flag) — core\'s own head.');
+        $this->assertCount(2, settings_errors('glm22_arg', false, false), 'Without the flag the rows answer — the hide is the flag\'s own, never the seat\'s.');
+        unset($_GET['settings-updated']);
+    }
+
+    public function testDueEventsFireInTimestampOrderAndAnOverdueRecurringEventFiresOnce()
+    {
+        /*
+         * glm14-7: the docblock promised timestamp order while the
+         * scan fired whichever due event the hook-registration walk
+         * hit first (driven: a later-registered event at ts=200 fired
+         * BEFORE an earlier-due one at ts=100), and a far-overdue
+         * recurring event replayed once per missed interval — rescheduled
+         * at timestamp+interval, still in the past, re-found by the
+         * progress loop — where core's wp_reschedule_event fires ONCE
+         * and recomputes the next due from NOW.
+         */
+        $this->freezeTime(1700000000);
+
+        $order = array();
+        add_action('zz_glm14_event', static function () use (&$order) {
+            $order[] = 'zz';
+        });
+        add_action('aa_glm14_event', static function () use (&$order) {
+            $order[] = 'aa';
+        });
+        wp_schedule_single_event(1700000200, 'zz_glm14_event');
+        wp_schedule_single_event(1700000100, 'aa_glm14_event');
+
+        $this->advanceTime(1000);
+        $this->assertSame(2, WpHarness::runDueEvents());
+        $this->assertSame(array( 'aa', 'zz' ), $order, 'Due events fire in timestamp order (red at HEAD: registration order, zz first).');
+
+        $hourly = 0;
+        add_action('glm14_hourly_event', static function () use (&$hourly) {
+            ++$hourly;
+        });
+        wp_schedule_event(1700000000 - 86400, 'hourly', 'glm14_hourly_event');
+
+        $this->assertSame(1, WpHarness::runDueEvents(), 'A day-overdue hourly event fires exactly once (red at HEAD: replayed once per missed interval).');
+        $this->assertSame(1, $hourly);
+        /*
+         * glm15-5: core's wp_reschedule_event() GRID-ALIGNS the next
+         * due — now + (interval − ((now − ts) % interval)) — keeping the
+         * schedule's phase over its own grid (with these pinned numbers:
+         * ts 1699913600, hourly, now 1700001000 → 1700003600). The
+         * glm14-7 pin asserted 1700004600 (the now+interval DRIFT
+         * spelling) mislabeled as core semantics — corrected with the
+         * driven number.
+         */
+        $this->assertSame(1700003600, wp_next_scheduled('glm14_hourly_event'), 'The next due is grid-aligned to the schedule\'s phase, core\'s wp_reschedule_event() arithmetic (glm14-7 pinned the now+interval drift spelling here).');
+    }
+
+    public function testAReschedulingHandlerTerminatesAndMidRunEventsDefer()
+    {
+        /*
+         * glm15-4: the while(true) rescan re-found every mid-run insert,
+         * so a handler re-scheduling an already-due event hung the suite
+         * forever (driven red at HEAD: timeout 10, exit 124) and an
+         * event scheduled MID-RUN fired in the SAME call where core's
+         * wp_cron() snapshots the queue and defers to the next tick.
+         * The pass is a snapshot now: only entry-captured events fire,
+         * one bounded pass.
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        $rearm = true;
+        add_action('glm15_resched', static function () use (&$fires, &$rearm) {
+            ++$fires;
+            if ($rearm) {
+                wp_schedule_single_event(1700000000, 'glm15_resched');
+                $rearm = false;
+            }
+        });
+        wp_schedule_single_event(1700000000, 'glm15_resched');
+
+        $this->assertSame(1, WpHarness::runDueEvents(), 'A re-scheduling handler fires its event once and the pass terminates (red at HEAD: the unbounded rescan hung — driven at timeout 10, exit 124).');
+        $this->assertSame(1, $fires);
+        $this->assertSame(1700000000, wp_next_scheduled('glm15_resched'), 'The re-armed event (scheduled mid-run) is not in the snapshot.');
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The re-armed event fires on the NEXT call.');
+        $this->assertSame(2, $fires);
+        $this->assertFalse(wp_next_scheduled('glm15_resched'));
+
+        // A fresh mid-run schedule defers the same way (core's shape).
+        $deferred = 0;
+        add_action('glm15_first', static function () {
+            wp_schedule_single_event(WpHarness::now(), 'glm15_second');
+        });
+        add_action('glm15_second', static function () use (&$deferred) {
+            ++$deferred;
+        });
+        wp_schedule_single_event(WpHarness::now(), 'glm15_first');
+
+        $this->assertSame(1, WpHarness::runDueEvents(), 'glm15_first fires; glm15_second (scheduled mid-run) is not in the snapshot.');
+        $this->assertSame(0, $deferred, 'A mid-run-scheduled event never fires in the call that scheduled it (red at HEAD: it fired in the same call).');
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The deferred event fires on the next tick.');
+        $this->assertSame(1, $deferred);
+    }
+
+    public function testASnapshotReadFailureAnswersAsItselfNeverAsDrift()
+    {
+        /*
+         * glm14-8: the snapshot compare read through a laundering pair
+         * — (string) file_get_contents() + json_decode() cast — so an
+         * unreadable snapshot became '' and a corrupt one became
+         * null -> [], BOTH misreporting as 'Captured request drifted
+         * from snapshot' and sending the operator hunting a
+         * request-drift regression that does not exist. The read and
+         * the decode own their failure now, naming the file and the
+         * json error (the laundering-read class fixed at every
+         * sibling read this change set has touched).
+         */
+        $dir = sys_get_temp_dir() . '/wp-connectors-snapshot-read-' . uniqid('', true);
+        $this->assertTrue(mkdir($dir, 0755, true), "staging: {$dir} must create — a staging failure fails as staging, never as the snapshot verdict.");
+        $probe = new class($dir) extends WpConnectorsTestCase {
+            public function __construct(string $dir)
+            {
+                parent::__construct('glm14SnapshotProbe');
+                $this->snapshot_dir = $dir;
+            }
+
+            public function probe(string $name, string $url, array $body): void
+            {
+                $this->assertMatchesSnapshot($name, $url, $body);
+            }
+
+            protected function snapshotDirectory(): string
+            {
+                return $this->snapshot_dir;
+            }
+
+            /** @var string */
+            private $snapshot_dir;
+        };
+
+        try {
+            // The healthy control: a matching committed snapshot passes.
+            $healthy = '{"url": "https://x.test/a", "body": {"k": "v"}}' . "\n";
+            $this->assertNotFalse(file_put_contents($dir . '/healthy.json', $healthy), 'staging: the healthy snapshot must write.');
+            $probe->probe('healthy', 'https://x.test/a', array('k' => 'v'));
+
+            // A truncated snapshot answers the corrupt-snapshot failure, never drift.
+            $this->assertNotFalse(file_put_contents($dir . '/truncated.json', '{"url": "https://x.test/a", "body": '), 'staging: the truncated snapshot must write.');
+            try {
+                $probe->probe('truncated', 'https://x.test/a', array('k' => 'v'));
+                $this->fail('A corrupt snapshot must fail the comparison as corrupt, never pass.');
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $this->assertStringContainsString('is corrupt (json:', $e->getMessage(), 'red at HEAD: the failure read "drifted from snapshot" over the null decode.');
+            }
+
+            // An unreadable snapshot answers the unreadable failure, never drift.
+            $this->skipChmod0000LegOnRootRunner('the unreadable-snapshot leg');
+            $this->assertNotFalse(file_put_contents($dir . '/unreadable.json', $healthy), 'staging: the unreadable snapshot must write.');
+            $this->assertTrue(chmod($dir . '/unreadable.json', 0000), 'staging: the unreadable snapshot must lock.');
+            try {
+                $probe->probe('unreadable', 'https://x.test/a', array('k' => 'v'));
+                $this->fail('An unreadable snapshot must fail the comparison as unreadable, never pass.');
+            } catch (\PHPUnit\Framework\AssertionFailedError $e) {
+                $this->assertStringContainsString('is unreadable', $e->getMessage(), 'red at HEAD: the failure read "drifted from snapshot" over the false read.');
+            }
+        } finally {
+            @chmod($dir . '/unreadable.json', 0644);
+            foreach ((glob($dir . '/*') ?: array()) as $entry) {
+                @unlink($entry);
+            }
+            @rmdir($dir);
+        }
+    }
+
+    public function testTheRegisteredSanitizeCallbackRunsOnTheSettingsSavePath()
+    {
+        /*
+         * glm14-10 wired the callback and added the sanitize_option()
+         * primitive on the premise that core's own update_option() does
+         * not sanitize — and this regression MASKED the gap by calling
+         * sanitize_option() manually before update_option(), green over
+         * a stub whose save path still skipped the callback. glm15-3:
+         * the premise is FALSE (WP 7.1.1 core calls sanitize_option()
+         * at the head of BOTH update_option() — option.php:886 — and
+         * add_option() — :1113, driven), and the stub owns the head-of
+         * sanitize now. This pin DROPS the manual call: the
+         * function-level save itself must run the registered callback
+         * and store its answer (red at HEAD: runs=0, the raw value
+         * stored). glm16-5 CORRECTED the round-15 runs=1 spec: core
+         * sanitizes at BOTH heads on a first save — update_option()'s
+         * head AND the add_option() it delegates to — so the first
+         * save counts TWO runs (structural through the delegation,
+         * never a forced double call) and every subsequent save one.
+         */
+        $runs = 0;
+        register_setting('glm15_group', 'glm15_opt', array(
+            'sanitize_callback' => static function ( $value ) use ( &$runs ) {
+                ++$runs;
+
+                return \is_string( $value ) ? \trim( $value ) : null;
+            },
+        ));
+
+        // The add path (the first save): BOTH heads run — the sanitized value stored.
+        $this->assertTrue(update_option('glm15_opt', '  padded  '));
+        $this->assertSame(2, $runs, 'The first save runs the registered callback at both heads, core\'s both-heads shape (the round-15 runs=1 spec corrected — glm16-5).');
+        $this->assertSame('padded', get_option('glm15_opt'), 'The stored value is the sanitized one, never the raw input.');
+
+        // The update path: one head, one run.
+        $this->assertTrue(update_option('glm15_opt', '  tighter  '));
+        $this->assertSame(3, $runs, 'The update path runs the registered callback exactly once per save (red at HEAD: never consulted).');
+        $this->assertSame('tighter', get_option('glm15_opt'));
+
+        // The unchanged shape: a save whose SANITIZED value equals the
+        // stored value refuses — no write, no hooks (glm23-8 on core's
+        // sanitize-then-compare order; the sanitizer still ran).
+        $this->assertFalse(update_option('glm15_opt', '  tighter  '));
+        $this->assertSame(4, $runs, 'The refused unchanged save ran the sanitizer; it fired no hooks and wrote nothing.');
+        $this->assertSame('tighter', get_option('glm15_opt'));
+
+        /*
+         * The null guard stays the save-path CALLER's (core's
+         * options.php shape): the primitive passes a null answer
+         * through, and the function-level API stores the filter's
+         * answer like any other — the options.php emulation refuses
+         * on null before it ever calls update_option().
+         */
+        $this->assertNull(sanitize_option('glm15_opt', array( 'not', 'a', 'string' )), 'A null answer passes through, never swallowed.');
+        $this->assertTrue(update_option('glm15_opt', array( 'not', 'a', 'string' )));
+        $this->assertNull(get_option('glm15_opt'), 'The function-level API stores the filter\'s answer (null included); the null GUARD is the options.php caller\'s, never the function\'s.');
+    }
+
+    public function testUpdateOptionSanitizesBeforeComparingCoreOrder()
+    {
+        /*
+         * glm16-3: core sanitizes at the head, THEN compares — the
+         * stub's raw-compare-first never consulted the sanitizer over a
+         * raw-equal save (runs=0 where core runs it and writes the
+         * sanitized answer), and a false-RETURNING callback completed
+         * an ADD core refuses outright (the sanitized false compares
+         * equal to the missing-row false: one refusal, no hooks, no
+         * write).
+         */
+        $runs = 0;
+        register_setting('glm16_group', 'glm16_raw', array(
+            'sanitize_callback' => static function ( $value ) use ( &$runs ) {
+                ++$runs;
+
+                return $value . 'X';
+            },
+        ));
+
+        // A first save: both heads run (glm16-5's structural shape) —
+        // the appending callback applies at each head, core's own
+        // double-apply on a first save.
+        $this->assertTrue(update_option('glm16_raw', 'a'));
+        $this->assertSame(2, $runs, 'The first save sanitizes at both heads — the delegation rides, never a forced double call.');
+        $this->assertSame('aXX', get_option('glm16_raw'));
+
+        // The raw-equal save the sanitizer CHANGES: core runs the
+        // sanitizer and WRITES the answer (red at HEAD: the raw compare
+        // refused with runs unchanged and nothing written).
+        $this->assertTrue(update_option('glm16_raw', 'aXX'));
+        $this->assertSame(3, $runs, 'A raw-equal save still consults the sanitizer — the raw input never compares (red at HEAD: runs stayed 2 over the pair).');
+        $this->assertSame('aXXX', get_option('glm16_raw'), 'The sanitized value is what compares and writes (red at HEAD: refused, the stored value unchanged).');
+
+        // A false-returning callback: the sanitized false equals the
+        // missing-row false — core refuses with no ADD, no hooks, no
+        // write (red at HEAD: the ADD completed, fired, and stored).
+        $fired = 0;
+        add_action('add_option_glm16_falsey', static function () use (&$fired) {
+            ++$fired;
+        });
+        register_setting('glm16_group', 'glm16_falsey', array(
+            'sanitize_callback' => static function () {
+                return false;
+            },
+        ));
+
+        $this->assertFalse(update_option('glm16_falsey', 'v'), 'The false answer refuses the save (red at HEAD: the delegation completed and answered true).');
+        $this->assertSame(0, $fired, 'No add hooks fire over the refusal (red at HEAD: the add family fired).');
+    }
+
+    public function testAFirstSaveRunsTheSanitizerAtBothHeadsCoreShape()
+    {
+        /*
+         * glm16-5: core sanitizes TWICE on a first save — at
+         * update_option()'s head AND at the add_option() it delegates
+         * to — and the round-15 spec demanded callback_runs=1 over the
+         * missing-row delegation. The spec was wrong; core parity
+         * wins. The stub matches structurally: the delegation rides,
+         * never a forced double call, so the count falls out of the
+         * two heads themselves.
+         */
+        $runs = 0;
+        register_setting('glm16_group', 'glm16_both', array(
+            'sanitize_callback' => static function ( $value ) use ( &$runs ) {
+                ++$runs;
+
+                return \is_string( $value ) ? \trim( $value ) : $value;
+            },
+        ));
+
+        // The first save (a missing row): BOTH heads — count 2 (red at
+        // HEAD: 1, the round-15 runs=1 spec).
+        $this->assertTrue(update_option('glm16_both', '  first  '));
+        $this->assertSame(2, $runs, 'A first save runs the registered callback at both heads, core\'s own shape (the round-15 runs=1 spec corrected).');
+        $this->assertSame('first', get_option('glm16_both'));
+
+        // Subsequent saves: ONE head — count 3.
+        $this->assertTrue(update_option('glm16_both', '  second  '));
+        $this->assertSame(3, $runs, 'A subsequent save runs the callback exactly once.');
+        $this->assertSame('second', get_option('glm16_both'));
+
+        // The direct add_option() call is the second head alone: ONE run.
+        $runs = 0;
+        register_setting('glm16_group', 'glm16_direct', array(
+            'sanitize_callback' => static function ( $value ) use ( &$runs ) {
+                ++$runs;
+
+                return \is_string( $value ) ? \trim( $value ) : $value;
+            },
+        ));
+        $this->assertTrue(add_option('glm16_direct', '  direct  '));
+        $this->assertSame(1, $runs, 'A direct add_option() call is one head, one run — the delegation is what doubles the first save.');
+        $this->assertSame('direct', get_option('glm16_direct'));
+
+        // The glm15-3 stored-' raw ' leg stays sanitized: a raw-equal
+        // save still runs the callback and refuses on the answer
+        // (the counter carries the direct leg's single run above).
+        $this->assertFalse(update_option('glm16_both', 'second'));
+        $this->assertSame(2, $runs, 'The raw-equal save consulted the sanitizer (glm16-3\'s core order) and refused on the sanitized compare.');
+    }
+
+    public function testUnregisterSettingRemovesTheSanitizeHook()
+    {
+        /*
+         * glm15-8: unregister_setting() dropped the registry row but
+         * left the sanitize callback ON the filter core's registration
+         * mechanism wires (glm14-10) — register(A), unregister,
+         * register(B) answered A still riding beside B (driven red at
+         * HEAD: 'vAB' where core answers 'vB' — the unregistered
+         * sanitizer kept shaping every later save).
+         */
+        $first = static function ( $value ) {
+            return $value . 'A';
+        };
+        register_setting('glm15_group', 'glm15_opt', array( 'sanitize_callback' => $first ));
+        unregister_setting('glm15_group', 'glm15_opt');
+        register_setting('glm15_group', 'glm15_opt', array( 'sanitize_callback' => static function ( $value ) {
+            return $value . 'B';
+        } ));
+
+        $this->assertSame('vB', sanitize_option('glm15_opt', 'v'), 'The unregistered callback is gone from the hook (red at HEAD: vAB — A still rode beside B).');
+        $this->assertTrue(update_option('glm15_opt', 'v'));
+        /*
+         * glm16-5: both heads apply on a first save — 'v' carries B at
+         * update_option()'s head and again at the delegated
+         * add_option()'s ('vBB'), core's own double-apply; the
+         * round-15 'vB' expectation rode the corrected runs=1 spec.
+         * The unregistered A is what must stay gone either way.
+         */
+        $this->assertSame('vBB', get_option('glm15_opt'), 'The save path stores only the REGISTERED callback\'s answer, applied at both heads (red at HEAD: vAB stored).');
+
+        // Unregistering a setting that never carried a callback is a clean no-op.
+        $this->assertTrue(unregister_setting('glm15_group', 'glm15_never_registered'));
+    }
+
+    public function testCronSchedulesApplyTheFilterRefuseUnknownRecurrencesAndCarryWeekly()
+    {
+        /*
+         * glm15-9: the schedules map diverged from core three ways —
+         * the 'cron_schedules' filter was never applied (a plugin's
+         * custom schedule invisible at resolution time), an unknown
+         * recurrence was ACCEPTED (wp_schedule_event(..., 'weekly',
+         * ...) returned true with interval 0, firing once and never
+         * rescheduling — core returns false), and 'weekly'/
+         * WEEK_IN_SECONDS were absent (the constant reference a fatal
+         * at HEAD).
+         */
+        $this->freezeTime(1700000000);
+
+        // (a) The filter applies at schedule-time resolution, and the
+        // defaults merge OVER a same-key filter entry (core's order).
+        add_filter('cron_schedules', static function ( $schedules ) {
+            $schedules['glm15_custom'] = array( 'interval' => 123 );
+            $schedules['daily'] = array( 'interval' => 999999 );
+
+            return $schedules;
+        });
+        $schedules = wp_get_schedules();
+        $this->assertSame(123, $schedules['glm15_custom']['interval'], 'The cron_schedules filter is applied (red at HEAD: the custom entry never answered).');
+        $this->assertSame(DAY_IN_SECONDS, $schedules['daily']['interval'], 'The defaults merge over the filter — a plugin never clobbers a default spelling.');
+        $this->assertTrue(wp_schedule_event(1700000000 + 2 * WEEK_IN_SECONDS, 'glm15_custom', 'glm15_custom_hook'), 'A custom schedule resolves through the filter (scheduled past this leg\'s window).');
+
+        // (b) An unknown recurrence refuses and never enters the queue.
+        $this->assertFalse(wp_schedule_event(1700000100, 'glm15_unknown', 'glm15_hook'), 'An unknown recurrence refuses (red at HEAD: accepted with interval 0).');
+        $this->assertFalse(wp_next_scheduled('glm15_hook'), 'The refused event never entered the queue.');
+
+        // (c) 'weekly'/WEEK_IN_SECONDS are core's own defaults now.
+        $this->assertSame(7 * DAY_IN_SECONDS, WEEK_IN_SECONDS, 'WEEK_IN_SECONDS exists at core\'s own value (red at HEAD: undefined).');
+        $this->assertSame(WEEK_IN_SECONDS, wp_get_schedules()['weekly']['interval'], 'The weekly schedule joins the default set.');
+        $this->assertTrue(wp_schedule_event(1700000000, 'weekly', 'glm15_weekly'));
+        $this->advanceTime(WEEK_IN_SECONDS);
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The weekly event fires once when due.');
+        $this->assertSame(1700000000 + 2 * WEEK_IN_SECONDS, wp_next_scheduled('glm15_weekly'), 'The weekly recurrence reschedules on its own interval (grid-aligned, glm15-5).');
+    }
+
+    public function testAddQueryArgKeepsTheFragmentAtTheTail()
+    {
+        /*
+         * glm15-11: add_query_arg() mishandled '#fragment' — the
+         * fragment was swallowed into the last param's value
+         * ('code=1#frag' parsed as the VALUE '1#frag', re-encoded
+         * '%23frag') or new params appended INSIDE the fragment
+         * ('cb#frag?p=v'). Zero callers today, but OAuth redirect
+         * URLs are where fragments live — closed preemptively,
+         * core's own shape: the fragment splits off before param
+         * parsing and re-appends LAST.
+         */
+        $this->assertSame(
+            'https://x.test/cb?code=1&p=v#frag',
+            add_query_arg(array( 'p' => 'v' ), 'https://x.test/cb?code=1#frag'),
+            'The fragment survives a new param and stays at the tail (red at HEAD: swallowed into the value, re-encoded %23frag).'
+        );
+
+        $this->assertSame(
+            'https://x.test/cb?p=v#frag',
+            add_query_arg(array( 'p' => 'v' ), 'https://x.test/cb#frag'),
+            'A URL with no query gains one BEFORE the fragment (red at HEAD: the param appended inside the fragment).'
+        );
+
+        // The no-fragment shapes stay byte-identical.
+        $this->assertSame('https://x.test/cb?code=1&p=v', add_query_arg(array( 'p' => 'v' ), 'https://x.test/cb?code=1'));
+    }
+
+    /**
+     * glm28-4: core's false-value idiom — a FALSE param UNSETS the
+     * key (the merge once stored it and http_build_query() emitted
+     * 'key=0'), and remove_query_arg() exists (core's shape, the
+     * false channel's own consumer; the Task-3.2 OAuth code/state
+     * strip is the canonical future caller).
+     */
+    public function testFalseValuedParamsUnsetAndRemoveQueryArgStripsKeys()
+    {
+        $this->assertSame('https://x.test/cb?kept=1&p=v', add_query_arg(array( 'p' => 'v', 'gone' => false ), 'https://x.test/cb?kept=1'), 'A false-valued param never emits — core unsets, never key=0 (red at HEAD: https://x.test/cb?kept=1&p=v&gone=0).');
+        $this->assertSame('https://x.test/cb', add_query_arg(array( 'gone' => false ), 'https://x.test/cb?gone=1'), 'Removing the only param answers the bare path, no trailing ?.');
+
+        $this->assertSame('https://x.test/cb?state=x', remove_query_arg('code', 'https://x.test/cb?code=abc&state=x'), 'remove_query_arg strips the named key (red at HEAD: Call to undefined function).');
+        $this->assertSame('https://x.test/cb', remove_query_arg(array( 'code', 'state' ), 'https://x.test/cb?code=abc&state=x'), 'The array form strips every named key.');
+        $this->assertSame('https://x.test/cb#frag', remove_query_arg('code', 'https://x.test/cb?code=abc#frag'), 'The strip composes with the fragment tail.');
+        $this->assertSame('/?p=v', (static function () {
+            $_SERVER['REQUEST_URI'] = '/?p=v&gone=1';
+            try {
+                return remove_query_arg('gone');
+            } finally {
+                unset($_SERVER['REQUEST_URI']);
+            }
+        })(), 'The default query resolves against the current REQUEST_URI — core\'s false arm.');
+    }
+
+    public function testWpRemoteRequestDefaultsToGetCoreNotPost()
+    {
+        /*
+         * glm15-12: wp_remote_request() defaulted the method to POST
+         * where core's WP_Http::request defaults GET — the recorded
+         * attempt (and any pre_http_request mock's view of $args)
+         * named POST for every default call, green-testing a generic
+         * REST client against a divergent method.
+         */
+        $this->allowUnmockedHttp = true;
+
+        wp_remote_request('https://api.example.test/generic');
+        $this->assertSame('GET', $this->httpAttempts()[0]['method'], 'The default method is GET, core\'s own (red at HEAD: POST).');
+
+        wp_remote_request('https://api.example.test/generic', array( 'method' => 'DELETE' ));
+        $this->assertSame('DELETE', $this->httpAttempts()[1]['method'], 'An explicit method rides unchanged.');
+
+        /*
+         * glm16-9: the default lands BEFORE the filter — a
+         * pre_http_request mock observes core's shape ('GET' in
+         * $args), never the method-less array the round-15 fix handed
+         * it (red at HEAD: null).
+         */
+        $seen = null;
+        add_filter('pre_http_request', static function ( $pre, $args ) use ( &$seen ) {
+            $seen = $args['method'] ?? null;
+
+            return $pre;
+        }, 10, 2);
+        wp_remote_request('https://api.example.test/generic');
+        $this->assertSame('GET', $seen, 'The defaulted method reaches the pre_http_request mock, core\'s order (red at HEAD: null — the default never landed in $args).');
+    }
+
+    public function testIdenticalCronEntriesReplaceAndSinglesDedupeWithinTenMinutes()
+    {
+        /*
+         * glm15-13: identical reschedules APPENDED where core's keyed
+         * cron array REPLACES (the pair double-fired in one tick —
+         * driven at HEAD), and singles lacked core's 10-minute
+         * duplicate window (only the exact-timestamp spelling
+         * deduped).
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm15_dup', static function () use (&$fires) {
+            ++$fires;
+        });
+        wp_schedule_event(1700000060, 'hourly', 'glm15_dup');
+        wp_schedule_event(1700000060, 'hourly', 'glm15_dup');
+
+        $this->advanceTime(120);
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The identical recurring pair is ONE event (red at HEAD: appended, fired twice in one tick).');
+        $this->assertSame(1, $fires);
+
+        // Singles: an identical single within core's 10-minute window
+        // dedupes — and the skip answers FALSE, core's own return
+        // (glm16-7; red at HEAD: true).
+        $this->assertTrue(wp_schedule_single_event(1700000300, 'glm15_single'));
+        $this->assertFalse(wp_schedule_single_event(1700000600, 'glm15_single'), 'The duplicate single answers FALSE, core\'s own return (red at HEAD: true).');
+        $this->assertCount(1, wp_get_scheduled_events('glm15_single'), 'An identical single within the 10-minute window dedupes (red at HEAD: two entries).');
+
+        /*
+         * glm17-5: the window is core's TWO-SIDED BAND on the NEW
+         * event's timestamp (cron.php:135-145, pinned 7.1.1) — the
+         * round-16 one-sided floor over the EXISTING single's age
+         * answered the wrong shape both directions (driven): min = 0
+         * whenever the new ts sits within ten minutes of now (every
+         * PAST identical single counts, however old — the round-16
+         * '10:01 old stacks' pin was wrong for near-future saves),
+         * else ts - 10 min (a far-future single never dedupes against
+         * a near-future existing one); max = now + 10 min for a past
+         * new ts, else ts + 10 min.
+         */
+        $this->advanceTime(840); // now 1700000960; the existing single (ts 1700000300) is 660 seconds old — 11 minutes.
+        // Near-future save, 11-minute-old existing single: min = 0
+        // counts it — dedupes (red at HEAD: the floor stacked it).
+        $this->assertFalse(wp_schedule_single_event(1700001020, 'glm15_single'), 'A near-future save dedupes against a past identical single of ANY age — min = 0 (red at HEAD: the 11-minute-old one stacked).');
+        $this->assertCount(1, wp_get_scheduled_events('glm15_single'));
+
+        // Far-future save, near-future existing single — the min = ts -
+        // 10 min arm, its own hook so the old single never feeds it:
+        // band schedules (red at HEAD: the floor deduped it).
+        $this->assertTrue(wp_schedule_single_event(1700001260, 'glm17_far'), 'staging: the near-future existing single lands.');
+        $this->assertTrue(wp_schedule_single_event(1700002460, 'glm17_far'), 'A single 20 minutes past a near-future existing one never dedupes against it — min = ts - 10 min excludes the existing ts (red at HEAD: the floor deduped it).');
+        $this->assertCount(2, wp_get_scheduled_events('glm17_far'), 'Beyond the band the single is its own event.');
+
+        // Future-near control: an existing single INSIDE the band
+        // dedupes (the glm15-13 shape, band-invariant).
+        $this->assertFalse(wp_schedule_single_event(1700002520, 'glm17_far'), 'A near-future existing single inside the band dedupes.');
+        $this->assertCount(2, wp_get_scheduled_events('glm17_far'));
+    }
+
+    public function testTheGenericAddOptionHookFiresBeforeTheWriteCoreOrder()
+    {
+        /*
+         * glm18-9: core fires the GENERIC 'add_option' action BEFORE
+         * the INSERT (option.php:1140's do_action precedes :1142's
+         * query, pinned 7.1.1) — an observer at the hook reads the row
+         * through get_option() as core reads it, the OLD value (false
+         * for a first add). The stub wrote first, so the observer read
+         * the NEW value (driven); the specific and closing hooks stay
+         * post-write, where their observers read the written row.
+         */
+        $seen_generic = 'never';
+        add_action('add_option', static function ($option) use (&$seen_generic) {
+            $seen_generic = get_option($option);
+        });
+        $seen_specific = 'never';
+        add_action('add_option_glm18_order', static function ($option) use (&$seen_specific) {
+            $seen_specific = get_option($option);
+        });
+
+        $this->assertTrue(add_option('glm18_order', 'v1'));
+        $this->assertFalse($seen_generic, 'The generic-hook observer reads the OLD row — the write has not happened yet (red at HEAD: the new value).');
+        $this->assertSame('v1', $seen_specific, 'The specific-hook observer reads the WRITTEN row, core\'s post-write order.');
+
+        // The stored-false re-add rides the same order: the row still
+        // reads false at the generic hook, and the write lands after.
+        WpHarness::$options['glm18_order'] = false;
+        $seen_generic = 'never';
+        $this->assertTrue(add_option('glm18_order', 'v2'), 'staging: the stored-false re-add completes (glm17-4\'s shape).');
+        $this->assertFalse($seen_generic, 'The generic-hook observer reads the stored-false row as core does at the pre-write hook.');
+        $this->assertSame('v2', get_option('glm18_order'), 'The write lands after the generic hook.');
+    }
+
+    public function testAMutatedStoredObjectReSaveCompletesThroughTheHeadClone()
+    {
+        /*
+         * glm18-8: core clones an object value at update_option()'s
+         * head (option.php:882-884, pinned 7.1.1) — the harness stores
+         * live references, so a caller mutating the object they saved
+         * and re-saving it hit the $old === $value identity arm with
+         * the SAME reference on both sides: false, zero hooks, where
+         * core's detached copy completes with the full hook family
+         * (driven at HEAD). The head clone detaches the stored row;
+         * the unchanged re-save keeps core's silent false (the glm17-8
+         * maybe_serialize arm, over detached copies now).
+         */
+        $obj = new stdClass();
+        $obj->v = 1;
+        $this->assertTrue(update_option('glm18_obj', $obj), 'staging: the first save persists the row.');
+
+        $fired = array();
+        add_action('update_option', static function () use (&$fired) {
+            $fired[] = 'generic';
+        });
+        add_action('update_option_glm18_obj', static function () use (&$fired) {
+            $fired[] = 'specific';
+        });
+        add_action('updated_option', static function () use (&$fired) {
+            $fired[] = 'updated';
+        });
+
+        $obj->v = 2;
+        $this->assertTrue(update_option('glm18_obj', $obj), 'The mutate-in-place re-save completes — the head clone detached the stored row from the caller\'s reference (red at HEAD: the identity arm saw the same reference, false).');
+        $this->assertSame(array( 'generic', 'specific', 'updated' ), $fired, 'The full hook family fires for the re-save (red at HEAD: zero hooks).');
+        $this->assertSame(2, get_option('glm18_obj')->v, 'The row carries the mutated value.');
+
+        $fired = array();
+        $this->assertFalse(update_option('glm18_obj', $obj), 'The UNCHANGED re-save keeps core\'s silent false — maybe_serialize equality over the detached copies.');
+        $this->assertSame(array(), $fired, 'No hook fires for the unchanged re-save.');
+    }
+
+    public function testADirectAddDetachesTheStoredRowToo()
+    {
+        /*
+         * glm19-4: core clones at BOTH heads (option.php:1108-1110
+         * beside glm18-8's :882-884, pinned 7.1.1) — the stub's
+         * direct-add path stored the caller's live reference, so a
+         * mutate-in-place re-save through update_option() compared the
+         * caller's reference against itself-as-stored and answered
+         * false with ZERO hooks where core's add-time detached copy
+         * completes with the full family (driven — glm18-8's exact
+         * class through the other entry point).
+         */
+        $obj = new stdClass();
+        $obj->v = 1;
+        $this->assertTrue(add_option('glm19_add_obj', $obj), 'staging: the direct add persists the row.');
+
+        $fired = array();
+        add_action('update_option', static function () use (&$fired) {
+            $fired[] = 'generic';
+        });
+        add_action('update_option_glm19_add_obj', static function () use (&$fired) {
+            $fired[] = 'specific';
+        });
+        add_action('updated_option', static function () use (&$fired) {
+            $fired[] = 'updated';
+        });
+
+        $obj->v = 2;
+        $this->assertTrue(update_option('glm19_add_obj', $obj), 'The direct-add mutate-in-place re-save completes — the stored row detached at the add head too (red at HEAD: the stored live reference made the unchanged compare true — false, zero hooks).');
+        $this->assertSame(array( 'generic', 'specific', 'updated' ), $fired, 'The full hook family fires for the re-save (red at HEAD: zero hooks).');
+        $this->assertSame(2, get_option('glm19_add_obj')->v, 'The row carries the mutated value.');
+    }
+
+    public function testANestedMutationReachesNothingTheStoredRowIsSerializedEqual()
+    {
+        /*
+         * glm19-5: the head clone is SHALLOW (core's own spelling at
+         * both heads) but core's row is serialized BYTES at the
+         * database layer — the stored copy shares NO nested reference
+         * with the caller. The harness's shallow clone kept nested
+         * objects shared: a nested mutation reached the stored row,
+         * the re-save compared serialize-equal, and the save answered
+         * false with ZERO hooks where core's serialized row completes
+         * with the full family (driven).
+         */
+        $obj = new stdClass();
+        $obj->nested = new stdClass();
+        $obj->nested->v = 1;
+        $this->assertTrue(update_option('glm19_nested_obj', $obj), 'staging: the first save persists the row.');
+
+        $fired = array();
+        add_action('update_option', static function () use (&$fired) {
+            $fired[] = 'generic';
+        });
+        add_action('update_option_glm19_nested_obj', static function () use (&$fired) {
+            $fired[] = 'specific';
+        });
+        add_action('updated_option', static function () use (&$fired) {
+            $fired[] = 'updated';
+        });
+
+        $obj->nested->v = 2;
+        $this->assertTrue(update_option('glm19_nested_obj', $obj), 'The nested-mutation re-save completes — the stored row is serialized-equal, never shared (red at HEAD: the shallow clone kept the nested object shared — serialize-equal, false, zero hooks).');
+        $this->assertSame(array( 'generic', 'specific', 'updated' ), $fired, 'The full hook family fires for the re-save (red at HEAD: zero hooks).');
+        $this->assertSame(2, get_option('glm19_nested_obj')->nested->v, 'The row carries the mutated value.');
+
+        // The stored row is the harness's own copy: the caller's later
+        // nested mutations reach nothing, and the UNCHANGED re-save
+        // keeps core's silent false over the detached pair.
+        $obj->nested->v = 3;
+        $this->assertSame(2, get_option('glm19_nested_obj')->nested->v, 'The stored nested object is detached — the caller\'s later mutations reach nothing.');
+        $this->assertTrue(update_option('glm19_nested_obj', $obj), 'The now-differing re-save completes — serialized-equality over detached copies decides.');
+        $this->assertSame(3, get_option('glm19_nested_obj')->nested->v);
+        $fired = array();
+        $this->assertFalse(update_option('glm19_nested_obj', $obj), 'The UNCHANGED re-save keeps core\'s silent false.');
+        $this->assertSame(array(), $fired, 'No hook fires for the unchanged re-save.');
+    }
+
+    public function testNonFiniteTimestampsRefuseAtTheScheduleGuard()
+    {
+        /*
+         * glm19-7: INF and NAN pass the raw-value guard — is_numeric
+         * answers true for both, neither compares <= 0 — and the
+         * harness queued zombies: the raw INF NEVER FIRED (INF > now
+         * forever) while core's key truncation lands the row at key
+         * 0, firing every pass, never the claimed time (driven at
+         * HEAD: queued). No honest schedule exists for either — the
+         * guard refuses non-finite values.
+         */
+        $this->freezeTime(1700000000);
+
+        $this->assertFalse(wp_schedule_single_event(INF, 'glm19_inf'), 'INF refuses — no honest schedule exists (red at HEAD: queued, a never-firing zombie).');
+        $this->assertFalse(wp_schedule_single_event(NAN, 'glm19_nan'), 'NAN refuses likewise (red at HEAD: queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm19_inf'), 'Nothing lands for either spelling.');
+        $this->assertSame(array(), wp_get_scheduled_events('glm19_nan'), 'Nothing lands for NAN either.');
+        $this->assertSame(0, WpHarness::runDueEvents(), 'No due pass fires anything.');
+    }
+
+    public function testTheSingleHeadGuardJudgesTheRawValueNeverAPreCast()
+    {
+        /*
+         * glm18-7: the single's standing (int) coercion rode AHEAD of
+         * the glm17-14 guard, inverting core on both sides of the
+         * 'Make sure timestamp is a positive integer' judge
+         * (cron.php:48-60: '! is_numeric( $timestamp ) || $timestamp
+         * <= 0' on the RAW value) — a true or a '60abc' coerced to a
+         * positive integer and QUEUED where core refuses (is_numeric
+         * answers false for both before any cast), and a 0.5 coerced
+         * to 0 and REFUSED where core schedules the event.
+         *
+         * CORRECTED (glm19-6): the round-18 half of this pin — "core
+         * schedules the event and keeps the fractional timestamp
+         * downstream" — is FALSE against the pinned 7.1.1. Core's
+         * guard passes the raw 0.5, but the row lands at
+         * $crons[0.5], and a PHP array KEY truncates the float: key
+         * 0. wp_next_scheduled() reconstructs from the key and its
+         * '! $next' falsy guard (cron.php:825) answers FALSE for the
+         * key-0 row — never 0.5 — and wp_unschedule_event()'s own key
+         * fold still cancels it. The queued row rides the
+         * int-truncated timestamp now, core's own key shape; the
+         * stranded-cancellation shape dies with it.
+         */
+        $this->freezeTime(1700000000);
+
+        $this->assertFalse(wp_schedule_single_event(true, 'glm18_raw'), 'A boolean true refuses — is_numeric answers false before any cast (red at HEAD: coerced to 1, queued).');
+        $this->assertFalse(wp_schedule_single_event('60abc', 'glm18_raw'), 'A glued numeric string refuses likewise (red at HEAD: coerced to 60, queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm18_raw'), 'Nothing lands in the queue for either spelling (red at HEAD: two rows).');
+
+        $this->assertTrue(wp_schedule_single_event(0.5, 'glm18_raw_half'), 'A fractional positive timestamp schedules — the raw-value guard passes it (red at the round-16 HEAD: coerced to 0, refused).');
+        $queued = wp_get_scheduled_events('glm18_raw_half');
+        $this->assertCount(1, $queued, 'staging: the fractional schedule lands one row.');
+        $this->assertSame(0, $queued[0]['timestamp'], 'The row lands at the INT-TRUNCATED key — core\'s $crons[ts] key shape (red at the round-18 pin: the raw 0.5, glm18-7\'s fractional-acceptance premise falsified).');
+        $this->assertSame(false, wp_next_scheduled('glm18_raw_half'), 'Core\'s falsy-key guard: a key-0 row is invisible to the next-event query — false, never the 0.5 the round-18 pin asserted.');
+        $this->assertTrue(wp_unschedule_event(0.5, 'glm18_raw_half'), 'The key-0 row cancels through the int-folded compare — the stranded-cancellation shape dies (red at the round-18 shape: the raw 0.5 row never matched).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm18_raw_half'), 'The row is gone.');
+    }
+
+    public function testNonPositiveTimestampsRefuseAtBothScheduleEntryPoints()
+    {
+        /*
+         * glm18-6: wp_schedule_event() lacked the head guard
+         * glm17-14 pinned at the single entry point — core answers the
+         * SAME 'Make sure timestamp is a positive integer' false at
+         * BOTH heads (cron.php:48-60 and :252-263, pinned 7.1.1),
+         * before anything is keyed. The stub queued a RECURRING event
+         * at ts 0 or below: a due-now row that fired and re-armed
+         * forever (driven) where core never keys the event at all.
+         */
+        $this->freezeTime(1700000000);
+
+        $this->assertFalse(wp_schedule_event(0, 'hourly', 'glm18_neg'), 'ts=0 recurring refuses, core\'s own head guard (red at HEAD: queued, true).');
+        $this->assertFalse(wp_schedule_event(-1, 'hourly', 'glm18_neg'), 'ts=-1 recurring refuses likewise (red at HEAD: queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm18_neg'), 'Nothing lands in the queue for either spelling (red at HEAD: two due-now rows).');
+        $this->assertSame(0, WpHarness::runDueEvents(), 'No due pass fires anything.');
+
+        // The single entry point keeps glm17-14's refusal.
+        $this->assertFalse(wp_schedule_single_event(0, 'glm18_neg_single'));
+        $this->assertFalse(wp_schedule_single_event(-1, 'glm18_neg_single'));
+
+        /*
+         * glm21-9: the NON-FINITE class — glm19-7's is_finite guard
+         * landed at the single head only, so the recurring head
+         * accepted INF/NAN/'1e999' (is_numeric answers true for all
+         * three, none compares <= 0) and queued the row at the (int)
+         * cast 0: a 'never-due' recurrence armed at an arbitrary grid
+         * phase. The guard rides both heads now — the harness's own
+         * asymmetry doctrine (never queue what cannot fire), the
+         * verifier having refuted the core-parity premise for the
+         * recurring shape.
+         */
+        $this->assertFalse(wp_schedule_event(INF, 'hourly', 'glm21_nonfinite'), 'INF recurring refuses — no honest schedule exists (red at HEAD: queued at 0, true).');
+        $this->assertFalse(wp_schedule_event(NAN, 'hourly', 'glm21_nonfinite'), 'NAN recurring refuses likewise (red at HEAD: queued).');
+        $this->assertFalse(wp_schedule_event('1e999', 'hourly', 'glm21_nonfinite'), 'The over-width numeric string refuses — its float cast IS INF, is_finite covering the spelling (red at HEAD: queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm21_nonfinite'), 'Nothing lands in the queue for the class (red at HEAD: three key-0 rows).');
+    }
+
+    public function testCollidedReschedulesReplaceKeyedNeverAppend()
+    {
+        /*
+         * glm18-5: the walk's reschedule write raw-APPENDED where
+         * core's cron array keys the row ($crons[ts][hook][md5(args)],
+         * cron.php:323, pinned 7.1.1) and REPLACES. Two due hourly
+         * members of one recurrence one period apart both re-arm onto
+         * the SAME grid timestamp — now + (interval − ((now − ts) %
+         * interval)) collapses the modulo for ts values a whole period
+         * apart — so the append left both rows standing and the pair
+         * double-fired on every later pass forever (driven: pass 1
+         * fired 2, pass 2 fired 2; core answers 1 row, 1 fire). The
+         * unfinished half of glm15-13's keyed-replace class, closed at
+         * the walk's own write.
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm18_grid', static function ($m) use (&$fires) {
+            ++$fires;
+        });
+        $this->assertTrue(wp_schedule_event(1700000000 - 3600, 'hourly', 'glm18_grid', array( 'm' => 1 )), 'staging: the first collided member must schedule.');
+        $this->assertTrue(wp_schedule_event(1700000000 - 7200, 'hourly', 'glm18_grid', array( 'm' => 1 )), 'staging: the second collided member must schedule (a whole period apart — its own keyed row).');
+
+        $this->assertSame(2, WpHarness::runDueEvents(), 'Both due members fire on the collision pass — core fires both too.');
+        $this->assertSame(2, $fires);
+        $this->assertCount(1, wp_get_scheduled_events('glm18_grid'), 'The two grid-collided re-arms are ONE keyed row (red at HEAD: the append left two).');
+
+        $this->advanceTime(3600);
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The next due pass fires the keyed row once (red at HEAD: the appended twin double-fired).');
+        $this->assertSame(3, $fires);
+    }
+
+    public function testAStoredFalseRowCompletesCoreSOnDuplicateKeyUpdateShape()
+    {
+        /*
+         * glm15-14: update_option()'s delegation predicate
+         * (array_key_exists) diverged from core's routing — a row
+         * STORED AS FALSE is indistinguishable from a missing row
+         * through core's get_option() (both answer false), so core
+         * routes the save to the ADD family while the harness routed
+         * UPDATE (driven red at HEAD: update_option_ fired for a
+         * stored-false save).
+         *
+         * glm16-4 then closed the seam with a COLLISION premise —
+         * core's INSERT dies on the duplicate key, a silent no-op —
+         * and glm17-4 FALSIFIES that premise against the pinned WP
+         * 7.1.1 (pre-verified at the local reference): the INSERT
+         * rides ON DUPLICATE KEY UPDATE (option.php:1142), and the
+         * guard returns early only for a row that reads NON-false.
+         * The stored-false add COMPLETES observably, exactly like a
+         * first save: the ADD family fires, the row writes, true (the
+         * famous false-stored footgun is that the save masquerades as
+         * an add — never that it silently does nothing).
+         */
+        update_option('glm15_false_opt', 'initial');
+        update_option('glm15_false_opt', false);
+
+        $fired = array();
+        add_action('update_option_glm15_false_opt', static function () use (&$fired) {
+            $fired[] = 'update';
+        });
+        add_action('updated_option', static function () use (&$fired) {
+            $fired[] = 'updated';
+        });
+        add_action('add_option_glm15_false_opt', static function () use (&$fired) {
+            $fired[] = 'add';
+        });
+        add_action('added_option', static function () use (&$fired) {
+            $fired[] = 'added';
+        });
+
+        $this->assertTrue(update_option('glm15_false_opt', 'value'), 'A stored-false save completes through the delegated ADD — hooks, write, true (red at HEAD: glm16-4\'s silent false).');
+        $this->assertSame(array( 'add', 'added' ), $fired, 'The ADD family fires for the stored-false save (red at HEAD: no family fired).');
+        $this->assertSame('value', get_option('glm15_false_opt'), 'The ON DUPLICATE KEY UPDATE shape writes the row (red at HEAD: nothing wrote).');
+
+        // The direct call over the stored-false row: the same completion.
+        WpHarness::$options['glm15_false_opt'] = false;
+        $fired = array();
+        $this->assertTrue(add_option('glm15_false_opt', 'again'), 'A direct add over a stored-false row completes too (red at HEAD: silent false).');
+        $this->assertSame(array( 'add', 'added' ), $fired);
+        $this->assertSame('again', get_option('glm15_false_opt'));
+
+        // The stored NON-false duplicate keeps the early-return silence —
+        // core's guard answer for a row that reads through get_option().
+        WpHarness::$options['glm15_false_opt'] = 'rewritten';
+        $fired = array();
+        $this->assertFalse(add_option('glm15_false_opt', 'nope'), 'A direct add over a stored non-false row is core\'s silent no-op.');
+        $this->assertSame(array(), $fired, 'The non-false duplicate fires nothing.');
+        $this->assertSame('rewritten', get_option('glm15_false_opt'));
+
+        // The control: a stored non-false value keeps the UPDATE routing.
+        $fired = array();
+        $this->assertTrue(update_option('glm15_false_opt', 'next'));
+        $this->assertSame(array( 'update', 'updated' ), $fired, 'A stored non-false value keeps the UPDATE family.');
+        $this->assertSame('next', get_option('glm15_false_opt'));
+    }
+
+    public function testASingleOverAnIdenticalRecurringEntryAnswersFalseAndTheRecurrenceSurvives()
+    {
+        /*
+         * glm16-6 claimed the single's keyed write REPLACES an
+         * identical-key recurring entry — and glm17-6 falsifies the
+         * shape against the pinned core: the duplicate check core
+         * runs BEFORE any keyed write is recurrence-BLIND
+         * (isset($crons[ts][$hook][md5(args)]) — no recurrence term),
+         * and a same-timestamp identical-key entry is ALWAYS inside
+         * core's two-sided band (min <= ts <= max by construction),
+         * so a single scheduled over an identical-key RECURRING entry
+         * answers FALSE with the recurring row untouched: the single
+         * never overwrites a recurrence core keeps (driven red at
+         * HEAD: true, the recurring entry's interval stripped, the
+         * reschedule dead).
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm16_over', static function () use (&$fires) {
+            ++$fires;
+        });
+        wp_schedule_event(1700000060, 'hourly', 'glm16_over');
+        $this->assertFalse(wp_schedule_single_event(1700000060, 'glm16_over'), 'The single over the identical-key recurring entry answers FALSE, core\'s duplicate skip (red at HEAD: true, the keyed replace).');
+
+        // The recurring row survives untouched — its interval intact,
+        // its fire once, its reschedule standing.
+        $events = wp_get_scheduled_events('glm16_over');
+        $this->assertCount(1, $events, 'No twin was written (red at HEAD: the pair as two entries).');
+        $this->assertSame(3600, $events[0]['interval'], 'The recurring entry keeps its interval (red at HEAD: the interval stripped by the replace).');
+
+        $this->advanceTime(120);
+        $this->assertSame(1, WpHarness::runDueEvents());
+        $this->assertSame(1, $fires);
+        $this->assertSame(1700003660, wp_next_scheduled('glm16_over'), 'The recurrence rescheduled on its grid (red at HEAD: false — the replaced single left nothing to reschedule).');
+    }
+
+    public function testAnUnscheduledSnapshotMemberStillFiresCoreShape()
+    {
+        /*
+         * glm16-8: runDueEvents() skipped a handler's
+         * unschedule-then-reschedule of a not-yet-fired snapshot member
+         * — the by-id relocation treated 'absent from the live list' as
+         * 'suppressed' — where core's wp_cron() walks its captured copy
+         * and fires UNCONDITIONALLY (the docblock had claimed the skip
+         * as core's snapshot semantics; the claim was wrong). Driven:
+         * the member fires once in THIS pass, the handler's reschedule
+         * standing for the next.
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm16_victim', static function () use (&$fires) {
+            ++$fires;
+        });
+        add_action('glm16_actor', static function () {
+            // Fires first (earlier due): unschedules the victim and
+            // reschedules it for the next window.
+            wp_unschedule_event(1700000000, 'glm16_victim');
+            wp_schedule_single_event(1700003600, 'glm16_victim');
+        });
+        wp_schedule_single_event(1700000000 - 60, 'glm16_actor');
+        wp_schedule_single_event(1700000000, 'glm16_victim');
+
+        $this->assertSame(2, WpHarness::runDueEvents(), 'Both snapshot members fire — the actor first, the victim STILL fires after its unschedule (red at HEAD: 1, the victim suppressed).');
+        $this->assertSame(1, $fires, 'The victim fired exactly once in THIS pass (red at HEAD: suppressed, zero).');
+        $this->assertSame(1700003600, wp_next_scheduled('glm16_victim'), 'The handler\'s reschedule stands for the next pass.');
+    }
+
+    public function testAMidWalkCancelledRecurringMemberStillReschedulesCoreShape()
+    {
+        /*
+         * glm17-7: the recurring reschedule gated on the live
+         * re-location — a handler that unscheduled a not-yet-fired
+         * recurring member mid-walk left the re-arm dead (nothing to
+         * re-locate), a permanently cancelled recurrence where core's
+         * wp-cron.php reschedules UNCONDITIONALLY from the captured
+         * copy before it even attempts the unschedule: the
+         * cancellation stops the FIRE, never the RESCHEDULE (driven
+         * red at HEAD: wp_next_scheduled answered false after the
+         * pass).
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm17_recur', static function () use (&$fires) {
+            ++$fires;
+        });
+        add_action('glm17_cancel_actor', static function () {
+            // Fires first (earlier due): cancels the recurring victim.
+            wp_unschedule_event(1700000000, 'glm17_recur');
+        });
+        wp_schedule_single_event(1700000000 - 60, 'glm17_cancel_actor');
+        wp_schedule_event(1700000000, 'hourly', 'glm17_recur');
+
+        $this->assertSame(2, WpHarness::runDueEvents(), 'Both snapshot members fire — the actor and the cancelled victim (glm16-8\'s own doctrine).');
+        $this->assertSame(1, $fires);
+        $this->assertSame(1700003600, wp_next_scheduled('glm17_recur'), 'The mid-walk-cancelled recurring member RESCHEDULED from the captured copy — the cancellation stopped the fire-target row, never the recurrence (red at HEAD: false, the re-arm gated on the failed re-location).');
+    }
+
+    public function testAnUnscheduleThenReAddOfTheIdenticalKeyEventFiresOnce()
+    {
+        /*
+         * glm17-10: the walk's removal rode a synthetic per-entry id —
+         * a handler's unschedule-then-re-add of the IDENTICAL-KEY
+         * event (same timestamp, same args) wrote the key back under a
+         * FRESH id, the by-id re-location read 'absent', nothing was
+         * removed, and the re-added twin fired AGAIN on the next pass
+         * (driven red at HEAD: the double fire). Core's cron array is
+         * keyed [ts][hook][md5(args)] and wp-cron.php unschedules BY
+         * THAT KEY, so the walk's own removal consumes the re-added
+         * row — one fire across passes, the synthetic id deleted with
+         * the spelling.
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm17_readd', static function () use (&$fires) {
+            ++$fires;
+        });
+        add_action('glm17_readd_actor', static function () {
+            // Fires first (earlier due): removes the victim and
+            // re-adds the IDENTICAL-KEY event.
+            wp_unschedule_event(1700000000, 'glm17_readd');
+            wp_schedule_single_event(1700000000, 'glm17_readd');
+        });
+        wp_schedule_single_event(1700000000 - 60, 'glm17_readd_actor');
+        wp_schedule_single_event(1700000000, 'glm17_readd');
+
+        $this->assertSame(2, WpHarness::runDueEvents(), 'Both snapshot members fire — the actor and the victim (the fire rides the snapshot, glm16-8).');
+        $this->assertSame(1, $fires, 'The victim fired once in THIS pass.');
+
+        // The re-added twin was CONSUMED by the walk's key removal —
+        // the next pass has nothing left to fire (red at HEAD: the
+        // twin survived under its fresh id and fired again).
+        $this->assertSame(array(), wp_get_scheduled_events('glm17_readd'), 'The re-added identical-key row was consumed by the walk\'s own keyed removal (red at HEAD: the twin standing).');
+        $this->assertSame(0, WpHarness::runDueEvents(), 'The next pass fires nothing (red at HEAD: 1, the twin).');
+        $this->assertSame(1, $fires, 'ONE fire across both passes (red at HEAD: 2, the double fire).');
+    }
+
+    public function testWpScheduleSingleEventRefusesNonPositiveTimestampsCoreGuard()
+    {
+        /*
+         * glm17-14: core's head guard — 'Make sure timestamp is a
+         * positive integer' (cron.php:48-60, pinned 7.1.1): a
+         * timestamp at or below zero answers FALSE, never a queued
+         * event. The stub queued both (driven red at HEAD: ts=0 and
+         * ts=-1 answered true, two due-now entries).
+         */
+        $this->freezeTime(1700000000);
+
+        $this->assertFalse(wp_schedule_single_event(0, 'glm17_ts'), 'ts=0 answers false, core\'s own guard (red at HEAD: true, queued).');
+        $this->assertFalse(wp_schedule_single_event(-1, 'glm17_ts'), 'ts=-1 answers false likewise (red at HEAD: true, queued).');
+        $this->assertSame(array(), wp_get_scheduled_events('glm17_ts'), 'Nothing queued for either spelling (red at HEAD: two due-now entries).');
+    }
+
+    public function testEqualValuedObjectArgsAreOneCronEventCoreDigest()
+    {
+        /*
+         * glm16-12: the cron args comparisons rode PHP's identity
+         * (===) where core's key is md5(serialize($args)) — two
+         * equal-VALUED but non-identical object args answered
+         * 'different' at every key site (the keyed replace, the
+         * singles dedupe, wp_next_scheduled, wp_unschedule_event) and
+         * stacked twin entries that double-fired in one tick where
+         * core's keyed array answers one event (driven red at HEAD).
+         */
+        $this->freezeTime(1700000000);
+
+        $fires = 0;
+        add_action('glm16_digest', static function () use (&$fires) {
+            ++$fires;
+        });
+        $make = static function () {
+            return new ArrayObject(array( 'k' => 'v' ));
+        };
+        $first = $make();
+        $second = $make();
+        $this->assertNotSame($first, $second, 'staging: the pair must be two distinct instances — the identity compare this leg drives.');
+
+        // The keyed replace answers ONE entry over the equal-valued
+        // pair (red at HEAD: appended, double-fired).
+        $this->assertTrue(wp_schedule_event(1700000300, 'hourly', 'glm16_digest', array( $first )));
+        $this->assertTrue(wp_schedule_event(1700000300, 'hourly', 'glm16_digest', array( $second )));
+        $this->advanceTime(400);
+        $this->assertSame(1, WpHarness::runDueEvents(), 'The equal-valued pair is ONE event (red at HEAD: two entries, double-fired in one tick).');
+        $this->assertSame(1, $fires);
+
+        // wp_next_scheduled finds the rescheduled occurrence by VALUE.
+        $next = wp_next_scheduled('glm16_digest', array( $second ));
+        $this->assertNotFalse($next, 'wp_next_scheduled answers over the equal-valued args (red at HEAD: false — identity missed the entry).');
+
+        // And the unschedule with a third equal-valued instance removes it.
+        $this->assertTrue(wp_unschedule_event($next, 'glm16_digest', array( $make() )), 'The digest-keyed unschedule removes the entry over any equal-valued spelling (red at HEAD: false).');
+        $this->assertFalse(wp_next_scheduled('glm16_digest', array( $first )));
+
+        // The singles dedupe rides the same digest: an equal-valued
+        // twin within core's window answers FALSE.
+        $this->assertTrue(wp_schedule_single_event(1700000500, 'glm16_single_val', array( $make() )));
+        $this->assertFalse(wp_schedule_single_event(1700000600, 'glm16_single_val', array( $make() )), 'The duplicate single is recognized over the digest (red at HEAD: appended as distinct).');
+        $this->assertCount(1, wp_get_scheduled_events('glm16_single_val'));
     }
 
     public function testCurrentTimeMysqlHonorsGmtAndTheSiteOffset()
@@ -526,6 +2775,67 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertNotSame($first, wp_create_nonce('test_action'));
     }
 
+    /**
+     * glm28-3: wp_nonce_url() delegates to add_query_arg() (core's
+     * own shape, functions.php pinned) — the hand-glued separator
+     * once landed the nonce INSIDE the fragment on a fragment-bearing
+     * URL (driven red at HEAD: '...?page=z#frag&_wpnonce=x').
+     */
+    public function testNonceUrlLandsTheNonceBeforeTheFragment()
+    {
+        $this->asAdministrator();
+        $nonce = wp_create_nonce('glm28_act');
+
+        $fragmented = wp_nonce_url('https://example.test/options-general.php?page=z#section', 'glm28_act');
+        $this->assertSame('https://example.test/options-general.php?page=z&amp;_wpnonce=' . $nonce . '#section', $fragmented, 'The nonce lands BEFORE the fragment and the fragment survives verbatim (red at HEAD: inside) — esc_html()\'s &amp; is core\'s own href wrap.');
+
+        $this->assertSame('https://example.test/p?_wpnonce=' . $nonce, wp_nonce_url('https://example.test/p', 'glm28_act'), 'A query-less URL gains the ? form.');
+        $this->assertSame('https://example.test/p?a=1&amp;b=2&amp;_wpnonce=' . $nonce, wp_nonce_url('https://example.test/p?a=1&amp;b=2', 'glm28_act', '_wpnonce'), 'A pre-escaped &amp; input is un-escaped at the head and re-escaped once at the wrap — core\'s documented input contract, the standing params kept.');
+    }
+
+    /**
+     * glm28-5: esc_url() preserves wp_allowed_protocols() members —
+     * the http(s)-only probe once answered '' over mailto:/tel:/ftp:
+     * (a connector's support link green-testing an empty href),
+     * where core keeps every allowed-protocol scheme and answers ''
+     * only for the disallowed.
+     */
+    public function testEscUrlPreservesAllowedProtocolsStrippingOnlyTheDisallowed()
+    {
+        $this->assertSame('mailto:support@example.test', esc_url('mailto:support@example.test'), 'A mailto href survives (red at HEAD: \'\').');
+        $this->assertSame('tel:+1-555-0100', esc_url('tel:+1-555-0100'), 'A tel href survives verbatim through the sanitize arm.');
+        $this->assertSame('ftp://files.example.test/pub/readme.txt', esc_url('ftp://files.example.test/pub/readme.txt'), 'An ftp URL rides the same arm as http(s).');
+
+        // http/https unchanged, and a disallowed protocol still strips.
+        $this->assertSame('https://example.test/a?b=1', esc_url('https://example.test/a?b=1'));
+        $this->assertSame('http://example.test/', esc_url('http://example.test/'));
+        $this->assertSame('', esc_url('javascript:alert(1)'), 'A disallowed scheme keeps the \'\' refusal — the screen strips, never preserves.');
+        $this->assertSame('', esc_url('/relative/path'), 'A scheme-less spelling keeps the seat\'s documented \'\' (core\'s relative arms ride the request context this stub does not model).');
+    }
+
+    /**
+     * glm28-6: sanitize_email() rides core's gates (formatting.php
+     * pinned) — the bare FILTER_SANITIZE_EMAIL passthrough let
+     * 'bogus@@example..com' through where core answers '', so the
+     * `if ( ! $email = sanitize_email() )` idiom never saw the
+     * refusal.
+     */
+    public function testSanitizeEmailAnswersCoreSGateVerdicts()
+    {
+        $this->assertSame('', sanitize_email('bogus@@example..com'), 'The double-@/double-dot shape answers the domain gates\' refusal (red at HEAD: passthrough).');
+        $this->assertSame('', sanitize_email('a@b'), 'Under the six-byte minimum the length gate refuses (email_too_short).');
+        $this->assertSame('', sanitize_email('no-at-sign.test'), 'No @ after the first position refuses (email_no_at).');
+        $this->assertSame('', sanitize_email('()@example.test'), 'A local part empty after the character strip refuses (local_invalid_chars — the sub-address specials !#$%&*+/=?^_`{|}~.- are core\'s LEGAL local bytes and survive).');
+        $this->assertSame('', sanitize_email('user@example'), 'A domain without a second sub refuses (domain_no_periods).');
+        $this->assertSame('', sanitize_email('user@-.-'), 'Every sub stripped to nothing refuses (domain_no_valid_subs).');
+
+        // Valid emails unchanged, core's strip-then-verify shape intact.
+        $this->assertSame('user@example.test', sanitize_email('user@example.test'));
+        $this->assertSame('user.name+tag@example.test', sanitize_email('user.name+tag@example.test'));
+        $this->assertSame('', sanitize_email('user@sub..example...test'), 'A doubled period run is REMOVED whole (never collapsed) — the domain loses its separator and the no-periods gate refuses, core\'s own reading.');
+        $this->assertSame('user@example.test', sanitize_email('us er@exa mple.test'), 'Illegal bytes strip in place through the sanitizer — core\'s own cleaning, not a refusal.');
+    }
+
     public function testCapabilityGateDistinguishesUsers()
     {
         $this->asAnonymous();
@@ -535,19 +2845,115 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         $this->assertTrue(current_user_can('manage_options'));
     }
 
-    public function testAdminRefererChecksNonce()
+    /**
+     * glm27-7: plugins_url() derives the plugin's own FOLDER from
+     * the $plugin argument — core prefixes dirname(plugin_basename(
+     * $plugin)) (link-template.php, pinned 7.1.1), skipped only for
+     * a plugin in the plugins root ('.'). The stub ignored the
+     * argument entirely, addressing the plugins ROOT whatever file
+     * named the plugin (driven red at HEAD: the folder segment
+     * missing).
+     */
+    public function testPluginsUrlCarriesThePluginsOwnFolderSegment()
+    {
+        $main = ABSPATH . 'wp-content/plugins/glm27-plugin/main.php';
+        $this->assertSame('https://example.test/wp-content/plugins/glm27-plugin/assets/x.js', plugins_url('assets/x.js', $main), 'The $plugin argument derives the folder — core\'s dirname(plugin_basename()) (red at HEAD: the plugins root, the argument ignored).');
+        $this->assertSame('https://example.test/wp-content/plugins/glm27-plugin/', plugin_dir_url($main), 'plugin_dir_url() composes over the same derivation, its trailing slash intact.');
+        $this->assertSame('https://example.test/wp-content/plugins/assets/x.js', plugins_url('assets/x.js', ABSPATH . 'wp-content/plugins/root.php'), 'A plugin in the plugins ROOT carries no folder segment — core\'s own \'.\' skip.');
+        $this->assertSame('https://example.test/wp-content/plugins', plugins_url(), 'The empty path answers the bare plugins URL — core\'s non-empty-string guard, no trailing slash.');
+    }
+
+    /**
+     * glm28-2: check_admin_referer() rides core's die-contract
+     * (pluggable.php:1374, pinned 7.1.1): a FAILED verification
+     * terminates the request through wp_nonce_ays() — the glm15
+     * refutation's premise ("dies only when the nonce is absent")
+     * falsified against the pin, the re-open rule its own entry
+     * names fired at the live consumer. The harness's one die
+     * vocabulary answers: the wp_die() stub's RuntimeException,
+     * core's generic wp_nonce_ays message riding it (driven red at
+     * HEAD: the failure returned false and the caller kept running).
+     */
+    public function testAdminRefererDiesOnNonceFailure()
     {
         $this->asAdministrator();
+        $_REQUEST['_wpnonce'] = 'forged';
 
-        $this->assertFalse(check_admin_referer('test_action'));
+        $caught = null;
+        try {
+            check_admin_referer('test_action');
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+        $this->assertNotNull($caught, 'A failed verification STOPS EXECUTION through the harness\'s wp_die stub — red at HEAD the call returned false and the caller kept running.');
+        $this->assertStringContainsString('The link you followed has expired.', $caught->getMessage(), 'The die carries core\'s own generic wp_nonce_ays() message.');
 
+        // The valid-nonce leg answers wp_verify_nonce()'s own 1 — no die
+        // over the passing shape.
         $this->withValidNonce('test_action');
-        $this->assertTrue(check_admin_referer('test_action'));
+        $this->assertSame(1, check_admin_referer('test_action'), 'A valid nonce answers wp_verify_nonce()\'s own 1, execution continuing.');
+    }
+
+    /**
+     * glm27-6: check_ajax_referer() rides core's \$die contract
+     * (pluggable.php, pinned 7.1.1 — the pin names the parameter
+     * \$stop): a nonce FAILURE with \$die standing STOPS EXECUTION —
+     * core's wp_die(-1, 403), the harness's wp_die() stub throwing
+     * the RuntimeException that halts the caller (the recorded
+     * emulation boundary). The seat once delegated to
+     * check_admin_referer(), whose adjudicated no-die contract
+     * answered a plain false with execution CONTINUING — the
+     * opposite behavior, the admin twin's contract riding the ajax
+     * seat (driven red at HEAD: the failure returned, the caller
+     * kept running; CORRECTED at glm28-2: that no-die contract was
+     * itself falsified against the pin — both twins die on a failed
+     * verification now, the admin seat through wp_nonce_ays()).
+     */
+    public function testAjaxRefererDiesOnNonceFailureWhenDieStands()
+    {
+        $this->asAdministrator();
+        $_REQUEST['_ajax_nonce'] = 'forged';
+
+        $caught = null;
+        try {
+            check_ajax_referer('glm27_act');
+        } catch (RuntimeException $e) {
+            $caught = $e;
+        }
+        $this->assertNotNull($caught, 'The failed nonce with $die standing STOPS EXECUTION — the wp_die stub\'s RuntimeException (red at HEAD: the call returned and the caller kept running).');
+        $this->assertStringContainsString('-1', $caught->getMessage(), 'The die carries core\'s own \'-1\' payload.');
+
+        $this->assertFalse(check_ajax_referer('glm27_act', false, false), '$die=false answers the false verdict UNCHANGED — no die, execution continues.');
+
+        $_REQUEST['_ajax_nonce'] = wp_create_nonce('glm27_act');
+        $this->assertSame(1, check_ajax_referer('glm27_act'), 'A valid nonce answers wp_verify_nonce()\'s own 1 — no die over the passing shape.');
     }
 
     /*
      * Secret-handling helper.
      */
+
+    /**
+     * glm27-8: the plaintext-scan assertion NAMES an unencodable
+     * stored value — wp_json_encode() answers false for one (NAN, a
+     * resource, recursion, invalid UTF-8), and the false feeding the
+     * natively string-typed assert under strict_types answered a
+     * TypeError — the engine's vocabulary over the harness's own
+     * failure channel (driven red at HEAD: TypeError, never a
+     * verdict). The failed encode is a named finding of its own; the
+     * verdict channel stays the assertion's.
+     */
+    public function testEncryptedOptionAssertionNamesAnUnencodableStoredValue()
+    {
+        update_option('fixture_unencodable', NAN);
+
+        try {
+            $this->assertOptionNotPlaintext('fixture_unencodable', 'sk-fixture-not-a-real-key');
+            $this->fail('The unencodable stored value must fail the assertion — a false encode is never a pass.');
+        } catch (PHPUnit\Framework\ExpectationFailedException $e) {
+            $this->assertStringContainsString('could not be JSON-encoded', $e->getMessage(), 'The failure NAMES the encode — the stored shape is itself the finding (red at HEAD: a TypeError, never a verdict).');
+        }
+    }
 
     public function testEncryptedOptionAssertionDetectsPlaintextSecrets()
     {
@@ -568,5 +2974,252 @@ final class FoundationHarnessTest extends WpConnectorsTestCase
         } catch (PHPUnit\Framework\ExpectationFailedException $e) {
             // Expected.
         }
+    }
+
+    /**
+     * OCR-round-10 pin (t31-ocr10-5): the shared zip reader's open gate
+     * is `=== true`, never assertTrue() — ZipArchive::open() returns a
+     * TRUTHY ER_* int on failure (driven: a corrupt archive returns
+     * ER_NOZIP=19), so the boolean gate passed it and the helper handed
+     * back [] over numFiles=0, every entry assertion vacuously green.
+     * A corrupt zip fails the gate loudly, naming the ER_* code.
+     */
+    public function testTheZipEntryNamesOpenGateFailsLoudlyOnACorruptArchive()
+    {
+        // Random-suffixed scratch name (t31-ocr12-8, the canSymlink
+        // probe's own shape): a pid-only suffix is enumerable on a
+        // shared host, and a pre-planted file at the predicted path is
+        // read as "the corrupt archive" — a neighbor's plant steering
+        // this leg's fixture (the naming shape t31-ocr10-18 rejects).
+        $corrupt = sys_get_temp_dir() . '/wpct-corrupt-' . getmypid() . '-' . bin2hex(random_bytes(4)) . '.zip';
+        try {
+            // The staging write asserts its own success (t31-ocr29-10,
+            // the t31-ocr27-9 doctrine) and rides INSIDE the try whose
+            // finally unlinks it (t31-ocr55-7, the staging-inside-try
+            // sweep): the write once sat before the try, so a partial
+            // write's staging assert stranded the scratch zip in the
+            // shared temp root with no finally in scope — the finally
+            // owns every exit from the first write on.
+            $this->assertNotFalse(
+                file_put_contents($corrupt, 'this is not a zip archive'),
+                'staging: the corrupt archive must write — a staging failure fails as staging, never as the ER_NOZIP verdict (an unwritten scratch file answers ER_NOENT instead).'
+            );
+
+            // The refusal-verdict owner (t31-ocr15-7): the hand-rolled
+            // $caught=null/try/catch/fail-if-null shape was this helper's
+            // own inline twin — the family its original catch declared
+            // rides the third parameter.
+            $caught = $this->refusalOf(
+                fn() => $this->zipEntryNames($corrupt),
+                'A corrupt zip must fail the open gate loudly — pre-fix the truthy ER_NOZIP passed assertTrue() and the helper returned [].',
+                PHPUnit\Framework\AssertionFailedError::class
+            );
+            $this->assertStringContainsString('ER_NOZIP', $caught->getMessage(), 'The failure names the ER_* code.');
+            $this->assertStringContainsString($corrupt, $caught->getMessage(), 'The failure names the archive path.');
+        } finally {
+            @unlink($corrupt);
+        }
+    }
+
+    /**
+     * OCR-round-19 pin (t31-ocr19-1; the finding's floor premise was
+     * REFUTED in-round — driven on a real 8.2.33/libzip engine, the
+     * omitted-flags open() returns ER_NOENT on a missing file and
+     * creates nothing, and the php-src record knows no 8.3 default
+     * change, so the strict gate was already loud everywhere): the
+     * leg pins the CONTRACT the reader stands on — a missing zip
+     * fails the gate loudly naming the path and the ER_* code, and
+     * the read never creates the file. The explicit RDONLY flag
+     * rides the open as the read site's own statement of intent.
+     */
+    public function testTheZipEntryNamesOpenGateFailsLoudlyOnAMissingArchive()
+    {
+        // Random-suffixed scratch name (t31-ocr12-8): a predictable
+        // spelling is pre-plantable on a shared host, and the planted
+        // file would turn "missing" into "corrupt" under this leg.
+        $missing = sys_get_temp_dir() . '/wpct-missing-' . getmypid() . '-' . bin2hex(random_bytes(4)) . '.zip';
+        try {
+            $caught = $this->refusalOf(
+                fn() => $this->zipEntryNames($missing),
+                'A missing zip must fail the open gate loudly — a vacuous [] over a missing archive is the exact shape the strict gate exists to make impossible.',
+                PHPUnit\Framework\AssertionFailedError::class
+            );
+            $this->assertStringContainsString('ER_NOENT', $caught->getMessage(), 'The failure names the ER_* code of an absent archive.');
+            $this->assertStringContainsString($missing, $caught->getMessage(), 'The failure names the archive path.');
+
+            /*
+             * Judged BEFORE the finally's unlink (OCR round 22,
+             * t31-ocr22-7): post-try the pin was unfalsifiable — the
+             * unlink had already removed whatever a creating helper
+             * left behind, so a zipEntryNames() that created the
+             * archive passed the never-created pin invisible. The
+             * verdict rides the state the open actually left, with
+             * the cleanup still guaranteed on every exit path.
+             */
+            $this->assertFileDoesNotExist($missing, 'The read-mode open never creates the archive — the pinned intent RDONLY states, held on every engine in range.');
+        } finally {
+            @unlink($missing);
+        }
+    }
+
+    /**
+     * OCR-round-21 pin (t31-ocr21-1; the round's floor premise
+     * REFUTED by the verifier pass — corrected in-round): the
+     * finding claimed an 8.3-cycle-only registration; the vendor
+     * record reads the opposite (php.net: available as of PHP 7.4.3
+     * / PECL zip 1.17.1 when the zip extension is built against
+     * libzip >= 1.0.0; the php-src PHP-8.2 stub registers it
+     * identically; the repo's own r19 drive ran the bare-constant
+     * reader on a real 8.2.33 engine to ER_NOENT, never \Error —
+     * no PHP-8.2 engine fatals). What survives is the BUILD corner
+     * the vendor record does name: a zip extension built against
+     * libzip < 1.0.0 compiles no RDONLY, and the bare constant
+     * fatals exactly those engines — the guarded spelling rides the
+     * flag where defined, 0 on that corner, both stylistic per the
+     * r19 refutation (omitted flags never create-on-open on any
+     * support-range engine) and both loud through the strict open
+     * gate.
+     *
+     * The undefined arm cannot be DRIVEN on an engine that defines
+     * the constant (the verifier's four escape attempts all die —
+     * namespaced shadowing leaves the global spelling defined,
+     * class_alias fatals, disable_classes cannot touch extension
+     * classes, and no runkit/uopz rides this build), so the pin is
+     * the SHAPE: the reader's source carries the guarded expression
+     * verbatim, and the defined arm is what the two legs above
+     * drive on this engine (every open they take passes through
+     * the guard). Re-open rule: an engine whose zip extension is
+     * built against libzip < 1.0.0 (never "a PHP 8.2 engine") —
+     * the reader must open real archives there, never \Error.
+     */
+    public function testTheZipReaderRidesTheGuardedRdonlySpelling()
+    {
+        $source = (string) file_get_contents(__DIR__ . '/harness/WpConnectorsTestCase.php');
+        /*
+         * Whitespace-normalized before comparing (OCR round 29,
+         * t31-ocr29-10): the pin once matched the harness source
+         * VERBATIM, so any mechanical reformat — a line wrap, a
+         * spacing change — reddened it with no behavioral defect,
+         * the source-shape pin brittle to the layout it never owned.
+         * The pin owns the guarded spelling's TOKENS. Since OCR
+         * round 60 (t31-ocr60-7) the tolerance rides the \s*-class
+         * PATTERN this repo's layout-tolerant pins already own (the
+         * BuildArtifactsTest t31-ocr16-15d idiom), never the
+         * collapse-to-one-space half measure: the collapse kept ONE
+         * space per run, so the zero-space needle failed against
+         * 'defined( 'ZipArchive::RDONLY' )' — this repo's own
+         * prevailing style (bootstrap.php writes 'is_dir(
+         * $shared_src )') — and a mechanical formatting pass would
+         * have reddened the pin over a behaviorally-neutral
+         * reformat, the exact brittleness t31-ocr29-10 set out to
+         * retire. The \s* classes tolerate ANY spacing (zero, one,
+         * a wrap) while a reorder, a rename, or a dropped guard
+         * still reddens; an aborted match answers 0 and the
+         * preg_match pin fails loud — never a vacuous pass.
+         */
+        $guarded = "/defined\(\s*'ZipArchive::RDONLY'\s*\)\s*\?\s*ZipArchive::RDONLY\s*:\s*0/";
+        $this->assertSame(
+            1,
+            preg_match($guarded, $source),
+            'The zip reader must spell the open flag through the guard: RDONLY where the engine defines it, 0 on the libzip < 1.0.0 build corner — the bare constant fatals exactly those engines, no PHP version boundary (t31-ocr21-1; whitespace-insensitive per t31-ocr29-10, any spacing per t31-ocr60-7).'
+        );
+        // Construction-evident, the respaced leg: the repo-style
+        // spelling matches the same pattern the real source does.
+        $this->assertSame(
+            1,
+            preg_match($guarded, "defined( 'ZipArchive::RDONLY' ) ? ZipArchive::RDONLY : 0"),
+            'The pin tolerates the repo\'s own prevailing spacing — a mechanical reformat never reddens it (red at HEAD: the collapsed haystack kept one space per run and the zero-space needle failed this spelling).'
+        );
+    }
+
+    /**
+     * OCR-round-65 pin (t31-ocr65-4): the bootstrap's Shared-fixture
+     * guard covers the PARTIAL checkout. The t31-ocr57-5 guard
+     * modeled two states — shared/src fully absent, fully present —
+     * but a sparse checkout or a mid-rebase worktree carries the
+     * DIRECTORY with one contract file missing: the autoloader
+     * registers, the unconditional requires run, and the fixture's
+     * implements clause resolves its interface at LOAD time through
+     * an autoloader that maps it to exactly the missing file — a
+     * whole-suite BOOTSTRAP fatal (every connector suite down) over
+     * the one checkout shape between the guard's two states. The
+     * requires gate on the INTERFACE FILES now (bootstrap.php's own
+     * census); this sim drives the REAL bootstrap in a child over a
+     * scratch checkout whose shared/src is copied MINUS
+     * Clock/ClockInterface.php — vendor/bin/harness symlinked to
+     * the real tree (the sim never copies the vendored SDK), the
+     * bootstrap itself copied as a real file so __DIR__ resolves
+     * INSIDE the scratch, no connectors/ directory (the glob's own
+     * empty answer). The probe script reads the degradation shape
+     * from WITHIN the booted engine: the missing piece's fixture
+     * class simply ABSENT (its require skipped — the per-test
+     * missing-fixture shape the guard documents) while the PRESENT
+     * half still loads through its own interface — per-file
+     * degradation, never all-or-nothing, never the fatal (red at
+     * HEAD: 'Interface ClockInterface not found', exit 255,
+     * driven).
+     */
+    public function testTheBootstrapSurvivesAPartialSharedCheckout()
+    {
+        if (! WpHarness::canSpawnChildren()) {
+            $this->markTestSkipped('This host cannot spawn child processes (exec/escapeshellarg in disable_functions) — the partial-checkout sim runs the real bootstrap in a child engine.');
+        }
+        if (! WpHarness::canSymlink()) {
+            $this->markTestSkipped('This host cannot create symlinks — the sim links vendor/bin/harness into the scratch checkout instead of copying the vendored SDK.');
+        }
+        $repo = dirname(__DIR__);
+        $scratch = sys_get_temp_dir() . '/wpct-bootstrap-partial-' . uniqid('', true);
+        try {
+            /*
+             * The staging asserts its own landing (the t31-ocr53-9
+             * doctrine): a failed stage fails as staging, never as
+             * the boot verdict the child exists to answer.
+             */
+            $this->assertTrue(mkdir($scratch . '/tests', 0755, true), "staging: the scratch tests tree must create — a staging failure fails as staging, never as the boot verdict.");
+            $this->assertTrue(symlink($repo . '/vendor', $scratch . '/vendor'), "staging: the vendored SDK must link into the scratch — a staging failure fails as staging, never as the boot verdict.");
+            $this->assertTrue(symlink($repo . '/bin', $scratch . '/bin'), "staging: bin/ must link into the scratch (the bootstrap requires plugin-tools.php through it) — a staging failure fails as staging, never as the boot verdict.");
+            $this->assertTrue(symlink($repo . '/tests/harness', $scratch . '/tests/harness'), "staging: harness/ must link into the scratch — a staging failure fails as staging, never as the boot verdict.");
+            $this->assertTrue(copy($repo . '/tests/bootstrap.php', $scratch . '/tests/bootstrap.php'), "staging: the bootstrap must copy as a real file (a symlinked copy would resolve __DIR__ back into the live tree) — a staging failure fails as staging, never as the boot verdict.");
+            // The PARTIAL shared/src: the real tree's files, minus
+            // exactly the one interface the Clock fixture
+            // implements (copyTree is files-only — the shape's own
+            // owner, no link ever rides the real tree).
+            WpHarness::copyTree($repo . '/shared/src', $scratch . '/shared/src');
+            $this->assertFileExists($scratch . '/shared/src/Clock/ClockInterface.php', 'staging: the interface copy must land before the partial shape removes it — a failed copy is staging, never the boot verdict.');
+            $this->assertTrue(unlink($scratch . '/shared/src/Clock/ClockInterface.php'), 'staging: the interface file must remove — the partial-checkout shape is the staging this leg pins, and a failed removal answers as staging.');
+            $this->assertNotFalse(file_put_contents($scratch . '/tests/probe.php', '<?php
+require __DIR__ . "/bootstrap.php";
+echo class_exists("DeterministicClock") ? "CLOCK-PRESENT\n" : "CLOCK-ABSENT\n";
+echo class_exists("InMemoryTokenStorage") ? "TOKEN-PRESENT\n" : "TOKEN-ABSENT\n";
+'), 'staging: the probe script must write — a staging failure fails as staging, never as the boot verdict.');
+            exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($scratch . '/tests/probe.php') . ' 2>&1', $output, $exit);
+            $rendered = implode("\n", $output);
+            $this->assertSame(0, $exit, "A PARTIAL shared/src boots the bootstrap clean — the missing interface degrades per-test, never a whole-suite bootstrap fatal (red at HEAD: 'Interface ClockInterface not found'). The child said: {$rendered}");
+            $this->assertStringContainsString('CLOCK-ABSENT', $rendered, 'The missing piece\'s fixture class is absent — its require skipped, the documented per-test missing-fixture shape for exactly the missing piece.');
+            $this->assertStringContainsString('TOKEN-PRESENT', $rendered, 'The PRESENT half still loads through its own present interface — the degradation is per-file, never all-or-nothing.');
+        } finally {
+            WpHarness::releaseScratch($scratch);
+        }
+    }
+
+    /**
+     * The wpdb uninstall-enumeration census (glm26-10): the ONE owner
+     * of the LIKE query the transient legs once hand-copied — the
+     * query, the esc_like() literal, and the trailing '%' wildcard
+     * spelled once (the round-25 diff added a $census closure AND an
+     * inline twin beside the standing spellings; a query drift now
+     * lands in one place). Deliberately the LITERAL spelling, never
+     * the stub's own owner: an oracle that inherited the stub's
+     * convention helper could not catch the helper drifting.
+     *
+     * @param string $transient Transient name (unprefixed).
+     * @return list<string> The matching option_name rows (sorted).
+     */
+    private function censusTransientRows(string $transient): array
+    {
+        return $GLOBALS['wpdb']->get_col($GLOBALS['wpdb']->prepare(
+            "SELECT option_name FROM {$GLOBALS['wpdb']->options} WHERE option_name LIKE %s",
+            $GLOBALS['wpdb']->esc_like('_transient_' . $transient) . '%'
+        ));
     }
 }

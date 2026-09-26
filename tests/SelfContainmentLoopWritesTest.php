@@ -39,12 +39,12 @@ final class SelfContainmentLoopWritesTest extends TestCase
 
     protected function tearDown(): void
     {
-        foreach ((glob($this->root . '/*') ?: array()) as $entry) {
-            if (is_file($entry)) {
-                @unlink($entry);
-            }
-        }
-        @rmdir($this->root);
+        // t31-glm42-6 [R42-15, the regrowing-hand-copy re-open condition
+        // fired — the glm39-13 class]: the hand-rolled flat walk unlinked
+        // only top-level files, stranding the root over any nested or
+        // locked fixture; the ONE scratch-release owner the six sibling
+        // SelfContainment suites ride owns every exit.
+        WpHarness::releaseScratch($this->root);
     }
 
     public function testAnUnreadableSubdirectoryConvertsTheWalkAbortIntoANamedViolation(): void
@@ -68,15 +68,15 @@ final class SelfContainmentLoopWritesTest extends TestCase
         $locked = $this->root . '/locked';
         mkdir($locked . '/inner', 0777, true);
         file_put_contents($locked . '/inner/deep.php', "<?php\n");
-        chmod($locked, 0000);
-
-        $probe = @opendir($locked);
-        if (false !== $probe) {
-            closedir($probe);
-            chmod($locked, 0777);
-            @unlink($locked . '/inner/deep.php');
-            @rmdir($locked . '/inner');
-            @rmdir($locked);
+        /*
+         * glm24-9: the lock+probe+restore choreography rides the ONE
+         * owner — the restore is the probed shape's OWN pre-state
+         * (0777 here, 0755 at the siblings: the divergence the
+         * hand-copied choreography had already grown, closed by
+         * construction), the skip-path cleanup staying at the site.
+         */
+        if (! WpHarness::lockForDenialProbe($locked)) {
+            WpHarness::releaseScratch($locked);
             $this->markTestSkipped('This host opens chmod-000 directories; the abort shape is unreachable here.');
         }
 
@@ -262,6 +262,69 @@ final class SelfContainmentLoopWritesTest extends TestCase
         $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
     }
 
+    public function testAMultiLineStringRegionInsideAForeachHeaderKeepsTheBindingCollected(): void
+    {
+        /*
+         * glm18-3 (the t31 round's third finding): glm17-1 made the
+         * mask LINE-PRESERVING, so a multi-line string region inside a
+         * foreach header keeps its interior newline on the masked view
+         * — and the collector's header regex had no /s (the as-split
+         * right below it always did), so the header never matched, the
+         * VALUE binding went uncollected, and the include over it
+         * phantom-flagged (driven: 1 violation at HEAD, 0 at base —
+         * the pre-glm17-1 mask swallowed the newline and matched).
+         * The driven shape keeps the resolution clean through the
+         * array-literal source: the multi-line string is an array KEY,
+         * never a value, so every resolved path stays __DIR__-anchored.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nforeach (array(\"k\nk\" => __DIR__ . '/e.php') as \$file) {\n    require \$file;\n}\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A multi-line string region inside a foreach header keeps the binding collected (red at HEAD: the header regex missed the newline — phantom variable-include violation).');
+
+        // The single-line control: the same header shape without the
+        // interior newline (both-green pin of the routing).
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nforeach (array('k' => __DIR__ . '/e.php') as \$file) {\n    require \$file;\n}\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root));
+    }
+
+    public function testAnAlternativeSyntaxForeachNeverGluesOntoALaterBraceHeader(): void
+    {
+        /*
+         * glm19-3: glm18-3's /s let the lazy header capture GLUE — a
+         * brace-less 'foreach (…): … endforeach;' owns no ') {' of
+         * its own, so the capture ran forward across the endforeach
+         * boundary onto a LATER foreach's ') {', consuming the real
+         * header with it: the later binding went uncollected and the
+         * include over it phantom-flagged (driven: 1 violation at
+         * HEAD, 0 at base — the glue only crosses newlines under /s).
+         * The capture is bounded by the endforeach token now, and an
+         * alternative-syntax header matches its own ':' close.
+         */
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nforeach (\$rows as \$row):\n    \$x = 1;\nendforeach;\nforeach (array(__DIR__ . '/e.php') as \$file) {\n    require \$file;\n}\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'An alternative-syntax foreach never glues onto a later brace header (red at HEAD: the glued capture consumed the real header — phantom variable-include violation).');
+
+        // The alternative-syntax header matches its own ':' close now
+        // — the binding collects and the include inside it proves
+        // clean through the literal map.
+        file_put_contents(
+            $this->root . '/fixture.php',
+            "<?php\nforeach (array(__DIR__ . '/e.php') as \$file):\n    require \$file;\nendforeach;\n"
+        );
+
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'An alternative-syntax header matches its own close — the binding collects and the include proves clean.');
+    }
+
     public function testALoopWriteAfterTheIncludeRefusesTheLiteralMapProof(): void
     {
         /*
@@ -313,5 +376,130 @@ final class SelfContainmentLoopWritesTest extends TestCase
             wp_connectors_depth_zero_spans('a=b', '([', ')]', $arrow_cut),
             'No cut: the single span is the whole view (the tail span).'
         );
+    }
+
+    public function testLabelByteLabelsAndDollarVariablesMintNoPhantomStatements(): void
+    {
+        /*
+         * R43-2+R43-3+R43-7 (driven false flags — the label-byte
+         * census unswept at three sibling families): the include
+         * scan's keyword arm kept PCRE's ASCII '\b', so
+         * '$require'/'$include' VARIABLE names minted PHANTOM include
+         * statements (four violations over two assignments, red at
+         * HEAD) and legal high-byte labels ('äinclude(') matched the
+         * same way; the loop detector's '\b' read 'grüwhile(' as a
+         * loop header arming a phantom braceless-body span; and the
+         * variable-shape regexes at four seats refused a legal
+         * high-byte variable ('$pfäd') its ASCII twin resolves clean.
+         * Every seat rides the LABEL byte class with the '$' guard —
+         * the ocr59-2/ocr60-1 census the sibling probes already
+         * spelled, the R37-6/R37-7 recorded inheritance claimed.
+         */
+        file_put_contents($this->root . '/vars.php', "<?php\n\$require = dirname(__DIR__) . '/notes.txt';\n\$include = 'hello.txt';\n\$file = \$require . \$include;\ninclude \$file;\n");
+        $vars = wp_connectors_self_containment_violations($this->root);
+        $this->assertCount(1, $vars, 'Only the REAL unanchored include remains — the variable names mint no phantom statements (red at HEAD: 4 violations).');
+        $this->assertStringContainsString('include $file', $vars[0], 'The surviving violation is the genuine unanchored include.');
+
+        file_put_contents($this->root . '/vars.php', "<?php\n\xC3\xA4include('hello.txt');\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A high-byte label glued to the keyword is one name — no include statement (red at HEAD: the phantom).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\n\$f = __DIR__ . '/safe.txt';\nif ( gr\xC3\xBCwhile( true ) ) { require \$f; }\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A high-byte label ending in a loop keyword is one name — no phantom loop span (red at HEAD: the admitted-write flag).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\n\$pf\xC3\xA4d = __DIR__ . '/x.php';\nrequire \$pf\xC3\xA4d;\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A legal high-byte variable resolves through the same proof its ASCII twin rides (red at HEAD: the shape-class refusal).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\nrequire dirname(__DIR__, 2) . '/outside.php';\n");
+        $escaped = wp_connectors_self_containment_violations($this->root);
+        $this->assertNotEmpty($escaped, 'The real escape still flags — the census excludes only name-glued bytes, never a real statement.');
+        @unlink($this->root . '/vars.php');
+    }
+
+    public function testSemiReservedKeywordConstantsAndMethodsMintNoPhantomSpans(): void
+    {
+        /*
+         * R44-4 (driven false flags — the loop detector matched a
+         * NAME-USAGE context): the semi-reserved keywords are LEGAL
+         * constant and method names, so 'const DO = 1;' (the
+         * declaration — the braceless-do guard cannot see past the
+         * ')' of 'if (Flag::DO) {') and 'function do($t)' matched
+         * the loop arms and armed PHANTOM spans to EOF that admitted
+         * the post-include write and false-flagged benign plugins at
+         * every gate (red at HEAD: the Flag::DO shape flagging
+         * where the FLAG-named twin answers clean). Every arm
+         * refuses the const-declaration context, the do arms the
+         * function-declaration context too, and the left class the
+         * ':' '>' and namespace-separator glue bytes — a statement
+         * keyword never continues a name usage.
+         */
+        file_put_contents($this->root . '/vars.php', "<?php\nclass Flag { const DO = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag::DO) { require \$path; }\n\$path = '/tmp/outside.php';\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A semi-reserved constant name mints no phantom span (red at HEAD: the admitted-write flag).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\nclass Runner { public function do(\$t) { return \$t; } }\n\$r = new Runner();\n\$path = __DIR__ . '/safe.txt';\nif (\$r->do('scan')) { require \$path; }\n\$path = '/tmp/outside.php';\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A method named do() and its ->do( call mint nothing (red at HEAD: the phantom braceless-do span).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\nclass Other { const FUNCTION = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Other::FUNCTION) { require \$path; }\n\$path = '/tmp/outside.php';\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A FUNCTION-named constant mints nothing (red at HEAD: the phantom function span).');
+
+        file_put_contents($this->root . '/vars.php', "<?php\n\$f = __DIR__ . '/safe.txt';\nwhile (true) { require \$f; \$f = '/tmp/outside.php'; }\n");
+        $this->assertNotEmpty(wp_connectors_self_containment_violations($this->root), 'The real while loop still admits its in-loop write — the guards exclude only name-usage contexts, never a real statement keyword.');
+
+        /*
+         * t31-glm45-6 [R45-5 — glm44-4's fixed-length guards walked
+         * past by non-canonical spacing]: two spaces, a comment
+         * (blanked to same-length spaces on the masked view), a
+         * newline+indent, and spaces around the '::'/'->' operators
+         * each re-minted the phantom braceless-do/function span
+         * (driven: eight shapes re-opening glm44-4's closed class
+         * wholesale). The judgment walks the view's own bytes
+         * backward — the spacing-proof position filter at the loop
+         * detector and the include owner alike.
+         */
+        foreach (array(
+            'const double-spaced' => "<?php\nclass Flag { const  DO = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag::DO) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'const comment-spaced' => "<?php\nclass Flag { const /* x */ DO = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag::DO) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'const newline-spaced' => "<?php\nclass Flag { const\n  DO = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag::DO) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'function double-spaced' => "<?php\nclass R { public function  do(\$t) { return \$t; } }\n\$r = new R();\n\$path = __DIR__ . '/safe.txt';\nif (\$r->do('s')) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'spaces around ::' => "<?php\nclass Flag { const FLAG = 1; }\n\$path = __DIR__ . '/safe.txt';\nif (Flag :: FLAG) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+            'spaces around ->' => "<?php\nclass R { public function do(\$t) { return \$t; } }\n\$r = new R();\n\$path = __DIR__ . '/safe.txt';\nif (\$r -> do('s')) { require \$path; }\n\$path = '/tmp/outside.php';\n",
+        ) as $spacing_name => $spacing_source) {
+            file_put_contents($this->root . '/vars.php', $spacing_source);
+            $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), "The {$spacing_name} shape mints no phantom span (red at HEAD: the admitted-write flag).");
+        }
+
+        /*
+         * t31-glm45-6 [R45-4 — the include owner's keyword arm matched
+         * the semi-reserved keywords as method and constant names]:
+         * a declared 'public function require(...)', a '$obj->require'
+         * / 'Foo::include' call, and a 'const REQUIRE' declaration
+         * minted phantom include statements — the R44-4 census never
+         * swept to this seat. The position filter rides here too.
+         */
+        file_put_contents($this->root . '/vars.php', "<?php\nclass Loader { public function require(string \$file): void { echo \$file; } }\n\$l = new Loader();\n\$path = __DIR__ . '/safe.txt';\n\$l->require(\$path);\n");
+        $this->assertSame(array(), wp_connectors_self_containment_violations($this->root), 'A require() method and its call mint no include statement (red at HEAD: the phantom).');
+
+        /*
+         * t31-glm46-1 [R46-1, driven fail-open at every gate —
+         * glm45-6's own unconditional glue refusal]: ':' and '>' are
+         * ALSO the case/default label terminator, the
+         * alternative-syntax colon, the ternary else-colon, and the
+         * '=>' tail — includes and loops in those positions were
+         * judged 'not a statement' and skipped (driven: four
+         * php -l-clean shapes answering ZERO violations where master
+         * flags, the loop-seat laundering twin the same). The glue
+         * judgment rides the BYTE PAIR: '>' only after '-', ':'
+         * only after ':'.
+         */
+        foreach (array(
+            'case-label include' => "<?php\n\$f = '/tmp/outside.php';\nswitch(1){case 1: include \$f;}\n",
+            'alternative-syntax include' => "<?php\n\$f = '/tmp/outside.php';\nif(true): include \$f; endif;\n",
+            'ternary else-colon require' => "<?php\n\$flag = true;\n\$flag ?: require __DIR__ . '/../outside.php';\n",
+            'array-arrow include' => "<?php\n\$f = '/tmp/outside.php';\n\$map = array('k' => include \$f);\n",
+            'loop-seat case-label laundering' => "<?php\n\$f = __DIR__ . '/safe.txt';\nswitch(1){case 1: while(true){ require \$f; \$f = '/tmp/outside.php'; }}\n",
+        ) as $colon_name => $colon_source) {
+            file_put_contents($this->root . '/vars.php', $colon_source);
+            $this->assertNotEmpty(wp_connectors_self_containment_violations($this->root), "The {$colon_name} shape is a real statement — it flags (red at HEAD: clean where master flags).");
+        }
+        @unlink($this->root . '/vars.php');
     }
 }

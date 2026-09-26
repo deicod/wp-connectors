@@ -167,12 +167,11 @@ final class ZaiObservabilityTest extends WpConnectorsTestCase
         update_option(DebugLogger::OPTION_ENABLED, '1');
         $this->allowUnmockedHttp = true;
 
-        try {
-            $this->model()->generateTextResult($this->prompt());
-            $this->fail('Expected a transport exception.');
-        } catch (Exception $e) {
-            $this->assertStringContainsString('blocked', $e->getMessage());
-        }
+        $refusal = $this->refusalOf(
+            fn() => $this->model()->generateTextResult($this->prompt()),
+            'Expected a transport exception.', \Exception::class
+        );
+        $this->assertStringContainsString('blocked', $refusal->getMessage());
 
         $entries = DebugLogger::entries();
         $entry = $entries[count($entries) - 1];
