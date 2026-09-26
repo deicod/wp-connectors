@@ -5325,11 +5325,9 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * unterminated span judges through EOF — the over-refuse
              * direction, never a launder. RECORDED RESIDUAL: the
              * variable-callee spelling ('$fn = "file_get_contents";
-             * $fn( ...vendor... );') stays outside this seat — the
-             * R45-3 token machinery is the autoloader seat's own; the
-             * needle's raw bytes still answer nowhere here until a
-             * driven producer ships one (the R39-3 boundary before
-             * R40-3 widened it).
+             * $fn( ...vendor... );') stayed outside this seat until a
+             * driven producer shipped one — PAID below (Codex PR #4,
+             * t31-glm65-1): the variable arm rides the same loop.
              */
             /*
              * t31-glm57-2 [R57-2]: the family rides the ONE
@@ -5353,7 +5351,31 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
              * the R54-2 channel screen.
              */
             $channel_scanned = preg_match_all('/(?<!->)(?<!\?->)(?<!::)(?<![\\$' . WP_CONNECTORS_LABEL_BYTES . '])(?i:' . implode('|', WP_CONNECTORS_CHANNEL_FUNCTIONS) . '|eval)\s*\(/', $masked, $channel_calls, PREG_OFFSET_CAPTURE);
-            if (false === $channel_scanned) {
+            /*
+             * t31-glm65-1 [Codex PR #4, P2, driven fail-open — the
+             * glm54-2 RECORDED RESIDUAL's producer shipped]: the
+             * keyword arm enumerates the family's NAMES, so a
+             * variable callee ('$fn = 'file_get_contents'; $fn(
+             * __DIR__ . '/vendor/autoload.php' );') was invisible
+             * here — a Composer-dependent plugin answering 0
+             * violations through build and inspect. The R45-3 token
+             * arm's text-side spelling: a label-shaped '$' callee
+             * immediately followed by '(' over the MASKED view is a
+             * dynamic call whatever name it holds (prose blanks, the
+             * same immunity the keyword arm rides), collected into
+             * the keyword arm's own loop — the position consult
+             * excluding the '-> $fn(' / ':: $fn(' dynamic METHOD
+             * calls (the R45-3 member doctrine), the depth-matched
+             * span, and the R55-4 transitive resolution ('$fn( $p )'
+             * with '$p' the vendor path resolving as 'require $p'
+             * already does; the callee's own VALUE — 'file_get_'
+             * 'contents' — rides the worklist like any operand byte
+             * and names no needle). Variable-variable ('$$fn(') and
+             * computed ('${ ... }(') callees stay outside the
+             * consult's '$' refusal — the next producer's shape.
+             */
+            $variable_callee_scanned = preg_match_all('/\$[' . WP_CONNECTORS_LABEL_HEAD_BYTES . '][' . WP_CONNECTORS_LABEL_BYTES . ']*+\s*\(/', $masked, $variable_callees, PREG_OFFSET_CAPTURE);
+            if (false === $channel_scanned || false === $variable_callee_scanned) {
                 $violations[] = sprintf(
                     '%s: %s could not be scanned for channel calls — the self-containment scan aborted (PCRE: %s)',
                     $slug,
@@ -5361,7 +5383,7 @@ function wp_connectors_self_containment_violations($pluginDir, $scanRoot = null)
                     preg_last_error_msg()
                 );
             } else {
-                foreach ($channel_calls[0] as $channel_call) {
+                foreach (array_merge($channel_calls[0], $variable_callees[0]) as $channel_call) {
                     /*
                      * t31-glm63-3 [R63-7, driven A/B — the fixed
                      * lookbehinds spacing-blind and declaration-blind]:

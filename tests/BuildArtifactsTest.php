@@ -2925,6 +2925,23 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
                 'channel-composer.php' => "<?php\nrequire_once __DIR__ . '/includes/foo.php';\n\$body = file_get_contents( __DIR__ . '/composer.json' );\n",
                 'var-channel.php' => "<?php\nrequire_once __DIR__ . '/includes/foo.php';\n\$p = __DIR__ . '/vendor/autoload.php';\nreadfile( \$p );\n",
                 'two-hop-var-channel.php' => "<?php\nrequire_once __DIR__ . '/includes/foo.php';\n\$src = __DIR__ . '/vendor/autoload.php';\n\$p = \$src;\nreadfile( \$p );\n",
+                /*
+                 * Codex PR #4 (P2, driven at HEAD: 0 violations — the
+                 * Composer-dependent plugin green through build and
+                 * inspect): the variable CALLEE — the channel's own
+                 * NAME riding a variable, the glm54-2 recorded
+                 * residual's producer. The R53-1/R55-4 legs resolve
+                 * the variable OPERAND; this one collects the
+                 * variable-called span at all, the R45-3 token arm's
+                 * text-side spelling at the generic per-file screen.
+                 */
+                'var-callee.php' => "<?php\n\$fn = 'file_get_contents';\n\$fn( __DIR__ . '/vendor/autoload.php' );\n",
+                'var-callee-arg.php' => "<?php\n\$fn = 'readfile';\n\$p = __DIR__ . '/vendor/autoload.php';\n\$fn( \$p );\n",
+                'var-callee-composer.php' => "<?php\n\$fn = 'file_get_contents';\n\$fn( __DIR__ . '/composer.json' );\n",
+                // The callee slot alone carries no needle: a dynamic call on a clean operand stays clean.
+                'var-callee-clean.php' => "<?php\n\$fn = 'file_get_contents';\n\$fn( __DIR__ . '/data/local.json' );\n",
+                // The R45-3 member doctrine at this seat: a dynamic METHOD call is not a channel.
+                'var-callee-member.php' => "<?php\n\$fn = 'file_get_contents';\n\$this->\$fn( __DIR__ . '/vendor/autoload.php' );\n",
             );
             foreach ($legs as $relative => $body) {
                 $this->assertNotFalse(file_put_contents($tempPlugin . '/' . $relative, $body), "staging: {$tempPlugin}/{$relative} must write — a staging failure fails as staging, never as the gate verdict.");
@@ -2952,6 +2969,11 @@ final class BuildArtifactsTest extends WpConnectorsTestCase
         $this->assertStringContainsString('channel-composer.php references Composer at runtime', $report, 'The COMPOSER needle judges the channel operands too — the R54-2 wiring one needle short (red at HEAD: 0 where master flags).');
         $this->assertStringContainsString('var-channel.php references vendor/autoload', $report, 'The variable-mediated CHANNEL operand resolves — the worklist rides the channel seat (red at HEAD: 0 where the direct spelling flags).');
         $this->assertStringContainsString('two-hop-var-channel.php references vendor/autoload', $report, 'The two-hop channel chain resolves — transitive at the channel seat as at the include seat.');
+        $this->assertStringContainsString('var-callee.php references vendor/autoload', $report, 'The variable CALLEE is a channel whatever name it holds — the argument bytes ride the collected span (red at HEAD: 0 violations, the Codex PR #4 fixture shipping green through build and inspect).');
+        $this->assertStringContainsString('var-callee-arg.php references vendor/autoload', $report, 'The variable callee\'s OPERAND resolves — the R55-4 worklist rides the variable-called span as it does the literal-called one.');
+        $this->assertStringContainsString('var-callee-composer.php references Composer at runtime', $report, 'The composer needle judges the variable-called span\'s operands too — the R55-3 wiring at the new arm.');
+        $this->assertStringNotContainsString('var-callee-clean.php references', $report, 'A dynamic call on a clean operand stays clean — the arm collects the span, the needle still judges the operand.');
+        $this->assertStringNotContainsString('var-callee-member.php references', $report, 'A dynamic METHOD call is not a channel — the R45-3 member doctrine at the position consult.');
     }
 
     /*
